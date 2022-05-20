@@ -14,6 +14,8 @@
 #include <inttypes.h>
 #include <libgen.h>
 #include <linux/fs.h>
+#define SIZE_TABLE  1304    // This should ALWAYS be the same, regardless of platform
+#define SIZE_HEADER 0x200   // Count of bytes that should be \0 for whole emmc disk, things may become tricky if users have created a mbr partition table, as 0x200 is the size of mbr and it then becomes occupied
 
 struct partition {
 	char name[16];
@@ -50,10 +52,10 @@ void size_byte_to_human_readable(char* buffer, uint64_t size) {
     double num = size;
     int i;
     for (i=0; i<9; ++i) {
-        if (num <= 1024) {
+        if (num <= 1024.0) {
             break;
         }
-        num /= 1024;
+        num /= 1024.0;
     }
     sprintf(buffer, "%4.2f%c", num, suffixes[i]);
     return;
@@ -64,10 +66,10 @@ void size_byte_to_human_readable_print(uint64_t size) {
     double num = size;
     int i;
     for (i=0; i<9; ++i) {
-        if (num <= 1024) {
+        if (num <= 1024.0) {
             break;
         }
-        num /= 1024;
+        num /= 1024.0;
     }
     printf("%4.2f%c", num, suffixes[i]);
     return;
@@ -85,7 +87,7 @@ void die (const char * format, ...) {
 }
 
 uint64_t four_kb_alignment(uint64_t size) {
-    int remainder = size % 4096;
+    unsigned remainder = size % 4096; // Would this even be negative? Guess not
     if ( remainder ) {
         char buffer[9];
         size_byte_to_human_readable(buffer, size);
@@ -441,14 +443,14 @@ void is_reserved(struct options *options) {
     }
     else { // A normal file
         printf("Path '%s' seems a dumped image, checking the head bytes to distinguish it...\n", options->path_input);
-        char buffer[0x200];
+        char buffer[SIZE_HEADER];
         FILE *fp = fopen(options->path_input, "r");
         if (fp==NULL) {
             die("Can not open path '%s' as read-only, check your permission!", options->path_input);
         }
-        fread(buffer, 0x200, 1, fp);
+        fread(buffer, SIZE_HEADER, 1, fp);
         options->input_reserved = false;
-        for (int i=0; i<0x200; ++i) {
+        for (int i=0; i<SIZE_HEADER; ++i) {
             if (buffer[i]) {
                 options->input_reserved = true;
                 break;
@@ -557,11 +559,11 @@ void get_options(int argc, char **argv) {
 uint64_t get_disk_size() {
     struct stat stat_input;
     if (stat(options.path_input, &stat_input)) {
-        die("Input file '%s' does not exist!", options.path_input);
+        die("Path '%s' does not exist!", options.path_input);
     }
     uint64_t size_disk = 0;
     if (options.input_device) {
-        printf("Input '%s' is a device, getting its size via ioctl\n", options.path_input);
+        printf("Path '%s' is a device, getting its size via ioctl\n", options.path_input);
         char *path_device = NULL;
         if (options.input_reserved) {
             unsigned long rdev = makedev(major(stat_input.st_rdev), 0);
@@ -609,14 +611,19 @@ uint64_t get_disk_size() {
     }
     else{
         if (options.input_reserved) {
-            printf("Warning: Input '%s' is an image file for a reserved partition, we can only get its size via the partition table latter\n", options.path_input);
+            printf("Warning: Input '%s' is an image file for a reserved partition, we can only get disk size via the partition table latter\n", options.path_input);
             puts(" - The size may be incorrect due to disk may be not 100 percent parted");
             puts(" - But you should be fine it you've never touched the partition table");
         }
         else {
-            printf("Input '%s' is an image file for a whole emmc disk, getting its size via stat\n",  options.path_input);
+            printf("Path '%s' is an image file for a whole emmc disk, getting its size via stat\n",  options.path_input);
             size_disk = stat_input.st_size;
         }
+    }
+    char buffer[9];
+    if (size_disk) {
+        size_byte_to_human_readable(buffer, size_disk);
+        printf("Disk size is %llu (%s)\n", size_disk, buffer);
     }
     return size_disk;
 }
@@ -625,26 +632,19 @@ int main(int argc, char **argv) {
     // struct options *options = get_options(argc, argv);
     get_options(argc, argv);
     uint64_t size_disk = get_disk_size();
-    char buffer[9];
-    if (size_disk) {
-        size_byte_to_human_readable(buffer, size_disk);
-        printf("Disk size is %llu (%s)\n", size_disk, buffer);
-    }
-
     int fd=open(options.path_input, O_RDONLY);
     FILE *fp = fopen(options.path_input, "r");
     if ( fp == NULL ) {
         die("ERROR: Can not open input path as read mode, check your permission!\n");
     }
+    char buffer[9];
     if (!options.input_reserved) {
         size_byte_to_human_readable(buffer, options.offset);
         printf("Notice: Seeking %llu (%s) (offset of reserved partition) into disk\n", options.offset, buffer);
         fseek(fp, options.offset, SEEK_SET);
     }
-    int size_table = sizeof(struct mmc_partitions_fmt);
-    struct mmc_partitions_fmt *table = malloc(size_table);
-    memset(table, 0, size_table);  // Just for safety
-    fread(table, size_table, 1, fp);
+    struct mmc_partitions_fmt *table = calloc(1, SIZE_TABLE);
+    fread(table, SIZE_TABLE, 1, fp);
     valid_partition_table(table);
     printf("Partition table read from '%s':\n", options.path_input);
     uint64_t size_disk_table = summary_partition_table(table);
@@ -694,6 +694,6 @@ int main(int argc, char **argv) {
     FILE *fp_w = fopen("imgs/gxl_new.img", "r+");
     // //strcpy(table->version, "7ISHERE");
 
-    fwrite(table, size_table, 1, fp_w);
+    fwrite(table, SIZE_TABLE, 1, fp_w);
     exit(EXIT_SUCCESS);
 }

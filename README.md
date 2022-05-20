@@ -69,4 +69,90 @@ All of the above would seem complicated but the CLI is really **clean and easy**
 ./ampart /dev/mmcblk0 system:+8M:2G:2 data:+8M::
 ````
 
+## Examples
+After flashing **[v7.5] (MXQ) Aidan's ROM [S905X] [P212, P214 & P242] MXQ Pro 4K 1GB 2GB+ (720pUI & 210DPI).img** to my **BesTV R3300L**, the partition table is:
+````
+==============================================================
+NAME                          OFFSET                SIZE  MARK
+==============================================================
+bootloader               0(   0.00B)    400000(   4.00M)     0
+  (GAP)                                2000000(  32.00M)
+reserved           2400000(  36.00M)   4000000(  64.00M)     0
+  (GAP)                                 800000(   8.00M)
+cache              6c00000( 108.00M)  20000000( 512.00M)     2
+  (GAP)                                 800000(   8.00M)
+env               27400000( 628.00M)    800000(   8.00M)     0
+  (GAP)                                 800000(   8.00M)
+logo              28400000( 644.00M)   2000000(  32.00M)     1
+  (GAP)                                 800000(   8.00M)
+recovery          2ac00000( 684.00M)   2000000(  32.00M)     1
+  (GAP)                                 800000(   8.00M)
+rsv               2d400000( 724.00M)    800000(   8.00M)     1
+  (GAP)                                 800000(   8.00M)
+tee               2e400000( 740.00M)    800000(   8.00M)     1
+  (GAP)                                 800000(   8.00M)
+crypt             2f400000( 756.00M)   2000000(  32.00M)     1
+  (GAP)                                 800000(   8.00M)
+misc              31c00000( 796.00M)   2000000(  32.00M)     1
+  (GAP)                                 800000(   8.00M)
+boot              34400000( 836.00M)   2000000(  32.00M)     1
+  (GAP)                                 800000(   8.00M)
+system            36c00000( 876.00M)  80000000(   2.00G)     1
+  (GAP)                                 800000(   8.00M)
+data              b7400000(   2.86G) 11ac00000(   4.42G)     4
+==============================================================
+````
+It's very obvious that only **4.42G** are usable for users, all of the remaining is taken by Andoird's meaningless partitions. Running ceemmc does not help as it reports that it only supports side-by-side installation on this box when I force it to run with **ceemmc -x**, and it failed badly with a **segmentation fault**. And ahha, I will never know why it failed as it is **proprietary and closed-source**! And it left a messed partition table:
+````
+==============================================================
+NAME                          OFFSET                SIZE  MARK
+==============================================================
+bootloader               0(   0.00B)    400000(   4.00M)     0
+  (GAP)                                2000000(  32.00M)
+reserved           2400000(  36.00M)   4000000(  64.00M)     0
+  (GAP)                                 800000(   8.00M)
+cache              6c00000( 108.00M)  20000000( 512.00M)     2
+  (GAP)                                 800000(   8.00M)
+env               27400000( 628.00M)    800000(   8.00M)     0
+  (GAP)                                 800000(   8.00M)
+logo              28400000( 644.00M)   2000000(  32.00M)     1
+  (GAP)                                 800000(   8.00M)
+recovery          2ac00000( 684.00M)   2000000(  32.00M)     1
+  (GAP)                                 800000(   8.00M)
+rsv               2d400000( 724.00M)    800000(   8.00M)     1
+  (GAP)                                 800000(   8.00M)
+tee               2e400000( 740.00M)    800000(   8.00M)     1
+  (GAP)                                 800000(   8.00M)
+crypt             2f400000( 756.00M)   2000000(  32.00M)     1
+  (GAP)                                 800000(   8.00M)
+misc              31c00000( 796.00M)   2000000(  32.00M)     1
+  (GAP)                                 800000(   8.00M)
+boot              34400000( 836.00M)   2000000(  32.00M)     1
+  (GAP)                                 800000(   8.00M)
+system            36c00000( 876.00M)  80000000(   2.00G)     1
+  (GAP)                                 800000(   8.00M)
+data              b7400000(   2.86G)  fac00000(   3.92G)     4
+  (OVERLAP)                           fac00000(   3.92G)
+CE_STORAGE        b7400000(   2.86G)  fac00000(   3.92G)     4
+CE_FLASH         1b2000000(   6.78G)  20000000( 512.00M)     4
+==============================================================
+````
+The table is messed up, and CE_STORAGE **overlaps with data**! This is a **big no-no** because **two device file for same partition will be created under /dev**, and you will definitely **mess up more things** when you write to them seperately. And yes, Android won't boot either as a result of failed fs-resizing, and thanks to the **segmentation fault** I can't debug I will never know the cause of all of this.  
+But now, with **ampart**, I can just run the following command, remove all the BS, create a single data partition and call it a day.
+````
+dd if=/dev/env of=env.img
+./ampart /dev/mmcblk0 data:::
+dd if=env.img of=/dev/env
+````
 
+````
+==============================================================
+NAME                          OFFSET                SIZE  MARK
+==============================================================
+bootloader               0(   0.00B)    400000(   4.00M)     0
+  (GAP)                                2000000(  32.00M)
+reserved           2400000(  36.00M)   4000000(  64.00M)     0
+env                6400000( 100.00M)    800000(   8.00M)     0
+data               6c00000( 108.00M) 1cb400000(   7.18G)     4
+==============================================================
+````

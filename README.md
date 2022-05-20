@@ -59,7 +59,7 @@ And options are:
 * **--output**/**-o** **[path]** (**currently is not implemented**) will write the ouput table to somewhere else rather than the path you set in [reserved/mmc]
 
 All of the above would seem complicated but the CLI is really **clean and easy**, e.g.   
-(*All of the following will clear all partitions, copy the old partition info of partition bootloader, reserved and env as partition 0-2, change the offset of env to the end of*)
+(*All of the following commands will clear all partitions, copy the old partition info of bootloader, reserved and env as partition 0-2, then change the offset of env to the end of reserved. The env partition will most likely be moved. If you don't want envs to be reset to default, you should backup the env partition first then restore it*)
 ````
 # Create a single data partition to utilize all the space
 ./ampart /dev/mmcblk0 data:::

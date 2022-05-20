@@ -1,6 +1,6 @@
 # Amlogic emmc partition tool
 **ampart** is a partition tool written for **HybridELEC** for easier re-partitioning of internal emmc device for **Amlogic devices**. It is written totally in **C** for portability and therefore **simple, fast yet reliable**, and provides a simple yet powerful argument-driven CLI for easy implementation in scripts.  
-
+Everything is done in a **single session**, without any **repeated execution** or **reboot**  
 The main reason I wrote this is that **CoreELEC**'s proprietary **ceemmc** can not be easily modified for intalling EmuELEC and HybridELEC to internal emmc, as its partition sizes are **hard-coded**
 
 ***
@@ -57,6 +57,8 @@ And options are:
 * **--offset**/**-O** **[offset]** will overwrite the default offset of the reserved partition (i.e. where partition table is), **only valid** when input is a whole disk, useful when OEMs have modified it (e.g. Xiaomi set it to 4M, right after the bootloader). default: 36M
 * **--dry-run**/**-D** will only generate the new partition table but not actually write it, this will help you to make sure the output table is desired.
 * **--output**/**-o** **[path]** (**currently is not implemented**) will write the ouput table to somewhere else rather than the path you set in [reserved/mmc]
+
+**Note** If you don't specify ``--dry-run``/``-D`` and have provided valid partition arguments, new partition table will be written and mmcblk driver will be reloaded to **recognise all new partitions** if input path is a **device file**, this is all done **without reboot**, and in **pure C** way. You may want to umount any partitions from emmc first though.
 
 All of the above would seem complicated but the CLI is really **clean and easy**, e.g.   
 (*All of the following commands will clear all partitions, copy the old partition info of bootloader, reserved and env as partition 0-2, then change the offset of env to the end of reserved. The env partition will most likely be moved. If you don't want envs to be reset to default, you should backup the env partition first then restore it*)
@@ -137,14 +139,14 @@ CE_STORAGE        b7400000(   2.86G)  fac00000(   3.92G)     4
 CE_FLASH         1b2000000(   6.78G)  20000000( 512.00M)     4
 ==============================================================
 ````
-The table is messed up, and CE_STORAGE **overlaps with data**! And these new partitions are not even available before I bootup. This is a **big no-no** because **two device file for same partition will be created under /dev**, and you will definitely **mess up more things** when you write to them seperately. And yes, Android won't boot either as a result of failed fs-resizing, and thanks to the **segmentation fault** I can't debug I will never know the cause of all of this.  
+The table is messed up, and CE_STORAGE **overlaps with data**! And these new partitions are not even available before I reboot. This is a **big no-no** because **two device file for same partition will be created under /dev**, and you will definitely **mess up more things** when you write to them seperately. And yes, Android won't boot either as a result of failed fs-resizing, and thanks to the **segmentation fault** I can't debug I will never know the cause of all of this.  
 But now, with **ampart**, I can just run the following command, remove all the BS, create a single data partition and call it a day. I can further **install CoreELEC/EmuELEC to emmc just like the old days**.
 ````
 dd if=/dev/env of=env.img
 ./ampart /dev/mmcblk0 data:::
 dd if=env.img of=/dev/env
 ````
-After the above commands, only 108M of the emmc is wasted and I have a 7.18G data partition located at **/dev/data**, and I can further **install CoreELEC/EmuELEC to emmc just like the old days** with ``./ampart /dev/mmcblk0 system:1G::2 data:::``
+After the above commands, only 108M of the emmc is wasted and I have a 7.18G data partition **immediately** located at **/dev/data**, and I can further **install CoreELEC/EmuELEC to emmc just like the old days** with ``./ampart /dev/mmcblk0 system:1G::2 data:::``
 ````
 ==============================================================
 NAME                          OFFSET                SIZE  MARK

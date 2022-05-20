@@ -14,14 +14,17 @@
 #include <inttypes.h>
 #include <libgen.h>
 #include <linux/fs.h>
-#define SIZE_TABLE  1304    // This should ALWAYS be the same, regardless of platform
+#define SIZE_PART   40      // This should ALWAYS be 40, regardless of platform
+#define SIZE_TABLE  1304    // This should ALWAYS be 1304, regardless of platform
 #define SIZE_HEADER 0x200   // Count of bytes that should be \0 for whole emmc disk, things may become tricky if users have created a mbr partition table, as 0x200 is the size of mbr and it then becomes occupied
+#define SIZE_ENV    0x800000
 
 struct partition {
 	char name[16];
 	uint64_t size;
 	uint64_t offset;
 	unsigned mask_flags;
+    // padding 4byte
 };
 
 struct mmc_partitions_fmt {
@@ -31,6 +34,32 @@ struct mmc_partitions_fmt {
 	int checksum;
 	struct partition partitions[32];
 };
+
+struct table_helper {
+    struct mmc_partitions_fmt *table;
+    struct partition *bootloader;
+    struct partition *reserved;
+    struct partition *env;
+};
+
+
+struct disk_helper {
+    uint64_t start;
+    uint64_t free;
+    uint64_t size;
+};
+
+struct options {
+    bool input_reserved;
+    bool input_device;
+    bool dryrun;
+    char *path_input;
+    char *dir_input;
+    char *name_input;
+    char *output;
+    uint64_t offset;
+    uint64_t size;
+} options = {0};
 
 uint32_t mmc_partition_tbl_checksum_calc(struct partition *part, int part_num) {
 	int i, j;
@@ -45,7 +74,6 @@ uint32_t mmc_partition_tbl_checksum_calc(struct partition *part, int part_num) {
 	}
 	return checksum;
 }
-
 
 char suffixes[]="BKMGTPEZY";  // static is not needed, when out of any function's scope
 void size_byte_to_human_readable(char* buffer, uint64_t size) { 
@@ -186,7 +214,7 @@ void valid_partition_name(char *name) {
             break;
         }
         else {
-            die("You can only use a-z, A-Z and _ as characters of the partition name!");
+            die("You can only use a-z, A-Z and _ for the partition name!");
         }
     }
     if (i==0) {
@@ -230,7 +258,7 @@ int get_part_argument_length (char *argument, bool allow_end) {
     return i; // the length here does not contain : or \0
 }
 
-void partition_from_argument (struct partition *partition, char *argument, uint64_t *size_disk_free) {
+void partition_from_argument (struct partition *partition, char *argument, struct disk_helper *disk) {
     char argument_new[strlen(argument)+1], *arg=argument_new;  // A seperate argument is used here so we won't mess up with the original one
     strcpy(argument_new, argument);
     // Name
@@ -243,28 +271,55 @@ void partition_from_argument (struct partition *partition, char *argument, uint6
     }
     strcpy(partition->name, arg);
     valid_partition_name(partition->name);
-    printf("Name: %s\n", partition->name);
+    printf(" - Name: %s\n", partition->name);
     arg += length + 1;
-    //char buff[8];
     // Offset
+    char buffer1[9], buffer2[9];
     length = get_part_argument_length(arg, false);
     if ( !length ) {
-        // Auto increment offset
-
+        partition->offset=disk->start; // Auto increment offset
     }
+    else {
+        bool relative;
+        partition->offset = four_kb_alignment(size_human_readable_to_byte(arg, &relative));
+        if (relative) {
+            partition->offset += disk->start;
+        }
+        if (partition->offset < disk->start) {
+            size_byte_to_human_readable(buffer1, partition->offset);
+            size_byte_to_human_readable(buffer2, disk->start);
+            die("Partition offset smaller than end of last partition: %llu(%s) < %llu(%s)", partition->offset, buffer1, disk->start, buffer2);
+        }
+        if (partition->offset > disk->size) {
+            size_byte_to_human_readable(buffer1, partition->offset);
+            size_byte_to_human_readable(buffer2, disk->start);
+            die("Partition offset greater than disk size:  %llu(%s) > %llu(%s)", partition->offset, buffer1,  disk->start, buffer2);
+        }
+    }
+    size_byte_to_human_readable(buffer1, partition->offset);
+    printf(" - Offset: %llu (%s)\n", partition->offset, buffer1);
     arg += length + 1;
     // Size
     length = get_part_argument_length(arg, false);
+    uint64_t partition_end;
     if ( !length ) {
         // Auto fill the rest
+        partition->size = disk->size - partition->offset;
+        partition_end = disk->size;
     }
     else {
         partition->size=four_kb_alignment(size_human_readable_to_byte(arg, NULL));
+        partition_end = partition->offset + partition->size;
+        if ( partition_end > disk->size) {
+            size_byte_to_human_readable(buffer1, partition_end);
+            size_byte_to_human_readable(buffer2, disk->free);
+            die("Partition end point overflows! End point greater than disk size: %llu (%s) > %llu (%s)", partition_end, buffer1, disk->free, buffer2);
+        }
     }
-    char buffer[9];
-    size_byte_to_human_readable(buffer, partition->size);
-    printf("Size: %llu (%s)\n", partition->size, buffer);
-
+    disk->start = partition_end;
+    disk->free = disk->size - partition_end;
+    size_byte_to_human_readable(buffer1, partition->size);
+    printf(" - Size: %llu (%s)\n", partition->size, buffer1);
     arg += length + 1;
     // Mask
     length = get_part_argument_length(arg, true);
@@ -272,19 +327,20 @@ void partition_from_argument (struct partition *partition, char *argument, uint6
         partition->mask_flags=4;
     }
     else {
-        partition->mask_flags=atol(arg);
+        partition->mask_flags=atoi(arg);
         if ((partition->mask_flags != 2) && (partition->mask_flags != 4)) {
             //printf("%d\n", partition->mask_flags);
             die("Invalid mask %u, must be either 2 or 4, or leave it alone to use default value 4", partition->mask_flags);
         }
     }
-    printf("Mask: %u\n", partition->mask_flags);
+    printf(" - Mask: %u\n", partition->mask_flags);
     return;
 }
 
-void valid_partition_table(struct mmc_partitions_fmt *table) {
+void valid_partition_table(struct table_helper *table_h) {
     char good[] = ", GOOD √";
     puts("Validating partition table...");
+    struct mmc_partitions_fmt *table = table_h->table;
     printf("Partitions count: %d", table->part_num);
     if ( table->part_num > 32 || table->part_num < 3 ) {
         die("\nPartitions count illegal (%d), it must be between 3 and 32!", table->part_num);
@@ -306,7 +362,7 @@ void valid_partition_table(struct mmc_partitions_fmt *table) {
     else {
         puts(good);
     }
-    int checksum = mmc_partition_tbl_checksum_calc(&(table->partitions), table->part_num);
+    int checksum = mmc_partition_tbl_checksum_calc(table->partitions, table->part_num);
     printf("Checksum: calculated %x, recorded %x", checksum, table->checksum);
     if ( checksum != table->checksum ) {
         die("\nERROR: Checksum mismatch!");
@@ -328,12 +384,15 @@ void valid_partition_table(struct mmc_partitions_fmt *table) {
             }
         }
         if (!strcmp(part->name, "bootloader")) {
+            table_h->bootloader=part;
             has_bootloader = true;
         }
         else if (!strcmp(part->name, "reserved")) {
+            table_h->reserved=part;
             has_reserved = true;
         }
         else if (!strcmp(part->name, "env")) {
+            table_h->env=part;
             has_env = true;
         }
         else {
@@ -396,19 +455,6 @@ uint64_t summary_partition_table(struct mmc_partitions_fmt *table) {
     printf("Disk size totalling %llu (%s) according to partition table\n", offset, buffer_offset);
     return offset;
 }
-
-struct options {
-    bool input_disk;
-    bool input_reserved;
-    bool input_device;
-    bool dryrun;
-    char *path_input;
-    char *dir_input;
-    char *name_input;
-    char *output;
-    uint64_t offset;
-    uint64_t size;
-} options = {0};
 
 void is_reserved(struct options *options) {
     if (!strcmp(options->dir_input, "/dev")) {
@@ -507,12 +553,13 @@ void get_options(int argc, char **argv) {
         {NULL,      0,                  NULL,    0},    // This is needed for when user just mess up with their input
     };
     char buffer[9];
+    bool input_disk;
     while ((c = getopt_long(argc, argv, "hdrO:Do:", long_options, &option_index)) != -1) {
         int this_option_optind = optind ? optind : 1;
         switch (c) {
             case 'd':
                 puts("Notice: forcing input as a whole disk (e.g. /dev/mmcblk0)");
-                options.input_disk = true;
+                input_disk = true;
                 break;
             case 'r':
                 puts("Notice: forcing input as a reserved part (e.g. /dev/reserved)");
@@ -536,7 +583,7 @@ void get_options(int argc, char **argv) {
                 help(argv[0]);
         }
     }
-    if ( options.input_disk && options.input_reserved ) {
+    if ( input_disk && options.input_reserved ) {
         die("You CAN NOT force the input both as whole disk and as reserverd partition!");
     }
     if ( optind == argc ) {
@@ -550,7 +597,7 @@ void get_options(int argc, char **argv) {
     options.name_input=basename(path_new);
     options.dir_input=dirname(path_new);
     options.input_device=!strcmp(options.dir_input, "/dev");
-    if ( !options.input_disk && !options.input_reserved ) {
+    if ( !input_disk && !options.input_reserved ) {
         is_reserved(&options);
     } // From here onward we only need input_reserved
     return;
@@ -628,10 +675,9 @@ uint64_t get_disk_size() {
     return size_disk;
 }
 
-int main(int argc, char **argv) {
-    // struct options *options = get_options(argc, argv);
-    get_options(argc, argv);
-    uint64_t size_disk = get_disk_size();
+uint64_t read_partition_table(struct table_helper *table_h) {
+    puts("Reading old partition table...");
+    struct mmc_partitions_fmt *table = table_h->table;
     int fd=open(options.path_input, O_RDONLY);
     FILE *fp = fopen(options.path_input, "r");
     if ( fp == NULL ) {
@@ -643,57 +689,116 @@ int main(int argc, char **argv) {
         printf("Notice: Seeking %llu (%s) (offset of reserved partition) into disk\n", options.offset, buffer);
         fseek(fp, options.offset, SEEK_SET);
     }
-    struct mmc_partitions_fmt *table = calloc(1, SIZE_TABLE);
     fread(table, SIZE_TABLE, 1, fp);
-    valid_partition_table(table);
+    fclose(fp);
+    valid_partition_table(table_h);
     printf("Partition table read from '%s':\n", options.path_input);
-    uint64_t size_disk_table = summary_partition_table(table);
-    size_disk = (size_disk_table > size_disk) ? size_disk_table : size_disk;
-    size_byte_to_human_readable(buffer, size_disk);
-    printf("Using %llu (%s) as the disk size\n", size_disk, buffer);
-    if ( optind < argc ) {  // Only when partition is defined, will we try to parse partition table defined by user
-        uint64_t reserved_end = table->partitions[1].offset + table->partitions[1].size;
-        uint64_t size_disk_free = size_disk - reserved_end; // minus end of reserved partition
-        struct partition *partition_new;
-        int i;
-        for (i=0; i<table->part_num; ++i) {
-            partition_new = &(table->partitions[i]);
-            if (!strcmp(partition_new->name, "env")) {
-                size_disk_free -= partition_new->size;
-                break;
-            };
+    return summary_partition_table(table);
+};
+
+void reload_emmc() {
+    // Notifying kernel about emmc partition table change
+    if ( options.input_device ) {
+        const char device[] = "emmc:0001";
+        const char path_unbind[] = "/sys/bus/mmc/drivers/mmcblk/unbind";
+        const char path_bind[] = "/sys/bus/mmc/drivers/mmcblk/bind";
+        puts("Notifying kernel about partition table change...");
+        puts("We need to reload the driver for emmc as the meson-mmc driver does not like partition table being hot-updated");
+        printf("Opening '%s' so we can unbind driver for '%s'\n", path_unbind, device);
+        FILE *fp = fopen(path_unbind, "w");
+        if ( fp == NULL ) {
+            die("ERROR: can not open '%s' for unbinding driver for '%s', \n - You will need to reboot manually for the new partition table to be picked up by kernel \n - DO NOT access the old parititions under /dev for now as they are not updated!", path_unbind, device);
         }
-        printf("Usable space of the disk is %llu (", size_disk_free);
-        size_byte_to_human_readable_print(size_disk_free);
-        printf(") due to reserved ends at %llu (", reserved_end);
-        size_byte_to_human_readable_print(reserved_end);
-        printf(") and env takes %llu (", partition_new->size);
-        size_byte_to_human_readable_print(partition_new->size);
-        puts(")\n - Make sure you've backed up the env partition as its position will mostly change");
-        int partitions_count = argc - optind;
-        partitions_count = (partitions_count > 29) ? 29 : partitions_count; //Max is 32, but bootloader, reserved, env can not be used
-        struct partition partitions_new[partitions_count];
-        memset(partitions_new, 0, sizeof(partitions_new));  // Fill the partition structs with 0
-        char *partition_arg;
-        i=0;
-        while ( optind < argc && i < 29 ) { // 32 total - 3 reserved (bootloader + reserved + env)
-            partition_new = &partitions_new[i++];
-            partition_arg = argv[optind++];
-            printf("Parsing user input for partition: %s\n", partition_arg);
-            partition_from_argument(partition_new, partition_arg, &size_disk_free);
+        fputs(device, fp);
+        fclose(fp);
+        puts("Successfully unbinded the driver, all partitions and the disk itself are not present under /dev as a result of this");
+        printf("Opening '%s' so we can bind driver for '%s'\n", path_bind, device);
+        fp = fopen(path_bind, "w");
+        if ( fp == NULL ) {
+            die("ERROR: can not open '%s' for binding driver for '%s', \n - You will need to reboot manually for the new partition table to be picked up \n - You can not access the old partitions and the disk for now.", path_unbind, device);
         }
+        fputs(device, fp);
+        fclose(fp);
+        puts("Successfully binded the driver, you can use the new partition table now!");
+    };
+}
+
+int main(int argc, char **argv) {
+    // struct options *options = get_options(argc, argv);
+    get_options(argc, argv);
+    struct disk_helper disk = {0};
+    disk.size = get_disk_size();
+    struct mmc_partitions_fmt *table = calloc(1, SIZE_TABLE);
+    struct table_helper table_h = { table, 0 };
+    uint64_t size_disk_table = read_partition_table(&table_h);
+    if (size_disk_table > disk.size) {
+        disk.size = size_disk_table;
     }
+    char buffer[9];
+    size_byte_to_human_readable(buffer, disk.size);
+    printf("Using %llu (%s) as the disk size\n", disk.size, buffer);
+    if ( optind == argc ) {
+        exit(EXIT_SUCCESS);
+    }
+    // Only when partition is defined, will we try to parse partition table defined by user
+    uint64_t reserved_end = table_h.reserved->offset + table_h.reserved->size;
+    disk.start = reserved_end + table_h.env->size;
+    disk.free = disk.size - disk.start;
+    size_byte_to_human_readable(buffer, disk.free);
+    printf("Usable space of the disk is %llu (%s)\n", disk.free, buffer);
+    size_byte_to_human_readable(buffer, reserved_end);
+    printf("- This is due to reserved partition ends at %llu (%s)\n", reserved_end, buffer);
+    size_byte_to_human_readable(buffer, table_h.env->size);
+    printf("- And env partition takes %llu (%s) \n", table_h.env->size, buffer);
+    puts("Make sure you've backed up the env partition as its offset will mostly change\n - This is because all user-defined partitions will be created after the env partition\n - Yet most likely the old env partition was created after a cache partition\n - Which wastes a ton of space if we start at there");
+    int partitions_count = argc - optind;
+    if (partitions_count > 29) {
+        partitions_count = 29;
+        puts("Warning: You've defined too many partitions, only 29 of them will be accepted");
+    }
+    struct partition partitions_new[29] = {0}, *partition_new;
+    char *partition_arg;
+    int i=0;
+    while ( optind < argc && i < 29 ) { // 32 total - 3 reserved (bootloader + reserved + env)
+        partition_new = &partitions_new[i++];
+        partition_arg = argv[optind++];
+        printf("Parsing user input for partition: %s\n", partition_arg);
+        partition_from_argument(partition_new, partition_arg, &disk);
+    }
+    struct mmc_partitions_fmt *table_new = calloc(1, SIZE_TABLE);
+    memcpy(table_new, table, 16); // 4byte for magic, 16byte for version
+    table_new->part_num = partitions_count + 3;
+    memcpy(&(table_new->partitions[0]), table_h.bootloader, SIZE_PART);
+    memcpy(&(table_new->partitions[1]), table_h.reserved, SIZE_PART);
+    memcpy(&(table_new->partitions[2]), table_h.env, SIZE_PART);
+    table_new->partitions[2].offset=reserved_end;
+    for (i=0; i<partitions_count; ++i) {
+        memcpy(&(table_new->partitions[i+3]), &partitions_new[i], SIZE_PART);
+    }
+    table_new->checksum = mmc_partition_tbl_checksum_calc(table_new->partitions, table_new->part_num);
+    struct table_helper table_h_new = {table_new, 0};
+    puts("New partition table is generated successfully in memory");
+    valid_partition_table(&table_h_new);
+    summary_partition_table(table_new);
     if ( options.dryrun ) {
-        return 0;
+        puts("Running in dry-run mode, no actual writting, exiting...");
+        exit(EXIT_SUCCESS);
     }
-    exit(EXIT_SUCCESS);
-
-    
-
-    // printf("Offset: %lu / 0x%x Bytes\nSize: %lu / 0x%x Bytes\n", offset, offset, size, size);
-    FILE *fp_w = fopen("imgs/gxl_new.img", "r+");
-    // //strcpy(table->version, "7ISHERE");
-
-    fwrite(table, SIZE_TABLE, 1, fp_w);
+    printf("Re-opening input path '%s' to write new patition table...\n", options.path_input);
+    FILE *fp = fopen(options.path_input, "r+");
+    if (fp==NULL) {
+        die("Can not open path '%s' as read/write/append, new partition table not written, check your permission!");
+    }
+    if (!options.input_reserved) {
+        size_byte_to_human_readable(buffer, options.offset);
+        printf("Notice: Seeking %llu (%s) (offset of reserved partition) into disk\n", options.offset, buffer);
+        fseek(fp, options.offset, SEEK_SET);
+    }
+    fwrite(table_new, SIZE_TABLE, 1, fp);
+    fclose(fp);
+    if (options.input_device) {
+        reload_emmc();
+    }
+    puts("Everything done! Enjoy your fresh-new partition table!");
     exit(EXIT_SUCCESS);
 }

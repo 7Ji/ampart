@@ -17,16 +17,16 @@ In which the positional arguments are:
 **ampart** will auto-recognize its type by name and header, but you can also force it to be recognized as reserved or whole emmc disk by options ``--reserved`` / ``-r`` or ``--disk`` / ``-d``  
 * **partition**(s) are partitions you would like to create, when leaved empty **ampart** will only print the old partition table. Should be written in format **name**:**offset**:**size**:**mask**. In which:  
     * **name** is the partition name, it supports **a**-**z**, **A**-**Z** and **_**, **must be set**, 15 characters at max.  
-        ****A**-**Z** and **_** are supported but not **suggested**, as it **may confuse some kernel and bootloader***    
-    e.g. boot, system, data
+    e.g. boot, system, data  
+    ****A**-**Z** and **_** are supported but not **suggested**, as it **may confuse some kernel and bootloader***    
     * **offset** is the partition's **absolute** offset, this should be interger number with optional *B/K/M/G* suffix *(for each step, multiplies 1024 instead of 1000, i.e. these are KiB, MiB and GiB respectively)*.   
         1. When leaved empty, offset will be set to last partition's end
         2. You can add an optional **+** for **relative** offset, e.g. +8M, this will leave a 8M gap between this partiton and the last one.  
         3. Any offset will be **rounded up** to **multiplies of 4096 (4KiB)** for **4K alignment**  
-        e.g. 32M (32M offset in the whole disk), +1M (leave a 1M gap after the last partition), +2047 (leave a 4K gap after the last partition as it's rounded up to 4096)  
+        e.g. 32M (32M offset in the whole disk), +1M (leave a 1M gap after the last partition), +2047 (leaves a 4K gap after the last partition as it's rounded up to 4096)  
     * **size** is the partition's size, this should be interger number with optional *B/K/M/G* suffix.
         1. When leaved empty, size will be equal to all free space after the last partition
-        2. Any offset will be **rounded up** to **multiplies of 4096 (4KiB)** for **4K alignment**  
+        2. Any size will be **rounded up** to **multiplies of 4096 (4KiB)** for **4K alignment**  
         e.g. 2G (a 2GiB partition)
     * **mask** is the partition's mask, this should be either 2 or 4, it is **only useful for u-boot** to figure out which partition should be cleaned *(0-filled)* when you flash a USB Burning Tool and choose **normal erase**. It really doesn't make much sense as you've modified the partition table anyway, and Android images won't work anymore unless you choose **total erase**. Default is 4.
         * 2 is for system partitions, these partitions will be cleaned whether **normal erase** is chosen or not when you flash an **Android image** via **USB Burning Tool**.
@@ -39,7 +39,7 @@ In which the positional arguments are:
 
     Note that **the order of partitions** matter, e.g. ``system:+8M:2G:2 data::::`` will work, but ``data::: system:+8M:2G:2`` won't because data has already taken all of the remaining space.
 
-    Partitions also must be **incremental**, which means you can't create a partition whose position is **before** a one already existing. e.g. ``system::2G: data:0:2G:`` won't work as data's offset is greater than system's end point (2G + reserved partitions)
+    Partitions also must be **incremental**, which means you can't create a partition whose position is **before** a one already existing. e.g. ``system::2G: data:0:2G:`` won't work as data's offset is smaller than system's end point (2G + reserved partitions)
 
     The following partitions are **reserved** and **can't be defined by user**, they will be **generated** according to the old partition table:
 

@@ -48,7 +48,7 @@ In which the positional arguments are:
     3. **env** This is where u-boot envs are stored, it is usually 8M, and placed after a cache partition. It **will be moved** as the cache partition takes 512M and does not make much sense for a pure ELEC installation.
 
     So partitions defined by users will start at **end of reserved partition** + **size of env partition**, to maximize the usable disk space by avoiding those precious ~512M taken by cache partition.   
-    As a result, if they don't want envs be reset to default, users should **backup their env partition** (e.g. via ``dd if=/dev/env of=env.img``) then rewrite it after the partitioning (e.g. via ``dd if=env.img of=/dev/env``) latter.
+    As a result, if they don't want envs be reset to default, users should **backup their env partition** (e.g. via ``dd if=/dev/env of=env.img``) then restore it after the partitioning (e.g. via ``dd if=env.img of=/dev/env``) latter.
 
 And options are:
 * **--help**/**-h** will print a help message
@@ -102,7 +102,7 @@ system            36c00000( 876.00M)  80000000(   2.00G)     1
 data              b7400000(   2.86G) 11ac00000(   4.42G)     4
 ==============================================================
 ````
-It's very obvious that only **4.42G** are usable for users, all of the remaining is taken by Andoird's meaningless partitions. Running ceemmc does not help as it reports that it only supports side-by-side installation on this box when I force it to run with **ceemmc -x**, and it failed badly with a **segmentation fault**. And ahha, I will never know why it failed as it is **proprietary and closed-source**! And it left a messed partition table:
+It's very obvious that only **4.42G** are usable for users, and all of the remaining space is taken by Andoird's meaningless partitions. Running ceemmc does not help as it reports that it only supports side-by-side installation on this box when I force it to run with **ceemmc -x**, and it failed badly with a **segmentation fault**. And ahha, I will never know why it failed as it is **proprietary and closed-source**! All it left was a messed up partition table:
 ````
 ==============================================================
 NAME                          OFFSET                SIZE  MARK
@@ -137,14 +137,14 @@ CE_STORAGE        b7400000(   2.86G)  fac00000(   3.92G)     4
 CE_FLASH         1b2000000(   6.78G)  20000000( 512.00M)     4
 ==============================================================
 ````
-The table is messed up, and CE_STORAGE **overlaps with data**! This is a **big no-no** because **two device file for same partition will be created under /dev**, and you will definitely **mess up more things** when you write to them seperately. And yes, Android won't boot either as a result of failed fs-resizing, and thanks to the **segmentation fault** I can't debug I will never know the cause of all of this.  
-But now, with **ampart**, I can just run the following command, remove all the BS, create a single data partition and call it a day.
+The table is messed up, and CE_STORAGE **overlaps with data**! And these new partitions are not even available before I bootup. This is a **big no-no** because **two device file for same partition will be created under /dev**, and you will definitely **mess up more things** when you write to them seperately. And yes, Android won't boot either as a result of failed fs-resizing, and thanks to the **segmentation fault** I can't debug I will never know the cause of all of this.  
+But now, with **ampart**, I can just run the following command, remove all the BS, create a single data partition and call it a day. I can further **install CoreELEC/EmuELEC to emmc just like the old days**.
 ````
 dd if=/dev/env of=env.img
 ./ampart /dev/mmcblk0 data:::
 dd if=env.img of=/dev/env
 ````
-
+After the above commands, only 108M of the emmc is wasted and I have a 7.18G data partition located at **/dev/data**, and I can further **install CoreELEC/EmuELEC to emmc just like the old days** with ``./ampart /dev/mmcblk0 system:1G::2 data:::``
 ````
 ==============================================================
 NAME                          OFFSET                SIZE  MARK

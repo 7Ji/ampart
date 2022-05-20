@@ -45,7 +45,7 @@ uint32_t mmc_partition_tbl_checksum_calc(struct partition *part, int part_num) {
 }
 
 
-static char suffixes[]="BKMGTPEZY";
+char suffixes[]="BKMGTPEZY";  // static is not needed, when out of any function's scope
 void size_byte_to_human_readable(char* buffer, uint64_t size) { 
     double num = size;
     int i;
@@ -74,7 +74,7 @@ void size_byte_to_human_readable_print(uint64_t size) {
 }
 
 // Fancier die function that supports formatting
-static void die (const char * format, ...) { 
+void die (const char * format, ...) { 
     va_list vargs;
     va_start (vargs, format);
     fprintf (stderr, "ERROR: ");
@@ -406,7 +406,7 @@ struct options {
     char *output;
     uint64_t offset;
     uint64_t size;
-};
+} options = {0};
 
 void is_reserved(struct options *options) {
     if (!strcmp(options->dir_input, "/dev")) {
@@ -491,9 +491,9 @@ void help(char *path) {
     exit(EXIT_SUCCESS);
 }
 
-struct options *get_options(int argc, char **argv) {
-    int c, option_index = 0;  
-    static struct options options = {0}, *ptr=&options;
+void get_options(int argc, char **argv) {
+    // options is a global variable
+    int c, option_index = 0;
     options.offset = 0x2400000; // default offset, 32M
     static struct option long_options[] = {
         {"help",    no_argument,        NULL,   'h'},
@@ -551,20 +551,19 @@ struct options *get_options(int argc, char **argv) {
     if ( !options.input_disk && !options.input_reserved ) {
         is_reserved(&options);
     } // From here onward we only need input_reserved
-    return ptr;
+    return;
 };
 
-int main(int argc, char **argv) {
-    struct options *options = get_options(argc, argv);
+uint64_t get_disk_size() {
     struct stat stat_input;
-    if (stat(options->path_input, &stat_input)) {
-        die("Input file '%s' does not exist!", options->path_input);
+    if (stat(options.path_input, &stat_input)) {
+        die("Input file '%s' does not exist!", options.path_input);
     }
     uint64_t size_disk = 0;
-    if (options->input_device) {
-        printf("Input '%s' is a device, getting its size via ioctl\n", options->path_input);
+    if (options.input_device) {
+        printf("Input '%s' is a device, getting its size via ioctl\n", options.path_input);
         char *path_device = NULL;
-        if (options->input_reserved) {
+        if (options.input_reserved) {
             unsigned long rdev = makedev(major(stat_input.st_rdev), 0);
             DIR *d;
             struct dirent * dir;
@@ -595,52 +594,59 @@ int main(int argc, char **argv) {
             }
         }
         else {
-            path_device = options->path_input;
+            path_device = options.path_input;
         }
         int fd = open(path_device, O_RDONLY);
         if (fd == -1) {
             close(fd);
-            die("Failed to open device file '%s' as read-only via ioctl! Check your permission.\n", options->path_input);
+            die("Failed to open device file '%s' as read-only via ioctl! Check your permission.\n", options.path_input);
         }
         if (ioctl(fd, BLKGETSIZE64, &size_disk)==-1) {
             close(fd);
-            die("Failed to get size info from '%s' via ioctl!\n", options->path_input);
+            die("Failed to get size info from '%s' via ioctl!\n", options.path_input);
         }
         close(fd);
     }
     else{
-        if (options->input_reserved) {
-            printf("Warning: Input '%s' is an image file for a reserved partition, we can only get its size via the partition table latter\n", options->path_input);
+        if (options.input_reserved) {
+            printf("Warning: Input '%s' is an image file for a reserved partition, we can only get its size via the partition table latter\n", options.path_input);
             puts(" - The size may be incorrect due to disk may be not 100 percent parted");
             puts(" - But you should be fine it you've never touched the partition table");
         }
         else {
-            printf("Input '%s' is an image file for a whole emmc disk, getting its size via stat\n",  options->path_input);
+            printf("Input '%s' is an image file for a whole emmc disk, getting its size via stat\n",  options.path_input);
             size_disk = stat_input.st_size;
         }
     }
+    return size_disk;
+}
+
+int main(int argc, char **argv) {
+    // struct options *options = get_options(argc, argv);
+    get_options(argc, argv);
+    uint64_t size_disk = get_disk_size();
     char buffer[9];
     if (size_disk) {
         size_byte_to_human_readable(buffer, size_disk);
         printf("Disk size is %llu (%s)\n", size_disk, buffer);
     }
 
-    int fd=open(options->path_input, O_RDONLY);
-    FILE *fp = fopen(options->path_input, "r");
+    int fd=open(options.path_input, O_RDONLY);
+    FILE *fp = fopen(options.path_input, "r");
     if ( fp == NULL ) {
         die("ERROR: Can not open input path as read mode, check your permission!\n");
     }
-    if (!options->input_reserved) {
-        size_byte_to_human_readable(buffer, options->offset);
-        printf("Notice: Seeking %llu (%s) bytes into disk\n", options->offset, buffer);
-        fseek(fp, options->offset, SEEK_SET);
+    if (!options.input_reserved) {
+        size_byte_to_human_readable(buffer, options.offset);
+        printf("Notice: Seeking %llu (%s) (offset of reserved partition) into disk\n", options.offset, buffer);
+        fseek(fp, options.offset, SEEK_SET);
     }
     int size_table = sizeof(struct mmc_partitions_fmt);
     struct mmc_partitions_fmt *table = malloc(size_table);
     memset(table, 0, size_table);  // Just for safety
     fread(table, size_table, 1, fp);
     valid_partition_table(table);
-    printf("Partition table read from '%s':\n", options->path_input);
+    printf("Partition table read from '%s':\n", options.path_input);
     uint64_t size_disk_table = summary_partition_table(table);
     size_disk = (size_disk_table > size_disk) ? size_disk_table : size_disk;
     size_byte_to_human_readable(buffer, size_disk);
@@ -677,7 +683,7 @@ int main(int argc, char **argv) {
             partition_from_argument(partition_new, partition_arg, &size_disk_free);
         }
     }
-    if ( options->dryrun ) {
+    if ( options.dryrun ) {
         return 0;
     }
     exit(EXIT_SUCCESS);

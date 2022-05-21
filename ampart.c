@@ -486,6 +486,10 @@ void is_reserved(struct options *options) {
         else if (!strcmp(options->name_input, "reserved")) {
             options->input_reserved = true;
         }
+        else {
+            printf("Warning: can not figure out whether '%s' is a reserved partition or a whole emmc disk, defaulting as reserved part", options->path_input);
+            options->input_reserved = true;
+        }
     }
     else { // A normal file
         printf("Path '%s' seems a dumped image, checking the head bytes to distinguish it...\n", options->path_input);
@@ -553,7 +557,7 @@ void get_options(int argc, char **argv) {
         {NULL,      0,                  NULL,    0},    // This is needed for when user just mess up with their input
     };
     char buffer[9];
-    bool input_disk;
+    bool input_disk = false;
     while ((c = getopt_long(argc, argv, "hdrO:Do:", long_options, &option_index)) != -1) {
         int this_option_optind = optind ? optind : 1;
         switch (c) {

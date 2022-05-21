@@ -617,7 +617,7 @@ uint64_t get_disk_size() {
         printf("Path '%s' is a device, getting its size via ioctl\n", options.path_input);
         char *path_device = NULL;
         if (options.input_reserved) {
-            unsigned long rdev = makedev(major(stat_input.st_rdev), 0);
+            unsigned major_reserved = major(stat_input.st_rdev);
             DIR *d;
             struct dirent * dir;
             struct stat stat_device;
@@ -627,14 +627,14 @@ uint64_t get_disk_size() {
                 die("Failed to open /dev for scanning, check your permission");
             }
             while((dir = readdir(d)) != NULL) {
-                if (!strncmp(dir->d_name, "mmcblk", 6)) {
+                if (!strncmp(dir->d_name, "mmcblk", 6) && strlen(dir->d_name) == 7) {
                     strcpy(path_device_full, "/dev/");
                     strcat(path_device_full, dir->d_name);
                     if (stat(path_device_full, &stat_device)) {
                         closedir(d);
                         die("Can not check stat for device file '%s', check your permission!", path_device_full);
                     }
-                    if (stat_device.st_rdev == rdev) {
+                    if (major(stat_device.st_rdev) == major_reserved) {
                         closedir(d);
                         path_device = path_device_full;
                         break;

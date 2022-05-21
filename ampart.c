@@ -18,6 +18,7 @@
 #define SIZE_TABLE  1304    // This should ALWAYS be 1304, regardless of platform
 #define SIZE_HEADER 0x200   // Count of bytes that should be \0 for whole emmc disk, things may become tricky if users have created a mbr partition table, as 0x200 is the size of mbr and it then becomes occupied
 #define SIZE_ENV    0x800000
+#define VERSION     "v0.1"
 
 struct partition {
 	char name[16];
@@ -516,6 +517,10 @@ void is_reserved(struct options *options) {
     }
 }
 
+void version() {
+    puts("\nampart (Amlogic emmc partition tool) "VERSION"\nCopyright (C) 2022 7Ji (pugokushin@gmail.com)\nLicense GPLv3: GNU GPL version 3 <https://gnu.org/licenses/gpl.html>.\nThis is free software: you are free to change and redistribute it.\nThere is NO WARRANTY, to the extent permitted by law.\n");
+}
+
 void help(char *path) {
     printf("Usage: %s [reserved/emmc] [partition] ... [option [optarg]]... \n\n", path);
     char help_message[] =
@@ -548,6 +553,7 @@ void get_options(int argc, char **argv) {
     int c, option_index = 0;
     options.offset = 0x2400000; // default offset, 32M
     static struct option long_options[] = {
+        {"version", no_argument,        NULL,   'v'},
         {"help",    no_argument,        NULL,   'h'},
         {"disk",    no_argument,        NULL,   'd'},   // The input file is a whole disk (e.g. /dev/mmcblk0) or image file alike
         {"reserved",no_argument,        NULL,   'r'},   // The input file is a reserved partation (e.g. /dev/reserved) or image file alike
@@ -558,9 +564,12 @@ void get_options(int argc, char **argv) {
     };
     char buffer[9];
     bool input_disk = false;
-    while ((c = getopt_long(argc, argv, "hdrO:Do:", long_options, &option_index)) != -1) {
+    while ((c = getopt_long(argc, argv, "vhdrO:Do:", long_options, &option_index)) != -1) {
         int this_option_optind = optind ? optind : 1;
         switch (c) {
+            case 'v':
+                version();
+                exit(EXIT_SUCCESS);
             case 'd':
                 puts("Notice: forcing input as a whole disk (e.g. /dev/mmcblk0)");
                 input_disk = true;
@@ -584,6 +593,7 @@ void get_options(int argc, char **argv) {
                 printf("Notice: output to will be written to %s\n", options.output);
                 break;
             default:
+                version();
                 help(argv[0]);
         }
     }

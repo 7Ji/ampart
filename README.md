@@ -41,7 +41,7 @@ In which the positional arguments are:
 
     Note that **the order of partitions** matter, e.g. ``system:+8M:2G:2 data::::`` will work, but ``data::: system:+8M:2G:2`` won't because data has already taken all of the remaining space.
 
-    Partitions also must be **incremental**, which means you can't create a partition whose position is **before** a one already existing. e.g. ``system::2G: data:0:2G:`` won't work as data's offset is smaller than system's end point (2G + reserved partitions)
+    Partitions also must be **incremental**, which means you can't create a partition whose position is **before** another existing partition. e.g. ``system::2G: data:0:2G:`` won't work as data's offset is smaller than system's end point (2G + reserved partitions)
 
     The following partitions are **reserved** and **can't be defined by user**, they will be **generated** according to the old partition table:
 
@@ -53,6 +53,7 @@ In which the positional arguments are:
     As a result, if they don't want envs be reset to default, users should **backup their env partition** (e.g. via ``dd if=/dev/env of=env.img``) then restore it after the partitioning (e.g. via ``dd if=env.img of=/dev/env``) latter.
 
 And options are:
+* **--version**/**-v** will print the version info
 * **--help**/**-h** will print a help message
 * **--disk**/**-d** will force ampart to treat input as a whole emmc disk, **conflicts** with --reserved/-r
 * **--reserved**/**-r** will force ampart to treat input as a reserved partition, **conflicts** with --disk/-d
@@ -142,13 +143,13 @@ CE_FLASH         1b2000000(   6.78G)  20000000( 512.00M)     4
 ==============================================================
 ````
 The table is messed up, and CE_STORAGE **overlaps with data**! And these new partitions are not even available before I reboot. This is a **big no-no** because **two device file for same partition will be created under /dev**, and you will definitely **mess up more things** when you write to them seperately. And yes, Android won't boot either as a result of failed fs-resizing, and thanks to the **segmentation fault** I can't debug I will never know the cause of all of this.  
-But now, with **ampart**, I can just run the following command, remove all the BS, create a single data partition and call it a day. I can further **install CoreELEC/EmuELEC to emmc just like the old days**.
+But now, with **ampart**, I can just run the following command, remove all the BS, create a single data partition and call it a day.
 ````
 dd if=/dev/env of=env.img
 ./ampart /dev/mmcblk0 data:::
 dd if=env.img of=/dev/env
 ````
-After the above commands, only 108M of the emmc is wasted and I have a 7.18G data partition **immediately** located at **/dev/data**, and I can further **install CoreELEC/EmuELEC to emmc just like the old days** with ``./ampart /dev/mmcblk0 system:1G::2 data:::``
+After the above commands, only 108M of the emmc is wasted and I have a 7.18G data partition **immediately** located at **/dev/data**, and I can further **install CoreELEC/EmuELEC to emmc just like the old days** with the old partition layout I can create with ``./ampart /dev/mmcblk0 system::1G:2 data:::``
 ````
 ==============================================================
 NAME                          OFFSET                SIZE  MARK

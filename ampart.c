@@ -546,7 +546,6 @@ void help(char *path) {
         "\t--output/-o [path]\n"
         "\t\t\twrite the updated part table to somewhere else, instead of the input itself\n";
     puts(help_message);
-    exit(EXIT_SUCCESS);
 }
 
 void get_options(int argc, char **argv) {
@@ -596,12 +595,14 @@ void get_options(int argc, char **argv) {
             default:
                 version();
                 help(argv[0]);
+                exit(EXIT_SUCCESS);
         }
     }
     if ( input_disk && options.input_reserved ) {
         die("You CAN NOT force the input both as whole disk and as reserverd partition!");
     }
     if ( optind == argc ) {
+        help(argv[0]);
         die("You must specify a path to reserved partition (e.g./dev/reserved) or whole emmc disk (e.g./dev/mmcblk0) or image files dumped from them!");
     }
     // First argument must be path

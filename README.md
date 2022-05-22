@@ -5,77 +5,109 @@ Everything is done in a **single session**, without any **repeated execution** o
 
 The main reason I wrote this is that **CoreELEC**'s proprietary **ceemmc** can not be easily modified for intalling EmuELEC and HybridELEC to internal emmc, as its partition sizes are **hard-coded**
 
+In theory **ampart** should work perfectly fine for any system that have built-in meson-gx-mmc driver, e.g. **CoreELEC**, **EmuELEC**, **HybridELEC**, etc.
+
+Even if you are using a system that does not have built-in meson-gx-mmc driver (e.g. **Armbian**, **OpenWrt**), you can still use **ampart** to get the partition info of your emmc and partition it. You can then use the partitions by losetup or [blkdevparts=](https://www.kernel.org/doc/html/latest/block/cmdline-partition.html) kernel command line. In this way you won't mess up with the reserved partitions and utilize more space than the tricky 700M offset partitioning way.
+
 ***
 ## Usage
 **ampart** does not contain any interactive CLI. This is perfect for implementation in scripts but does not mean the user won't be able to understand what is happening.
 
-The arguments of **ampart** is very simple:
+The command-line usage of **ampart** is very simple:
 
 ````
-./ampart [reserved/emmc] [partition] ... [option [optarg]]... 
+ampart [reserved/emmc] ([partition] ...) ([option [optarg]]...) 
 ````
 In which the positional arguments are:
-* **reserved/emmc** is the path to ``/dev/reserved`` or ``/dev/mmcblkN`` or any image file you dumped from them (e.g. via ``dd if=/dev/mmcblk0 of=emmc.img``).  
-**ampart** will auto-recognize its type by name and header, but you can also force it to be recognized as reserved or whole emmc disk by options ``--reserved`` / ``-r`` or ``--disk`` / ``-d``  
-* **partition**(s) are partitions you would like to create, when leaved empty **ampart** will only print the old partition table. Should be written in format **name**:**offset**:**size**:**mask**. In which:  
-    * **name** is the partition name, it supports **a**-**z**, **A**-**Z** and **_**, **must be set**, 15 characters at max.  
+*Arguments with \* are required*
+* **reserved/emmc\*** the path to ``/dev/reserved`` or ``/dev/mmcblkN`` or any image file you dumped from them (e.g. via ``dd if=/dev/mmcblk0 of=emmc.img``, or ``dd if=/dev/reserved of=reserved.img``).  
+Whether it's a whole emmc disk or a reserved partition will be identified by its name and header, but you can also force its type by options ``--reserved`` / ``-r`` or ``--disk`` / ``-d``  
+* **partition**(s) partition(s) you would like to create, when omitted **ampart** will only print the old partition table. Should be in format **name**:**offset**:**size**:**mask**. In which:  
+    * **name\*** the partition name, supports **a**-**z**, **A**-**Z** and **_**(underscore), 15 characters at max.  
     e.g. boot, system, data  
-    ****A**-**Z** and **_** are supported but not **suggested**, as it **may confuse some kernel and bootloader***    
-    * **offset** is the partition's **absolute** offset, this should be interger number with optional *B/K/M/G* suffix *(for each step, multiplies 1024 instead of 1000, i.e. these are KiB, MiB and GiB respectively)*.   
-        1. When leaved empty, offset will be set to last partition's end
-        2. You can add an optional **+** for **relative** offset, e.g. +8M, this will leave a 8M gap between this partiton and the last one.  
-        3. Any offset will be **rounded up** to **multiplies of 4096 (4KiB)** for **4K alignment**  
-        e.g. 32M (32M offset in the whole disk), +1M (leave a 1M gap after the last partition), +2047 (leaves a 4K gap after the last partition as it's rounded up to 4096)  
-    * **size** is the partition's size, this should be interger number with optional *B/K/M/G* suffix.
-        1. When leaved empty, size will be equal to all free space after the last partition
-        2. Any size will be **rounded up** to **multiplies of 4096 (4KiB)** for **4K alignment**  
-        e.g. 2G (a 2GiB partition)
-    * **mask** is the partition's mask, this should be either 2 or 4, it is **only useful for u-boot** to figure out which partition should be cleaned *(0-filled)* when you flash a USB Burning Tool and choose **normal erase**. It really doesn't make much sense as you've modified the partition table anyway, and Android images won't work anymore unless you choose **total erase**. Default is 4.
-        * 2 is for system partitions, these partitions will be cleaned whether **normal erase** is chosen or not when you flash an **Android image** via **USB Burning Tool**.
-        * 4 is for data partitions, these partitions will only be cleaned if you choose **total erase** whn you flash an **Android image** via **USB Burning Tool**
+    ***A**-**Z** and **_** are supported but not **suggested**, as it **may confuse some kernel and bootloader***    
+    * **offset** the partition's **absolute**(*without + prefix*) or  **relative**(*with + prefix*) offset. interger with optional *B/K/M/G* suffix *(for byte, kibibyte=1024B, mebibyte=1024K, gibibytere=1024M spectively)*.   
+        1. when omitted, equals to **last partition's end**
+        2. without prefix **+** for offset to **the disk's start**. e.g. 2G, will place partition at 2G
+        3. with prefix **+** for offset to **last partition's end**. e.g. +8M, will place partiton at **last partition's end + 8M**, meaning there will be an **8M gap** between them  
+        4. will be **rounded up** to **multiplies of 4096 (4KiB)** for **4K alignment**. e.g. **2047** will be rounded up to **4096**=**4K**, **1023K** will be rounded up to **1024K**  
+    * **size** the partition's size. interger with optional *B/K/M/G* suffix (like offset).
+        1. when omitted, size will equal to **all of free space after the last partition**
+        2. will be **rounded up** to **multiplies of 4096 (4KiB)** for **4K alignment** just like offset
+    * **mask** the partition's mask. either 2 or 4,   
+    *it is **only useful for u-boot** to figure out which partition should be cleaned *(0-filled)* when you flash a USB Burning Tool and choose **normal erase**. It really doesn't make much sense as you've modified the partition table and Android images won't work anymore unless you choose **total erase**.* Default is 4.
+        * 2 for system partitions, these partitions will always be cleaned whether **normal erase** is chosen or not when you flash an **Android image** via **USB Burning Tool**.
+        * 4 for data partitions, these partitions will only be cleaned if you choose **total erase** when you flash an **Android image** via **USB Burning Tool**
 
     e.g.
 
-    * **``system:+8M:2G:2``** A partition named system, leave a gap between it and the last partition, size is 2G, mask is 2  
-    * **``data:::``**  A partition named data, no gap before it, size=free space(use all remaining space after the last partition)
+    1. ``system:+8M:2G:2`` A partition named system, leave an 8M gap between it and the last partition, size is 2G, mask is 2  
+    2. ``data:::``  A partition named data, no gap before it, uses all the remaining space, mask is 4
 
-    Note that **the order of partitions** matter, e.g. ``system:+8M:2G:2 data::::`` will work, but ``data::: system:+8M:2G:2`` won't because data has already taken all of the remaining space.
+    **Note**: the **order** of partitions matters, e.g. 
+    1. ``system:+8M:2G:2 data::::`` will work if disk's size is greater than 2G+8M+size of reserved partitions
+    2.  ``data::: system:+8M:2G:2`` won't work because data has already taken all of the remaining space yet system wants 2G, and it wants to start at the disk's endpoint + 8M.
+    3. ``data::: data2::: data3::: ...`` works, data2, data3, ... will all be 0-sized partitions as data has taken all of the remaining space
 
-    Partitions also must be **incremental**, which means you can't create a partition whose position is **before** another existing partition. e.g. ``system::2G: data:0:2G:`` won't work as data's offset is smaller than system's end point (2G + reserved partitions)
+    **Note2**: partitions must be created **incrementally**, a new partition's *start point* **can not** be **smaller** than the previous one's *end point*. e.g. 
+    1. ``system::2G: data:0:2G:`` won't work as data's offset is smaller than system's end point (2G + reserved partitions)
+    2. ``system::2G: data:+0:2G:``will work and it's the same as ``system::2G: data::2G:``
 
-    The following partitions are **reserved** and **can't be defined by user**, they will be **generated** according to the old partition table:
-
+    **Warning**: some partitions are **reserved** and **can't be defined by user**, they will be **generated** according to the old partition table:  
     1. **bootloader** This is where **u-boot** is stored, and it should always be the **first 4M** of the emmc device. It **won't** be touched.
     2. **reserved** This is where **partition table**, **dtb** and many other stuffs are stored, it usually starts at 36M and leaves an 32M gap between it and **bootloader** partition. It **won't** be touched.
-    3. **env** This is where u-boot envs are stored, it is usually 8M, and placed after a cache partition. It **will be moved** as the cache partition takes 512M and does not make much sense for a pure ELEC installation.
-
-    So partitions defined by users will start at **end of reserved partition** + **size of env partition**, to maximize the usable disk space by avoiding those precious ~512M taken by cache partition.   
-    As a result, if they don't want envs be reset to default, users should **backup their env partition** (e.g. via ``dd if=/dev/env of=env.img``) then restore it after the partitioning (e.g. via ``dd if=env.img of=/dev/env``) latter.
+    3. **env** This is where u-boot envs are stored, it is usually 8M, and placed after a cache partition. It **will be moved** as the cache partition takes 512M and does not make much sense for a pure ELEC installation.  
+      1. Partitions defined by users will start at **end of reserved partition** + **size of env partition** as a result of this, to maximize the usable disk space by avoiding those precious ~512M taken by cache partition.   
+      2. If Users don't want envs be reset to default, they should **backup their env partition** (e.g. via ``dd if=/dev/env of=env.img``) then restore it after the partitioning (e.g. via ``dd if=env.img of=/dev/env``) if **they use ampart to partition a disk for the first time**, as the env partiiton will most likely be moved at the first time.
 
 And options are:
-* **--version**/**-v** will print the version info
-* **--help**/**-h** will print a help message
-* **--disk**/**-d** will force ampart to treat input as a whole emmc disk, **conflicts** with --reserved/-r
-* **--reserved**/**-r** will force ampart to treat input as a reserved partition, **conflicts** with --disk/-d
-* **--offset**/**-O** **[offset]** will overwrite the default offset of the reserved partition (i.e. where partition table is), **only valid** when input is a whole disk, useful when OEMs have modified it (e.g. Xiaomi set it to 4M, right after the bootloader). default: 36M
-* **--dry-run**/**-D** will only generate the new partition table but not actually write it, this will help you to make sure the output table is desired.
-* **--output**/**-o** **[path]** (**currently is not implemented**) will write the ouput table to somewhere else rather than the path you set in [reserved/mmc]
+* **--version**/**-v** will print the version info, 
+  * ampart will early quit
+* **--help**/**-h** will print a help message, early quit
+  * ampart will early quit
+* **--disk**/**-d** will force ampart to treat input as a whole emmc disk
+  * **conflicts** with --reserved/-r
+* **--reserved**/**-r** will force ampart to treat input as a reserved partition
+  *  **conflicts** with --disk/-d
+* **--offset**/**-O** **[offset]** will overwrite the default offset of the reserved partition
+  * **only valid** when input is a whole emmc disk
+  * only make sense if your OEM has modified it (e.g. Xiaomi set it to 4M, right after the bootloader)
+  * default: 36M
+* **--dry-run**/**-D** will only generate the new partition table but not actually write it, this will help you to make sure the new partition table is desired.
+  * ampart will quit before commiting changes
+* **--output**/**-o** **[path]** will write the ouput table to somewhere else rather than the path you set in [reserved/mmc]
+  * **currently is not implemented**
 
-**Note** If you don't specify ``--dry-run``/``-D`` and have provided valid partition arguments, new partition table will be written and mmcblk driver will be reloaded to **recognise all new partitions** if input path is a **device file**, this is all done **without reboot**, and in **pure C** way. You may want to umount any partitions from emmc first though.
+**Warning:** Changes will be written to disk without further asking when:
+  * you don't specify ``--dry-run``/``-D`` 
+  * you have provided valid partition arguments
+  * the new partition table is valid
+
+So you'd better make sure the new partition table is desired by ``--dry-run``/``-D``
+
+New paritions should be available immediately under /dev after partitioning, **without reboot**
+
+**Warning**: ampart won't check if the partitions are in used or not, users should umount the old parts by themselvies if they don't want any data loss. **this also mean you can partition the emmc being used by system even if your system is running from it.** This is a **feature**, not a **bug**, you told ampart to do so and **you yourself should take the responsibility**.
 
 All of the above would seem complicated but the CLI is really **clean and easy**, e.g.   
-(*All of the following commands will clear all partitions, copy the old partition info of bootloader, reserved and env as partition 0-2, then change the offset of env to the end of reserved. The env partition will most likely be moved. If you don't want envs to be reset to default, you should backup the env partition first then restore it*)
 ````
+# Print the partition table of /dev/mmcblk0
+ampart /dev/mmcblk0
+# Print the partition table of underlying disk of /dev/reserved
+ampart /dev/reserved
 # Create a single data partition to utilize all the space
-./ampart /dev/mmcblk0 data:::
+ampart /dev/mmcblk0 data:::
 # Create a 2G system partition, mask2, and a data partition to utilize all the remaining space
-./ampart /dev/mmcblk0 system::2G:2 data:::
+ampart /dev/mmcblk0 system::2G:2 data:::
 # Same as the last one, except we leave a 8M gap before the 2 partitions, like some OEMs would do
-./ampart /dev/mmcblk0 system:+8M:2G:2 data:+8M::
+ampart /dev/mmcblk0 system:+8M:2G:2 data:+8M::
+# A layout for EmuELEC
+ampart /dev/mmcblk0 system::2G:2 data::2G: eeroms:::
 ````
+(*In all of the commands above, those which create new partition tables will clear all partitions, copy the old partition info of bootloader, reserved and env as partition 0-2, then change the offset of env to the end of reserved. The env partition will most likely be moved. **If you don't want envs to be reset to default, you should backup the env partition first then restore it***)
 
 ## Examples
-After flashing **[v7.5] (MXQ) Aidan's ROM [S905X] [P212, P214 & P242] MXQ Pro 4K 1GB 2GB+ (720pUI & 210DPI).img** to my **BesTV R3300L**, the partition table is:
+Running ``ampart /dev/mmcblk0`` to print the table when an Android storage is on an 8G emmc:
 ````
 ==============================================================
 NAME                          OFFSET                SIZE  MARK
@@ -107,7 +139,7 @@ system            36c00000( 876.00M)  80000000(   2.00G)     1
 data              b7400000(   2.86G) 11ac00000(   4.42G)     4
 ==============================================================
 ````
-It's very obvious that only **4.42G** are usable for users, and all of the remaining space is taken by Andoird's meaningless partitions. Running ceemmc does not help as it reports that it only supports side-by-side installation on this box when I force it to run with **ceemmc -x**, and it failed badly with a **segmentation fault**. And ahha, I will never know why it failed as it is **proprietary and closed-source**! All it left was a messed up partition table:
+Running ``ampart /dev/mmcblk0`` to print the table when ``ceemmc`` has altered the partition table:
 ````
 ==============================================================
 NAME                          OFFSET                SIZE  MARK
@@ -142,14 +174,13 @@ CE_STORAGE        b7400000(   2.86G)  fac00000(   3.92G)     4
 CE_FLASH         1b2000000(   6.78G)  20000000( 512.00M)     4
 ==============================================================
 ````
-The table is messed up, and CE_STORAGE **overlaps with data**! And these new partitions are not even available before I reboot. This is a **big no-no** because **two device file for same partition will be created under /dev**, and you will definitely **mess up more things** when you write to them seperately. And yes, Android won't boot either as a result of failed fs-resizing, and thanks to the **segmentation fault** I can't debug I will never know the cause of all of this.  
-But now, with **ampart**, I can just run the following command, remove all the BS, create a single data partition and call it a day.
+Running the following commands to format a single big chunky data partition on emmc:
 ````
 dd if=/dev/env of=env.img
-./ampart /dev/mmcblk0 data:::
+ampart /dev/mmcblk0 data:::
 dd if=env.img of=/dev/env
 ````
-After the above commands, only 108M of the emmc is wasted and I have a 7.18G data partition **immediately** located at **/dev/data**, and I can further **install CoreELEC/EmuELEC to emmc just like the old days** with the old partition layout I can create with ``./ampart /dev/mmcblk0 system::1G:2 data:::``
+The partition table would be:
 ````
 ==============================================================
 NAME                          OFFSET                SIZE  MARK
@@ -159,5 +190,32 @@ bootloader               0(   0.00B)    400000(   4.00M)     0
 reserved           2400000(  36.00M)   4000000(  64.00M)     0
 env                6400000( 100.00M)    800000(   8.00M)     0
 data               6c00000( 108.00M) 1cb400000(   7.18G)     4
+==============================================================
+````
+Running the new installtointernal script in EmuELEC I've written for EmuELEC and HybridELEC, if you choose to create EEROMS, the partition table would be:
+````
+==============================================================
+NAME                          OFFSET                SIZE  MARK
+==============================================================
+bootloader               0(   0.00B)    400000(   4.00M)     0
+  (GAP)                                2000000(  32.00M)
+reserved           2400000(  36.00M)   4000000(  64.00M)     0
+env                6400000( 100.00M)    800000(   8.00M)     0
+system             6c00000( 108.00M)  80000000(   2.00G)     2
+data              86c00000(   2.11G)  80000000(   2.00G)     4
+eeroms           106c00000(   4.11G)  cb400000(   3.18G)     4
+==============================================================
+````
+Or if you don't choose to create EEROMS:
+````
+==============================================================
+NAME                          OFFSET                SIZE  MARK
+==============================================================
+bootloader               0(   0.00B)    400000(   4.00M)     0
+  (GAP)                                2000000(  32.00M)
+reserved           2400000(  36.00M)   4000000(  64.00M)     0
+env                6400000( 100.00M)    800000(   8.00M)     0
+system             6c00000( 108.00M)  80000000(   2.00G)     2
+data              86c00000(   2.11G) 14b400000(   5.18G)     4
 ==============================================================
 ````

@@ -988,6 +988,32 @@ int main(int argc, char **argv) {
         fseek(fp, options.offset, SEEK_SET);
     }
     fwrite(table_new, SIZE_TABLE, 1, fp);
+    if (!options.input_reserved) {
+        puts("Warning: input is a whole emmc disk, checking if we should copy the env partition as the env partition may be moved");
+        bool env_found = false;
+        for (i=0; i<table_new->part_num; ++i) {
+            if (!strcmp(table_new->partitions[i].name, "env")) {
+                env_found = true;
+                if (table_new->partitions[i].offset != table_h.env->offset) {
+                    puts("Offset of the env partition has changed, copying content of it...");
+                    char env[table_h.env->size];
+                    fseek(fp, table_h.env->offset, SEEK_SET);
+                    fread(env, table_h.env->size, 1, fp);
+                    fseek(fp, table_new->partitions[i].offset, SEEK_SET);
+                    fwrite(env, table_new->partitions[i].size, 1, fp);
+                    puts("Copied content env partiton");
+                }
+                else {
+                    puts("Offset of env partition not changed, no need to copy it");
+                }
+                break;
+            }
+        }
+        if (!env_found) {
+            fclose(fp);
+            die("Failed to find env partition in the new partition table!");
+        }
+    }
     fclose(fp);
     if (options.input_device) {
         reload_emmc();

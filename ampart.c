@@ -64,6 +64,10 @@ struct options {
     uint64_t size;
 } options = {0};
 
+char s_buffer_1[9]; // Dedicated string buffer
+char s_buffer_2[9];
+char s_buffer_3[9];
+
 uint32_t mmc_partition_tbl_checksum_calc(struct partition *part, int part_num) {
 	int i, j;
 	uint32_t checksum = 0, *p;
@@ -133,12 +137,11 @@ void die (const char * format, ...) {
 uint64_t four_kb_alignment(uint64_t size) {
     unsigned remainder = size % 4096; // Would this even be negative? Guess not
     if ( remainder ) {
-        char buffer[9];
-        size_byte_to_human_readable(buffer, size);
-        printf("Warning: size/offset %llu (%s) is rounded up to ", size, buffer);
+        size_byte_to_human_readable(s_buffer_1, size);
+        printf("Warning: size/offset %llu (%s) is rounded up to ", size, s_buffer_1);
         size += (4096-remainder);
-        size_byte_to_human_readable(buffer, size);
-        printf("%llu (%s) for 4K alignment\n", size, buffer);
+        size_byte_to_human_readable(s_buffer_1, size);
+        printf("%llu (%s) for 4K alignment\n", size, s_buffer_1);
     }
     return size;
 }
@@ -326,7 +329,6 @@ void partition_from_argument (struct partition *partition, char *argument, struc
     printf(" - Name: %s\n", partition->name);
     arg += length + 1;
     // Offset
-    char buffer1[9], buffer2[9];
     length = get_part_argument_length(arg, false);
     if ( !length ) {
         partition->offset=disk->start; // Auto increment offset
@@ -338,18 +340,18 @@ void partition_from_argument (struct partition *partition, char *argument, struc
             partition->offset += disk->start;
         }
         if (partition->offset < disk->start) {
-            size_byte_to_human_readable(buffer1, partition->offset);
-            size_byte_to_human_readable(buffer2, disk->start);
-            die("Partition offset smaller than end of last partition: %llu(%s) < %llu(%s)", partition->offset, buffer1, disk->start, buffer2);
+            size_byte_to_human_readable(s_buffer_1, partition->offset);
+            size_byte_to_human_readable(s_buffer_2, disk->start);
+            die("Partition offset smaller than end of last partition: %llu(%s) < %llu(%s)", partition->offset, s_buffer_1, disk->start, s_buffer_2);
         }
         if (partition->offset > disk->size) {
-            size_byte_to_human_readable(buffer1, partition->offset);
-            size_byte_to_human_readable(buffer2, disk->start);
-            die("Partition offset greater than disk size:  %llu(%s) > %llu(%s)", partition->offset, buffer1,  disk->start, buffer2);
+            size_byte_to_human_readable(s_buffer_1, partition->offset);
+            size_byte_to_human_readable(s_buffer_2, disk->start);
+            die("Partition offset greater than disk size:  %llu(%s) > %llu(%s)", partition->offset, s_buffer_1,  disk->start, s_buffer_2);
         }
     }
-    size_byte_to_human_readable(buffer1, partition->offset);
-    printf(" - Offset: %llu (%s)\n", partition->offset, buffer1);
+    size_byte_to_human_readable(s_buffer_1, partition->offset);
+    printf(" - Offset: %llu (%s)\n", partition->offset, s_buffer_1);
     arg += length + 1;
     // Size
     length = get_part_argument_length(arg, false);
@@ -363,15 +365,15 @@ void partition_from_argument (struct partition *partition, char *argument, struc
         partition->size=four_kb_alignment(size_human_readable_to_byte_no_prefix(arg, true));
         partition_end = partition->offset + partition->size;
         if ( partition_end > disk->size) {
-            size_byte_to_human_readable(buffer1, partition_end);
-            size_byte_to_human_readable(buffer2, disk->free);
-            die("Partition end point overflows! End point greater than disk size: %llu (%s) > %llu (%s)", partition_end, buffer1, disk->free, buffer2);
+            size_byte_to_human_readable(s_buffer_1, partition_end);
+            size_byte_to_human_readable(s_buffer_2, disk->free);
+            die("Partition end point overflows! End point greater than disk size: %llu (%s) > %llu (%s)", partition_end, s_buffer_1, disk->free, s_buffer_2);
         }
     }
     disk->start = partition_end;
     disk->free = disk->size - partition_end;
-    size_byte_to_human_readable(buffer1, partition->size);
-    printf(" - Size: %llu (%s)\n", partition->size, buffer1);
+    size_byte_to_human_readable(s_buffer_1, partition->size);
+    printf(" - Size: %llu (%s)\n", partition->size, s_buffer_1);
     arg += length + 1;
     // Mask
     length = get_part_argument_length(arg, true);
@@ -406,14 +408,13 @@ void partition_from_argument_clone(struct partition *partition, char *argument) 
     printf(" - Name: %s\n", partition->name);
     arg += length + 1;
     // Offset
-    char buffer1[9], buffer2[9];
     length = get_part_argument_length(arg, false);
     if ( !length ) {
         die("In clone mode part offset MUST be set");
     }
     partition->offset = size_human_readable_to_byte_no_prefix(arg, false);
-    size_byte_to_human_readable(buffer1, partition->offset);
-    printf(" - Offset: %llu (%s)\n", partition->offset, buffer1);
+    size_byte_to_human_readable(s_buffer_1, partition->offset);
+    printf(" - Offset: %llu (%s)\n", partition->offset, s_buffer_1);
     arg += length + 1;
     // Size
     length = get_part_argument_length(arg, false);
@@ -422,8 +423,8 @@ void partition_from_argument_clone(struct partition *partition, char *argument) 
         die("In clone mode part size MUST be set");
     }
     partition->size=size_human_readable_to_byte_no_prefix(arg, false);
-    size_byte_to_human_readable(buffer1, partition->size);
-    printf(" - Size: %llu (%s)\n", partition->size, buffer1);
+    size_byte_to_human_readable(s_buffer_1, partition->size);
+    printf(" - Size: %llu (%s)\n", partition->size, s_buffer_1);
     arg += length + 1;
     // Mask
     length = get_part_argument_length(arg, true);
@@ -525,7 +526,6 @@ uint64_t summary_partition_table(struct mmc_partitions_fmt *table) {
     puts("NAME                          OFFSET                SIZE  MARK");
     puts(line);
     struct partition *part;
-    char buffer_offset[9], buffer_size[9];
     for (int i = 0; i < table->part_num; ++i) {
         part = &(table->partitions[i]);
         if (offset != part->offset) {
@@ -539,13 +539,13 @@ uint64_t summary_partition_table(struct mmc_partitions_fmt *table) {
                 overlap=true;
                 printf("  (OVERLAP)                          ");
             }
-            size_byte_to_human_readable(buffer_offset, gap);
-            printf("%+9llx(%+8s)\n", gap, buffer_offset);
+            size_byte_to_human_readable(s_buffer_1, gap);
+            printf("%+9llx(%+8s)\n", gap, s_buffer_1);
         };
         offset = part->offset + part->size;
-        size_byte_to_human_readable(buffer_offset, part->offset);
-        size_byte_to_human_readable(buffer_size, part->size);
-        printf("%-16s %+9llx(%+8s) %+9llx(%+8s)     %u\t\n", part->name, part->offset, buffer_offset, part->size, buffer_size, part->mask_flags);
+        size_byte_to_human_readable(s_buffer_1, part->offset);
+        size_byte_to_human_readable(s_buffer_2, part->size);
+        printf("%-16s %+9llx(%+8s) %+9llx(%+8s)     %u\t\n", part->name, part->offset, s_buffer_1, part->size, s_buffer_2, part->mask_flags);
     }
     puts(line);
     if (overlap) {
@@ -553,8 +553,8 @@ uint64_t summary_partition_table(struct mmc_partitions_fmt *table) {
         puts(" - Please confirm if you've failed with ceemmc as it may overlay data with CE_STORAGE");
         puts(" - If your device bricks, do not blame on ampart as it's just the one helping you discovering it");
     }
-    size_byte_to_human_readable(buffer_offset, offset);
-    printf("Disk size totalling %llu (%s) according to partition table\n", offset, buffer_offset);
+    size_byte_to_human_readable(s_buffer_1, offset);
+    printf("Disk size totalling %llu (%s) according to partition table\n", offset, s_buffer_1);
     return offset;
 }
 
@@ -860,13 +860,11 @@ void snapshot(struct mmc_partitions_fmt * table) {
         printf("%s:%llu:%llu:%u ", part->name, part->offset, part->size, part->mask_flags);
     }
     putc('\n', stdout);
-    char buffer_offset[9];
-    char buffer_size[9];
     for (int i=0; i<table->part_num; ++i) {
         part=&(table->partitions[i]);
-        size_byte_to_human_readable_int(buffer_offset, part->offset);
-        size_byte_to_human_readable_int(buffer_size, part->size);
-        printf("%s:%s:%s:%u ", part->name, buffer_offset, buffer_size, part->mask_flags);
+        size_byte_to_human_readable_int(s_buffer_1, part->offset);
+        size_byte_to_human_readable_int(s_buffer_2, part->size);
+        printf("%s:%s:%s:%u ", part->name, s_buffer_1, s_buffer_2, part->mask_flags);
     }
     putc('\n', stdout);
     exit(EXIT_SUCCESS);
@@ -908,9 +906,8 @@ int main(int argc, char **argv) {
     if (!disk.size) { // Only when disk.size is 0, will we use the size got from partition table
         disk.size = size_disk_table;
     }
-    char buffer[9];
-    size_byte_to_human_readable(buffer, disk.size);
-    printf("Using %llu (%s) as the disk size\n", disk.size, buffer);
+    size_byte_to_human_readable(s_buffer_1, disk.size);
+    printf("Using %llu (%s) as the disk size\n", disk.size, s_buffer_1);
     if ( options.snapshot ) {
         snapshot(table);
     }
@@ -939,12 +936,10 @@ int main(int argc, char **argv) {
         uint64_t reserved_end = table_h.reserved->offset + table_h.reserved->size;
         disk.start = reserved_end + table_h.env->size;
         disk.free = disk.size - disk.start;
-        size_byte_to_human_readable(buffer, disk.free);
-        printf("Usable space of the disk is %llu (%s)\n", disk.free, buffer);
-        size_byte_to_human_readable(buffer, reserved_end);
-        printf("- This is due to reserved partition ends at %llu (%s)\n", reserved_end, buffer);
-        size_byte_to_human_readable(buffer, table_h.env->size);
-        printf("- And env partition takes %llu (%s) \n", table_h.env->size, buffer);
+        size_byte_to_human_readable(s_buffer_1, disk.free);
+        size_byte_to_human_readable(s_buffer_2, reserved_end);
+        size_byte_to_human_readable(s_buffer_3, table_h.env->size);
+        printf("Usable space of the disk is %llu (%s)\n - This is due to reserved partition ends at %llu (%s)\n - And env partition takes %llu (%s) \n", disk.free, s_buffer_1, reserved_end, s_buffer_2, table_h.env->size, s_buffer_3);
         puts("Make sure you've backed up the env partition as its offset will mostly change\n - This is because all user-defined partitions will be created after the env partition\n - Yet most likely the old env partition was created after a cache partition\n - Which wastes a ton of space if we start at there");
         if (partitions_count > 29) {
             partitions_count = 29;
@@ -983,8 +978,8 @@ int main(int argc, char **argv) {
         die("Can not open path '%s' as read/write/append, new partition table not written, check your permission!");
     }
     if (!options.input_reserved) {
-        size_byte_to_human_readable(buffer, options.offset);
-        printf("Notice: Seeking %llu (%s) (offset of reserved partition) into disk\n", options.offset, buffer);
+        size_byte_to_human_readable(s_buffer_1, options.offset);
+        printf("Notice: Seeking %llu (%s) (offset of reserved partition) into disk\n", options.offset, s_buffer_1);
         fseek(fp, options.offset, SEEK_SET);
     }
     fwrite(table_new, SIZE_TABLE, 1, fp);

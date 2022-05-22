@@ -884,6 +884,10 @@ void no_coreelec() {
     }
     while ((read = getline(&line, &len, fp)) != -1) {
         if (!strcmp(line, "NAME=\"CoreELEC\"\n")) {
+            fclose(fp);
+            if (line) {
+                free(line);
+            }
             die("Refused to run on CoreELEC, you should use ceemmc instead as it's the official installation tool approved by Team CoreELEC\n - Altering the source code to force ampart to run is strongly not recommended\n - Yes ampart is a partition tool and should have nothing to do with ceemmc\n - But its manipulating of the partition table was seen as blasphemy for the philosophy behind ceemmc:\n   - You as a CoreELEC user should not do these fancy low level stuffs");
         }
     }

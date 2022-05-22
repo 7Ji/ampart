@@ -31,13 +31,18 @@ Whether it's a whole emmc disk or a reserved partition will be identified by its
         2. without prefix **+** for offset to **the disk's start**. e.g. 2G, will place partition at 2G
         3. with prefix **+** for offset to **last partition's end**. e.g. +8M, will place partiton at **last partition's end + 8M**, meaning there will be an **8M gap** between them  
         4. will be **rounded up** to **multiplies of 4096 (4KiB)** for **4K alignment**. e.g. **2047** will be rounded up to **4096**=**4K**, **1023K** will be rounded up to **1024K**  
+        5. can not be omitted in **clone mode**
     * **size** the partition's size. interger with optional *B/K/M/G* suffix (like offset).
         1. when omitted, size will equal to **all of free space after the last partition**
         2. will be **rounded up** to **multiplies of 4096 (4KiB)** for **4K alignment** just like offset
-    * **mask** the partition's mask. either 2 or 4,   
+        3. can not be omitted in **clone mode**
+    * **mask** the partition's mask. either 0, 1, 2 or 4,   
     *it is **only useful for u-boot** to figure out which partition should be cleaned *(0-filled)* when you flash a USB Burning Tool and choose **normal erase**. It really doesn't make much sense as you've modified the partition table and Android images won't work anymore unless you choose **total erase**.* Default is 4.
+        * 0 for reserved partitions, **only** valid in **clone mode**
+        * 1 for u-boot partitions, e.g. logo
         * 2 for system partitions, these partitions will always be cleaned whether **normal erase** is chosen or not when you flash an **Android image** via **USB Burning Tool**.
         * 4 for data partitions, these partitions will only be cleaned if you choose **total erase** when you flash an **Android image** via **USB Burning Tool**
+        * can not be omitted in **clone mode**
 
     e.g.
 
@@ -53,7 +58,7 @@ Whether it's a whole emmc disk or a reserved partition will be identified by its
     1. ``system::2G: data:0:2G:`` won't work as data's offset is smaller than system's end point (2G + reserved partitions)
     2. ``system::2G: data:+0:2G:``will work and it's the same as ``system::2G: data::2G:``
 
-    **Warning**: some partitions are **reserved** and **can't be defined by user**, they will be **generated** according to the old partition table:  
+    **Warning**: unless running in clone mode, some partitions are **reserved** and **can't be defined by user**, they will be **generated** according to the old partition table:  
     1. **bootloader** This is where **u-boot** is stored, and it should always be the **first 4M** of the emmc device. It **won't** be touched.
     2. **reserved** This is where **partition table**, **dtb** and many other stuffs are stored, it usually starts at 36M and leaves an 32M gap between it and **bootloader** partition. It **won't** be touched.
     3. **env** This is where u-boot envs are stored, it is usually 8M, and placed after a cache partition. It **will be moved** as the cache partition takes 512M and does not make much sense for a pure ELEC installation.  
@@ -62,9 +67,9 @@ Whether it's a whole emmc disk or a reserved partition will be identified by its
 
 And options are:
 * **--version**/**-v** will print the version info, 
-  * ampart will early quit
+  * ampart will early quit *(return 0 for success)*
 * **--help**/**-h** will print a help message, early quit
-  * ampart will early quit
+  * ampart will early quit *(return 0 for success)*
 * **--disk**/**-d** will force ampart to treat input as a whole emmc disk
   * **conflicts** with --reserved/-r
 * **--reserved**/**-r** will force ampart to treat input as a reserved partition
@@ -73,8 +78,14 @@ And options are:
   * **only valid** when input is a whole emmc disk
   * only make sense if your OEM has modified it (e.g. Xiaomi set it to 4M, right after the bootloader)
   * default: 36M
+* **--snapshot**/**-s** outputs partition arguments that can be used to restore the partition table to what it looks like now, early quit
+  * ampart will quit after the part args are printed *(return 0 for success)*
+  * scripts can parse the last two lines to get the part table, the offset/size of the first one is always in byte, without suffix; the last one is human-readable for users to record
+* **--clone**/**-c** enable clone mode, only verify some args of the parts, expects outputs of *--snapshot*/*-s* 
+  * reserved partitions can be defined and should be defined (bootloader, reserved, env)
+  * name, offset, size, mask must be **explicit set**
 * **--dry-run**/**-D** will only generate the new partition table but not actually write it, this will help you to make sure the new partition table is desired.
-  * ampart will quit before commiting changes
+  * ampart will quit before commiting changes *(return 0 for success)*
 * **--output**/**-o** **[path]** will write the ouput table to somewhere else rather than the path you set in [reserved/mmc]
   * **currently is not implemented**
 
@@ -103,6 +114,8 @@ ampart /dev/mmcblk0 system::2G:2 data:::
 ampart /dev/mmcblk0 system:+8M:2G:2 data:+8M::
 # A layout for EmuELEC
 ampart /dev/mmcblk0 system::2G:2 data::2G: eeroms:::
+# Recreate a previous taken snapshot
+ampart /dev/mmcblk0 --clone bootloader:0B:4M:0 reserved:36M:64M:0 cache:108M:512M:2 env:628M:8M:0 logo:644M:32M:1 recovery:684M:32M:1 rsv:724M:8M:1 tee:740M:8M:1 crypt:756M:32M:1 misc:796M:32M:1 boot:836M:32M:1 system:876M:2G:1 data:2932M:4524M:
 ````
 (*In all of the commands above, those which create new partition tables will clear all partitions, copy the old partition info of bootloader, reserved and env as partition 0-2, then change the offset of env to the end of reserved. The env partition will most likely be moved. **If you don't want envs to be reset to default, you should backup the env partition first then restore it***)
 

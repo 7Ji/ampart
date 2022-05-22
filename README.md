@@ -37,7 +37,7 @@ Whether it's a whole emmc disk or a reserved partition will be identified by its
         2. will be **rounded up** to **multiplies of 4096 (4KiB)** for **4K alignment** just like offset
         3. can not be omitted in **clone mode**
     * **mask** the partition's mask. either 0, 1, 2 or 4,   
-    *it is **only useful for u-boot** to figure out which partition should be cleaned *(0-filled)* when you flash a USB Burning Tool and choose **normal erase**. It really doesn't make much sense as you've modified the partition table and Android images won't work anymore unless you choose **total erase**.* Default is 4.
+    *it is **only useful for u-boot** to figure out which partition should be cleaned *(0-filled)* when you flash a USB Burning Tool and choose **normal erase**. It really doesn't make much sense if you are not running in clone mode as you've modified the partition table and Android images won't work anymore unless you choose **total erase**.* Default is 4.
         * 0 for reserved partitions, **only** valid in **clone mode**
         * 1 for u-boot partitions, e.g. logo
         * 2 for system partitions, these partitions will always be cleaned whether **normal erase** is chosen or not when you flash an **Android image** via **USB Burning Tool**.
@@ -332,6 +332,150 @@ system             6c00000( 108.00M)  80000000(   2.00G)     2
 data              86c00000(   2.11G) 14b400000(   5.18G)     4
 ==============================================================
 ````
+Apply a previous taken snapshot from stock Android installation with
+````
+ampart /dev/mmcblk0 --clone bootloader:0B:4M:0 reserved:36M:64M:0 cache:108M:512M:2 env:628M:8M:0 logo:644M:32M:1 recovery:684M:32M:1 rsv:724M:8M:1 tee:740M:8M:1 crypt:756M:32M:1 misc:796M:32M:1 boot:836M:32M:1 system:876M:2G:1 data:2932M:4524M:4
+````
+````
+EmuELEC:~ # ./ampart /dev/mmcblk0 --clone bootloader:0B:4M:0 reserved:36M:64M:0 cache:108M:512M:2 env:628M:8M:0 logo:644M:32M:1 recovery:684M:32M:1 rsv:724M:8M:1 tee:740M:8M:1 crypt:756M:32M:1 misc:796M:32M:1 boot:836M:32M:1 system:876M:2G:1 data:2932M:4524M:4
+Notice: running in clone mode, partition arguments won't be filtered, reserved partitions can be set
+Path '/dev/mmcblk0' seems a device file
+Path '/dev/mmcblk0' detected as whole emmc disk
+Path '/dev/mmcblk0' is a device, getting its size via ioctl
+Disk size is 7818182656 (7.28G)
+Reading old partition table...
+Notice: Seeking 37748736 (36.00M) (offset of reserved partition) into disk
+Validating partition table...
+Partitions count: 5, GOOD √
+Magic: MPT, GOOD √
+Version: 01.00.00, GOOD √
+Checksum: calculated 3d5695ff, recorded 3d5695ff, GOOD √
+Partition table read from '/dev/mmcblk0':
+==============================================================
+NAME                          OFFSET                SIZE  MARK
+==============================================================
+bootloader               0(   0.00B)    400000(   4.00M)     0
+  (GAP)                                2000000(  32.00M)
+reserved           2400000(  36.00M)   4000000(  64.00M)     0
+env                6400000( 100.00M)    800000(   8.00M)     0
+system             6c00000( 108.00M)  80000000(   2.00G)     2
+data              86c00000(   2.11G) 14b400000(   5.18G)     4
+==============================================================
+Disk size totalling 7818182656 (7.28G) according to partition table
+Using 7818182656 (7.28G) as the disk size
+Parsing user input for partition (clone mode): bootloader:0B:4M:0
+ - Name: bootloader
+ - Offset: 0 (0.00B)
+ - Size: 4194304 (4.00M)
+ - Mask: 0
+Parsing user input for partition (clone mode): reserved:36M:64M:0
+ - Name: reserved
+ - Offset: 37748736 (36.00M)
+ - Size: 67108864 (64.00M)
+ - Mask: 0
+Parsing user input for partition (clone mode): cache:108M:512M:2
+ - Name: cache
+ - Offset: 113246208 (108.00M)
+ - Size: 536870912 (512.00M)
+ - Mask: 2
+Parsing user input for partition (clone mode): env:628M:8M:0
+ - Name: env
+ - Offset: 658505728 (628.00M)
+ - Size: 8388608 (8.00M)
+ - Mask: 0
+Parsing user input for partition (clone mode): logo:644M:32M:1
+ - Name: logo
+ - Offset: 675282944 (644.00M)
+ - Size: 33554432 (32.00M)
+ - Mask: 1
+Parsing user input for partition (clone mode): recovery:684M:32M:1
+ - Name: recovery
+ - Offset: 717225984 (684.00M)
+ - Size: 33554432 (32.00M)
+ - Mask: 1
+Parsing user input for partition (clone mode): rsv:724M:8M:1
+ - Name: rsv
+ - Offset: 759169024 (724.00M)
+ - Size: 8388608 (8.00M)
+ - Mask: 1
+Parsing user input for partition (clone mode): tee:740M:8M:1
+ - Name: tee
+ - Offset: 775946240 (740.00M)
+ - Size: 8388608 (8.00M)
+ - Mask: 1
+Parsing user input for partition (clone mode): crypt:756M:32M:1
+ - Name: crypt
+ - Offset: 792723456 (756.00M)
+ - Size: 33554432 (32.00M)
+ - Mask: 1
+Parsing user input for partition (clone mode): misc:796M:32M:1
+ - Name: misc
+ - Offset: 834666496 (796.00M)
+ - Size: 33554432 (32.00M)
+ - Mask: 1
+Parsing user input for partition (clone mode): boot:836M:32M:1
+ - Name: boot
+ - Offset: 876609536 (836.00M)
+ - Size: 33554432 (32.00M)
+ - Mask: 1
+Parsing user input for partition (clone mode): system:876M:2G:1
+ - Name: system
+ - Offset: 918552576 (876.00M)
+ - Size: 2147483648 (2.00G)
+ - Mask: 1
+Parsing user input for partition (clone mode): data:2932M:4524M:4
+ - Name: data
+ - Offset: 3074424832 (2.86G)
+ - Size: 4743757824 (4.42G)
+ - Mask: 4
+New partition table is generated successfully in memory
+Validating partition table...
+Partitions count: 13, GOOD √
+Magic: MPT, GOOD √
+Version: 01.00.00, GOOD √
+Checksum: calculated 5e11f97, recorded 5e11f97, GOOD √
+==============================================================
+NAME                          OFFSET                SIZE  MARK
+==============================================================
+bootloader               0(   0.00B)    400000(   4.00M)     0
+  (GAP)                                2000000(  32.00M)
+reserved           2400000(  36.00M)   4000000(  64.00M)     0
+  (GAP)                                 800000(   8.00M)
+cache              6c00000( 108.00M)  20000000( 512.00M)     2
+  (GAP)                                 800000(   8.00M)
+env               27400000( 628.00M)    800000(   8.00M)     0
+  (GAP)                                 800000(   8.00M)
+logo              28400000( 644.00M)   2000000(  32.00M)     1
+  (GAP)                                 800000(   8.00M)
+recovery          2ac00000( 684.00M)   2000000(  32.00M)     1
+  (GAP)                                 800000(   8.00M)
+rsv               2d400000( 724.00M)    800000(   8.00M)     1
+  (GAP)                                 800000(   8.00M)
+tee               2e400000( 740.00M)    800000(   8.00M)     1
+  (GAP)                                 800000(   8.00M)
+crypt             2f400000( 756.00M)   2000000(  32.00M)     1
+  (GAP)                                 800000(   8.00M)
+misc              31c00000( 796.00M)   2000000(  32.00M)     1
+  (GAP)                                 800000(   8.00M)
+boot              34400000( 836.00M)   2000000(  32.00M)     1
+  (GAP)                                 800000(   8.00M)
+system            36c00000( 876.00M)  80000000(   2.00G)     1
+  (GAP)                                 800000(   8.00M)
+data              b7400000(   2.86G) 11ac00000(   4.42G)     4
+==============================================================
+Disk size totalling 7818182656 (7.28G) according to partition table
+Re-opening input path '/dev/mmcblk0' to write new patition table...
+Notice: Seeking 37748736 (36.00M) (offset of reserved partition) into disk
+Notifying kernel about partition table change...
+We need to reload the driver for emmc as the meson-mmc driver does not like partition table being hot-updated
+Opening '/sys/bus/mmc/drivers/mmcblk/unbind' so we can unbind driver for 'emmc:0001'
+Successfully unbinded the driver, all partitions and the disk itself are not present under /dev as a result of this
+Opening '/sys/bus/mmc/drivers/mmcblk/bind' so we can bind driver for 'emmc:0001'
+Successfully binded the driver, you can use the new partition table now!
+Everything done! Enjoy your fresh-new partition table!
+````
+
+
 
 ## License
 **ampart**(Amlogic emmc partition tool) is licensed under [**GPL3**](https://gnu.org/licenses/gpl.html)

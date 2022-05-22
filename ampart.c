@@ -498,7 +498,6 @@ void valid_partition_table(struct table_helper *table_h) {
             has_env = true;
         }
         else {
-            puts(part->name);
             valid_partition_name(part->name, false);
         }
         strcpy(names[i], part->name);
@@ -874,7 +873,6 @@ void snapshot(struct mmc_partitions_fmt * table) {
 }
 
 int main(int argc, char **argv) {
-    // struct options *options = get_options(argc, argv);
     get_options(argc, argv);
     struct disk_helper disk = {0};
     disk.size = get_disk_size();

@@ -332,3 +332,12 @@ system             6c00000( 108.00M)  80000000(   2.00G)     2
 data              86c00000(   2.11G) 14b400000(   5.18G)     4
 ==============================================================
 ````
+
+## License
+**ampart**(Amlogic emmc partition tool) is licensed under [**GPL3**](https://gnu.org/licenses/gpl.html)
+* This is free software: you are free to change and redistribute it.
+* There is NO WARRANTY, to the extent permitted by law.
+* Modification of **ampart** should be open-source under the same license (**GPL3**)
+* Inclusion of **ampart** in close-source projects are **not allowed**.   
+  * Inclusion of **ampart**'s source code in your program is not allowed
+  * Calling binary executable of **ampart** via any method is not allowed as it is not a system library

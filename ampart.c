@@ -991,7 +991,7 @@ int main(int argc, char **argv) {
                 env_found = true;
                 if (table_new->partitions[i].offset != table_h.env->offset) {
                     puts("Offset of the env partition has changed, copying content of it...");
-                    char env[table_h.env->size];
+                    char *env = malloc(table_h.env->size);
                     fseek(fp, table_h.env->offset, SEEK_SET);
                     fread(env, table_h.env->size, 1, fp);
                     fseek(fp, table_new->partitions[i].offset, SEEK_SET);

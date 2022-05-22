@@ -872,7 +872,29 @@ void snapshot(struct mmc_partitions_fmt * table) {
     exit(EXIT_SUCCESS);
 }
 
+void no_coreelec() {
+    FILE * fp;
+    char * line = NULL;
+    size_t len = 0;
+    ssize_t read;
+    fp = fopen("/etc/os-release", "r");
+    if (fp == NULL) {
+        puts("Warning: can not open /etc/os-release to check for system, if you are running CoreELEC you should not use ampart as ceemmc is suggested by CoreELEC officially");
+        return;
+    }
+    while ((read = getline(&line, &len, fp)) != -1) {
+        if (!strcmp(line, "NAME=\"CoreELEC\"\n")) {
+            die("Refused to run on CoreELEC, you should use ceemmc instead as it's the official installation tool approved by Team CoreELEC\n - Altering the source code to force ampart to run is strongly not recommended\n - Yes ampart is a partition tool and should have nothing to do with ceemmc\n - But its manipulating of the partition table was seen as blasphemy for the philosophy behind ceemmc:\n   - You as a CoreELEC user should not do these fancy low level stuffs");
+        }
+    }
+    fclose(fp);
+    if (line) {
+        free(line);
+    }
+}
+
 int main(int argc, char **argv) {
+    no_coreelec();
     get_options(argc, argv);
     struct disk_helper disk = {0};
     disk.size = get_disk_size();

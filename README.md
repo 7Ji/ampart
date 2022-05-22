@@ -339,5 +339,5 @@ data              86c00000(   2.11G) 14b400000(   5.18G)     4
 * There is NO WARRANTY, to the extent permitted by law.
 * Modification of **ampart** should be open-source under the same license (**GPL3**)
 * Inclusion of **ampart** in close-source projects are **not allowed**.   
-  * Inclusion of **ampart**'s source code in your program is not allowed
-  * Calling binary executable of **ampart** via any method is not allowed as it is not a system library
+  * Inclusion of **ampart**'s source code in your closed-source program is not allowed
+  * Calling binary executable of **ampart** from your closed-source program via any method is not allowed as it is not a system library

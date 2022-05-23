@@ -68,6 +68,7 @@ struct options {
     bool snapshot;
     bool clone;
     bool dryrun;
+    bool no_reload;
     char path_input[128];
     char path_disk[128];
     char dir_input[64];
@@ -680,7 +681,7 @@ void help(char *path) {
         "\t--clone/-c\trun in clone mode, parse partition arguments outputed by --snapshot/-s, no filter\n"
         "\t--dry-run/-D\tdo not actually update the part table\n"
         "\t--partprobe\tforce a notification to the kernel about the partition layout change, early quit\n"
-        "\t--no-partprobe/-n\n\t\t\tdo not notify kernel about the partition layout changes\n"
+        "\t--no-reload/-n\n\t\t\tdo not notify kernel about the partition layout changes\n"
         "\t--output/-o [path]\n"
         "\t\t\twrite the updated part table to somewhere else, instead of the input itself\n";
     puts(help_message);
@@ -700,13 +701,13 @@ void get_options(int argc, char **argv) {
         {"clone",   no_argument,        NULL,   'c'},
         {"dry-run", no_argument,        NULL,   'D'},
         {"partprobe",no_argument,       NULL,   'p'},
-        {"no-partprobe",    no_argument,NULL,   'n'},
+        {"no-reload",no_argument,       NULL,   'n'},
         {"output",  required_argument,  NULL,   'o'},   // Optionally write output to a given path, instead of write it back
         {NULL,      0,                  NULL,    0},    // This is needed for when user just mess up with their input
     };
     char buffer[9];
     bool input_disk = false;
-    while ((c = getopt_long(argc, argv, "vhdrO:scDo:", long_options, &option_index)) != -1) {
+    while ((c = getopt_long(argc, argv, "vhdrO:scDpno:", long_options, &option_index)) != -1) {
         int this_option_optind = optind ? optind : 1;
         switch (c) {
             case 'v':
@@ -743,6 +744,8 @@ void get_options(int argc, char **argv) {
                 reload_emmc();
                 exit(EXIT_SUCCESS);
             case 'n':
+                puts("Notice: no-reload is set, emmc driver will not be reloaded to recognize all the changes in part table\n - Unless you are using ampart in a script, you should avoid --no-reload as you may accidently write thing to wrong locations on emmc\n - If you are though, remember to call ampart with --partprobe at the end to reload properly");
+                options.no_reload = true;
                 break;
             case 'o':
                 strcpy(options.output, optarg);
@@ -1091,7 +1094,12 @@ void write_table(struct partition_table *table, struct partition *env_p) {
     }
     fclose(fp);
     if (options.input_device) {
-        reload_emmc();
+        if (options.no_reload) {
+            puts("Warning: no-reload is set, skip notifying the kernel about part layout changes\n - Remember to call ampart with --partprobe to properly reload the partition layout for system");
+        }
+        else {
+            reload_emmc();
+        }
     }
     puts("Everything done! Enjoy your fresh-new partition table!");
 }

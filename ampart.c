@@ -66,7 +66,8 @@ struct options {
     bool input_reserved;
     bool input_device;
     bool snapshot;
-    bool clone;
+    bool mode_clone;
+    bool mode_update;
     bool dryrun;
     bool no_reload;
     char path_input[128];
@@ -679,6 +680,7 @@ void help(char *path) {
         "\t\t\toverwrite the offset of the reserved partition, in case OEM has modified it\n\t\t\tonly valid when input is a whole disk, default:36M\n"
         "\t--snapshot/-s\toutputs partition arguments that can be used to restore the partition table to what it looks like now, early quit\n"
         "\t--clone/-c\trun in clone mode, parse partition arguments outputed by --snapshot/-s, no filter\n"
+        "\t--update/-u\trun in update mode, exact partition can be selected and altered"
         "\t--dry-run/-D\tdo not actually update the part table\n"
         "\t--partprobe\tforce a notification to the kernel about the partition layout change, early quit\n"
         "\t--no-reload/-n\tdo not notify kernel about the partition layout changes, remember to end your session with a --partprobe call\n\t\t\tif you are calling ampart for multiple times in a script\n"
@@ -699,6 +701,7 @@ void get_options(int argc, char **argv) {
         {"offset",  required_argument,  NULL,   'O'},   // offset of the reserved partition in disk
         {"snapshot",no_argument,        NULL,   's'},
         {"clone",   no_argument,        NULL,   'c'},
+        {"update",  no_argument,        NULL,   'u'},
         {"dry-run", no_argument,        NULL,   'D'},
         {"partprobe",no_argument,       NULL,   'p'},
         {"no-reload",no_argument,       NULL,   'n'},
@@ -707,7 +710,7 @@ void get_options(int argc, char **argv) {
     };
     char buffer[9];
     bool input_disk = false;
-    while ((c = getopt_long(argc, argv, "vhdrO:scDpno:", long_options, &option_index)) != -1) {
+    while ((c = getopt_long(argc, argv, "vhdrO:scuDpno:", long_options, &option_index)) != -1) {
         int this_option_optind = optind ? optind : 1;
         switch (c) {
             case 'v':
@@ -733,7 +736,11 @@ void get_options(int argc, char **argv) {
                 break;
             case 'c':
                 puts("Notice: running in clone mode, partition arguments won't be filtered, reserved partitions can be set");
-                options.clone = true;
+                options.mode_clone = true;
+                break;
+            case 'u':
+                puts("Notice: running in update mode");
+                options.mode_update = true;
                 break;
             case 'D':
                 puts("Notice: running in dry-run mode, changes won't be written to disk");
@@ -759,6 +766,9 @@ void get_options(int argc, char **argv) {
     }
     if ( input_disk && options.input_reserved ) {
         die("You CAN NOT force the input both as whole disk and as reserverd partition!");
+    }
+    if (options.mode_clone && options.mode_update) {
+        die("You can only run one of the three modes: normal, clone or update\n - You've specicified to run in both clone and update mode which is not allowed");
     }
     if ( optind == argc ) {
         help(argv[0]);
@@ -942,13 +952,13 @@ void no_coreelec() {
     }
 }
 
-struct partition_table * process_table(struct disk_helper *disk, struct table_helper *table_h, int *argc, char **argv) {
+struct partition_table * parse_table(struct disk_helper *disk, struct table_helper *table_h, int *argc, char **argv) {
     struct partition_table *table_new = calloc(1, SIZE_TABLE);
     struct partition *partition_new;
     char *partition_arg;
     int partitions_count = *argc - optind;
     int i=0;
-    if ( options.clone ) {
+    if ( options.mode_clone ) {
         if (partitions_count > 32) {
             die("You've defined too many partitions (%d>32), this is forbidden in clone mode", partitions_count);
         }
@@ -959,6 +969,10 @@ struct partition_table * process_table(struct disk_helper *disk, struct table_he
             partition_from_argument_clone(partition_new, partition_arg);
         }
         table_new->part_num = partitions_count;
+    }
+    else if ( options.mode_update ) {
+        
+
     }
     else {
         // Only when partition is defined, will we try to parse partition table defined by user
@@ -1126,7 +1140,7 @@ int main(int argc, char **argv) {
     }
     size_byte_to_human_readable(s_buffer_1, disk.size);
     printf("Using %"PRIu64" (%s) as the disk size\n", disk.size, s_buffer_1);
-    struct partition_table * table_new = process_table(&disk, &table_h, &argc, argv);
+    struct partition_table * table_new = parse_table(&disk, &table_h, &argc, argv);
     if ( options.dryrun ) {
         puts("Running in dry-run mode, no actual writting, exiting...");
         exit(EXIT_SUCCESS);

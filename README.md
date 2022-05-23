@@ -32,7 +32,7 @@ In which the positional arguments are:
 *Arguments with \* are required*
 * **reserved/emmc\*** the path to ``/dev/reserved`` or ``/dev/mmcblkN`` or any image file you dumped from them (e.g. via ``dd if=/dev/mmcblk0 of=emmc.img``, or ``dd if=/dev/reserved of=reserved.img``).  
 Whether it's a whole emmc disk or a reserved partition will be identified by its name and header, but you can also force its type by options ``--reserved`` / ``-r`` or ``--disk`` / ``-d``  
-* **partition**(s) partition(s) you would like to create, when omitted **ampart** will only print the old partition table. Should be in format **name**:**offset**:**size**:**mask**. In which:  
+* **partition**(s) (normal/clone mode) partition(s) you would like to create, when omitted **ampart** will only print the old partition table. Should be in format **name**:**offset**:**size**:**mask**. In which:  
     * **name\*** the partition name, supports **a**-**z**, **A**-**Z** and **_**(underscore), 15 characters at max.  
     e.g. boot, system, data  
     ***A**-**Z** and **_** are supported but not **suggested**, as it **may confuse some kernel and bootloader***    
@@ -75,6 +75,36 @@ Whether it's a whole emmc disk or a reserved partition will be identified by its
     3. **env** This is where u-boot envs are stored, it is usually 8M, and placed after a cache partition. It **will be moved** as the cache partition takes 512M and does not make much sense for a pure ELEC installation.  
       1. Partitions defined by users will start at **end of reserved partition** + **size of env partition** as a result of this, to maximize the usable disk space by avoiding those precious ~512M taken by cache partition.   
       2. **ampart** will clone the content of the env partition from its old location to the new location, and the content at the new location will be the same on the **binary level**, but you can always ``dd if=/dev/env of=env.img`` for double insurance.
+  
+
+* **partition**(s) (update mode) partition(s) you would like to update, when omitted **ampart** will only print the old partition table. Should be in format **selector(operator)**(:**name**:**offset**:**size**:**mask**). In which:  
+  * **selector** partition name existing in the old table, or positive interger to select a part from the beginning, or negative interger to select a part from the end.   
+  If omitted, creates a partition according to the remaining args just like in normal mode  
+  e.g.   
+    * -1 selects the last partition
+    * 2 selects the second partition (in most cases this would be reserved partition)
+    * data selects the data partition
+    * *(empty)* selects nothing, create a part according to the remaining args
+  * **(operator)** optional suffix of selector that defines special behaviour:
+    * ! deletes the selected partition, ignore other args
+    * ^ clone the selected partition, give it a name defined in **name**, ignore other args
+  * **name** unless operator is ^, is the same as normal/clone mode, would update parts name if set, or do nothing if omitted
+  * **offset** integer number with optional +/- prefix and optional B/K/M/G suffix. Without prefix for replacing offset, with prefix for increasing/decreasing offset
+  * **size** integer number with optional +/- prefix and optional B/K/M/G suffix. Without prefix for replacing size, with prefix for increasing/decreasing size
+  * **mask** either 0, 1, 2 or 4, same as clone mode
+
+  e.g.
+  * ``-1!`` deletes the last partition
+  * ``-1:::-512M:`` shrinks the last part by 512M
+  * ``-1^:CE_STORAGE`` clones the last part, create a partition after it with the same offset, size, and mask and name it ``CE_STORAGE``
+  * ``data^CE_STORAGE`` clones the data partition like the last one, except we select by name this time
+  * ``:CE_FLASH::512M:`` creates a new partition ``CE_FLASH`` with size 512M
+
+  The following one-line command achives a same partition layout as what ceemmc in dual-boot mode would do:
+  ````
+  ampart --update /dev/mmcblk0 -1:::-512M: -1^:CE_STORAGE :CE_FLASH::512M:
+  ````
+  And partition /dev/CE_STORAGE and /dev/CE_FLASH are available right after you've executed the command, you can then immediately mount and edit their content as you like.
 
 And options are:
 * **--version**/**-v** will print the version info

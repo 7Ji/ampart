@@ -618,30 +618,6 @@ void is_reserved(struct options *options) {
             }
 
         }
-        if (!strncmp(options->name_input, "mmcblk", 6) && ( options->name_input[6] >= '0' && options->name_input[6] <= '9')) {
-            bool has_p = false;
-            bool has_num = false;
-            for (int i=6; i<100; ++i) {
-                if (options->name_input[i] == '\0') {
-                    break;
-                }
-                if (!has_num && options->name_input[i] >= '0' && options->name_input[i] <='9') {
-                    has_num = true;
-                }
-                if (!has_p && options->name_input[i] == 'p') {
-                    has_p = true;
-                }
-            }
-            if (!has_num) {
-                printf("Warning: number not found in name (%s) which seems a device file, maybe your input path is incorret?\n", options->name_input);
-            }
-            if (has_p) {
-                options->input_reserved = true;
-            }
-            else {
-                options->input_reserved = false;
-            }
-        }
         else if (!strcmp(options->name_input, "reserved")) {
             options->input_reserved = true;
         }

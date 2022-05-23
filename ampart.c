@@ -173,7 +173,9 @@ uint64_t size_human_readable_to_byte(char * size_h, bool * has_prefix) {
     prefix = &size_h[0];
     if ( *prefix < '0' || *prefix > '9' ) {
         if (size_h[0] == '+') {
-            *has_prefix = true;
+            if (has_prefix) {
+                *has_prefix = true;
+            }
             strcpy(size_h_new, ++ptr);
             start = 1;
         }
@@ -182,7 +184,9 @@ uint64_t size_human_readable_to_byte(char * size_h, bool * has_prefix) {
         }
     }
     else {
-        *has_prefix = false;
+        if (has_prefix) {
+            *has_prefix = false;
+        }
         strcpy(size_h_new, ptr);
         start = 0;
     }
@@ -461,6 +465,14 @@ void partition_from_argument_clone(struct partition *partition, char *argument) 
         die("Invalid mask %u, must be either 0, 1, 2 or 4", partition->mask_flags);
     }
     printf(" - Mask: %u\n", partition->mask_flags);
+    return;
+}
+
+void table_update(struct partition_table *table, char * argument) {
+    
+
+
+
     return;
 }
 
@@ -971,8 +983,13 @@ struct partition_table * parse_table(struct disk_helper *disk, struct table_help
         table_new->part_num = partitions_count;
     }
     else if ( options.mode_update ) {
-        
-
+        memcpy(table_new, table_h->table, SIZE_TABLE);
+        // Counts of partition operations is not limited here
+        while ( optind < *argc ) {
+            partition_arg = argv[optind++];
+            printf("Parsing user input for partition operation (update mode): %s\n", partition_arg);
+            table_update(table_new, partition_arg);
+        }
     }
     else {
         // Only when partition is defined, will we try to parse partition table defined by user

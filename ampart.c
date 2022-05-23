@@ -517,6 +517,9 @@ void valid_partition_table(struct table_helper *table_h) {
             has_bootloader = true;
         }
         else if (!strcmp(part->name, "reserved")) {
+            if (options.input_reserved) {  // We would like to write to corresponding disk, so ffset should be updated
+                options.offset = part->offset;
+            }
             table_h->reserved=part;
             has_reserved = true;
         }
@@ -1059,18 +1062,32 @@ void no_mounted(struct partition_table *table) {
 }
 
 void write_table(struct partition_table *table, struct partition *env_p) {
-    printf("Oopening input path '%s' as read/append to write new patition table...\n", options.path_input);
-    FILE *fp = fopen(options.path_input, "r+");
+    char *path_write;
+    if (options.input_device && options.input_reserved) {
+        puts("Notice: input is a reserved partition and is a device, we would write to corresponding disk instead");
+        path_write = options.path_disk;
+    }
+    else {
+        path_write = options.path_input;
+    }
+    printf("Oopening '%s' as read/append to write new patition table...\n", path_write);
+    FILE *fp = fopen(path_write, "r+");
     if (fp==NULL) {
         die("Can not open path '%s' as read/write/append, new partition table not written, check your permission!");
     }
-    if (!options.input_reserved) {
+    if (!options.input_device && options.input_reserved) {
+        puts("Notice: input is a dumped image for reserved partition, no seeking");
+    }
+    else {
         size_byte_to_human_readable(s_buffer_1, options.offset);
         printf("Notice: Seeking %"PRIu64" (%s) (offset of reserved partition) into disk\n", options.offset, s_buffer_1);
         fseek(fp, options.offset, SEEK_SET);
     }
     fwrite(table, SIZE_TABLE, 1, fp);
-    if (!options.input_reserved) {
+    if (!options.input_device && options.input_reserved) {
+        puts("Warning: unable to migrate env partition since input is a dumped image for reserved partition\n - You'll need to restore it from a backup image of env partition if you want to write this image to the real reserved partition");
+    }
+    else {
         puts("Warning: input is a whole emmc disk, checking if we should copy the env partition as the env partition may be moved");
         bool env_found = false;
         for (int i=0; i<table->part_num; ++i) {

@@ -676,12 +676,12 @@ void help(char *path) {
         "\t--disk/-d\tno auto-recognization, treat input as a whole disk\n"
         "\t--reserved/-r\tno auto-recognization, treat input as a reserved partition\n"
         "\t--offset/-O [offset]\n"
-        "\t\t\toverwrite the offset of the reserved partition, in case OEM has modified it, only valid when input is a whole disk, default:36M\n"
+        "\t\t\toverwrite the offset of the reserved partition, in case OEM has modified it\n\t\t\tonly valid when input is a whole disk, default:36M\n"
         "\t--snapshot/-s\toutputs partition arguments that can be used to restore the partition table to what it looks like now, early quit\n"
         "\t--clone/-c\trun in clone mode, parse partition arguments outputed by --snapshot/-s, no filter\n"
         "\t--dry-run/-D\tdo not actually update the part table\n"
         "\t--partprobe\tforce a notification to the kernel about the partition layout change, early quit\n"
-        "\t--no-reload/-n\n\t\t\tdo not notify kernel about the partition layout changes\n"
+        "\t--no-reload/-n\tdo not notify kernel about the partition layout changes, remember to end your session with a --partprobe call\n\t\t\tif you are calling ampart for multiple times in a script\n"
         "\t--output/-o [path]\n"
         "\t\t\twrite the updated part table to somewhere else, instead of the input itself\n";
     puts(help_message);

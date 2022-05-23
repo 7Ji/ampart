@@ -3,23 +3,25 @@
 
 Everything is done in a **single session**, without any **repeated execution** or **reboot**  
 
-The main reason I started to write this is that **CoreELEC**'s proprietary **ceemmc** which bricked **my only S905X** box can not be modified for reverting what it has done, and intalling EmuELEC and HybridELEC to internal emmc, as its partition sizes are **hard-coded** and refuse to change the way it works because the writer decides they should decide what users want, and this triggers me deeply for my KISS (Keep It Simple, Stupid) principles.
-
-The partition tool is more or less a final step of the long journey of my past almost 2 months into achiving side-by-side dual-booting for CoreELEC+EmuELEC for all Amlogic devices, it is new, but the thoughts behind it is **mature** and **experienced**. You can expect an Amlogic-ng HybridELEC release utilizing ampart that can achive side-by-side dual-booting of CE+EE on the internal storage very soon.
-
-In theory **ampart** should work perfectly fine for any Amlogic device, mainly those with linux-amlogic kernel, e.g. **CoreELEC**, **EmuELEC**, etc. But your poor little developer 7Ji just has 2 used Amlogic TVboxs lying around, one Xiaomi mibox3 (MDZ-16-AA, gxbb_p200) with a locked bootloader that forced me into developing [HybridELEC](https://github.com/7Ji/HybridELEC) (it starts as a USB Burning Tool burnable image for CoreELEC), and one BesTV R3300L (gxl_p212) which **ceemmc bricks** that forced me into developing **ampart**. I can only test on these two boxes and have no willing of buying other development boards/TV boxes, or free money to do so. 
-
-Even if you are using a system that does not run a linux-amlogic kernel (e.g. **Armbian**, **OpenWrt**), you can still use **ampart** to get the partition info of your emmc and partition it. You can then use the partitions by losetup or [blkdevparts=](https://www.kernel.org/doc/html/latest/block/cmdline-partition.html) kernel command line. In this way you won't mess up with the reserved partitions and utilize more space than the tricky 700M offset partitioning way.
-
-I'm into a big exam at the end of the year which I failed in the past two years and that's my last try, which would decide my fate greatly. A slang 'World War 3' is used for this in China .So every line I commit to ampart is precious and do me a favor, don't ask for much.
-
 ***
 ## Usage
 **ampart** does not contain any interactive CLI. This is perfect for implementation in scripts but does not mean the user won't be able to understand what is happening.
 
 **ampart** works in two mode: 
-* **normal mode**(default): users define new partitions in a convenient way, most of the stuff are auto-generated, they do not need to know the detial of the underlying disk and just need to describe what partitions they want besides the reserved parts
-* **clone mode**: users define **all** partitions in an explicit way, almost all details of the part table can be modified as long as they are legal. This mode can be used to restore a snapshot or by utilized by scripts that want to achive their specific partition layout.
+* **normal mode**(default): New partitions other than those reserved should be defined, i.e. a partition table without bootloader, reserved, env should be described by users. Most of the stuff are auto-generated, users do not need to know the detail of the underlying disk.
+  * Minor details will differ depend on the old partition table, ampart would try its best to preserve the reserved partitions, and then create user-defined partitions
+  * A straight-forward pure CoreELEC/EmuELEC installation can be achived in this way.
+* **clone mode**: All partitions should be defined, i.e. a partition table with bootloader, reserved, env should be described by users, in an explicit way, almost all details of the part table can be modified as long as they are legal. This mode can be used to restore a snapshot or utilized by scripts that want to achive their specific partition layout.   
+  * The output of clone mode will be a 1:1 binary replica of what you would get from a ampart snapshot taken via ``ampart --snapshot``
+  * Scripts can operate in this mode for specific devices, if the emmc capacity is believed to be always the same, i.e. ``ampart /dev/mmcblk0 --clone bootloader:0B:4M:0 reserved:36M:64M:0 cache:108M:512M:2 env:628M:8M:0 logo:644M:32M:1 recovery:684M:32M:1 rsv:724M:8M:1 tee:740M:8M:1 crypt:756M:32M:1 misc:796M:32M:1 boot:836M:32M:1 system:876M:2G:1 data:2932M:4524M:4`` would always update the partition layout to be 100% the same
+  * Android updates would be possible if you don't mess up with all of the parts before data
+* **update mode**: Work on the old partition layout and add minor tweaks here and there. 
+  * All partitons not defined in the update array will not be affected
+  * Scripts can operate in this mode if they just want some shrink and addition. i.e. ``ampart /dev/mmcblk --update data::-2G: hybrid:::`` would shrink the data partition by 2G, and create a ``hybrid`` partition after it to take all of the new free space. 
+  * Android updates will always be possible as long as you keep your new parts after data
+  * Updates happend on the **partition level**, not **filesystem level**, corresponding data backup and recovery and fs-createion needs to be done with other tools
+
+All of the above modes will both update the partition table itself and block devices under /dev, i.e. you would expect a /dev/whatever to be present immediately after you create it.
 
 The command-line usage of **ampart** is very simple:
 
@@ -104,6 +106,7 @@ And options are:
   * name, offset, size, mask must be **explicit set**
   * users can pass the partition arguments generated by a previous **snapshot** session to restore the part to exactly what it was like back then, **byte-to-byte correct**
   * scripts can call ampart with modified args previously acquired by a **snapshot** call, and apply an updated part table, they can either keep almost all of the table not affected, or do a complete overhaul: you want the freedom, ampart gives you.
+* **--update**/**-u** enable update mode, [partitions] describe how you would like to modify some parts' info
 * **--dry-run**/**-D** will only generate the new partition table but not actually write it, this will help you to make sure the new partition table is desired.
   * ampart will quit before commiting changes *(return 0 for success)*
 * **--output**/**-o** **[path]** will write the ouput table to somewhere else rather than the path you set in [reserved/mmc]
@@ -489,7 +492,16 @@ Opening '/sys/bus/mmc/drivers/mmcblk/bind' so we can bind driver for 'emmc:0001'
 Successfully binded the driver, you can use the new partition table now!
 Everything done! Enjoy your fresh-new partition table!
 ````
+## About
+The main reason I started to write this is that **CoreELEC**'s proprietary **ceemmc** which bricked **my only S905X** box can not be modified for reverting what it has done, and intalling EmuELEC and HybridELEC to internal emmc, as its partition sizes are **hard-coded** and refuse to change the way it works because the writer decides they should decide what users want, and this triggers me deeply for my KISS (Keep It Simple, Stupid) principles.
 
+The partition tool is more or less a final step of the long journey of my past almost 2 months into achiving side-by-side dual-booting for CoreELEC+EmuELEC for all Amlogic devices, it is new, but the thoughts behind it is **mature** and **experienced**. You can expect an Amlogic-ng HybridELEC release utilizing ampart that can achive side-by-side dual-booting of CE+EE on the internal storage very soon.
+
+In theory **ampart** should work perfectly fine for any Amlogic device, mainly those with linux-amlogic kernel, e.g. **CoreELEC**, **EmuELEC**, etc. But your poor little developer 7Ji just has 2 used Amlogic TVboxs lying around, one Xiaomi mibox3 (MDZ-16-AA, gxbb_p200) with a locked bootloader that forced me into developing [HybridELEC](https://github.com/7Ji/HybridELEC) (it starts as a USB Burning Tool burnable image for CoreELEC), and one BesTV R3300L (gxl_p212) which **ceemmc bricks** that forced me into developing **ampart**. I can only test on these two boxes and have no willing of buying other development boards/TV boxes, or free money to do so. 
+
+Even if you are using a system that does not run a linux-amlogic kernel (e.g. **Armbian**, **OpenWrt**), you can still use **ampart** to get the partition info of your emmc and partition it. You can then use the partitions by losetup or [blkdevparts=](https://www.kernel.org/doc/html/latest/block/cmdline-partition.html) kernel command line. In this way you won't mess up with the reserved partitions and utilize more space than the tricky 700M offset partitioning way.
+
+I'm into a big exam at the end of the year which I failed in the past two years and that's my last try, which would decide my fate greatly. A slang 'World War 3' is used for this in China .So every line I commit to ampart is precious and do me a favor, don't ask for much.
 
 
 ## License

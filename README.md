@@ -7,7 +7,7 @@ Everything is done in a **single session**, without any **repeated execution** o
 ## Usage
 **ampart** does not contain any interactive CLI. This is perfect for implementation in scripts but does not mean the user won't be able to understand what is happening.
 
-**ampart** works in two mode: 
+**ampart** works in 3 modes: 
 * **normal mode**(default): New partitions other than those reserved should be defined, i.e. a partition table without bootloader, reserved, env should be described by users. Most of the stuff are auto-generated, users do not need to know the detail of the underlying disk.
   * Minor details will differ depend on the old partition table, ampart would try its best to preserve the reserved partitions, and then create user-defined partitions
   * A straight-forward pure CoreELEC/EmuELEC installation can be achived in this way.

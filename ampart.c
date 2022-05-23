@@ -127,12 +127,12 @@ void size_byte_to_human_readable_print(uint64_t size) {
 void size_byte_to_human_readable_int(char* buffer, uint64_t size) {
      int i;
     for (i=0; i<9; ++i) {
-        if (size <= 1024 || size % 1024) {
+        if (size <= 0x400 || size % 0x400) {
             break;
         }
-        size /= 1024;
+        size /= 0x400;
     }
-    sprintf(buffer, "%llu%c", size, suffixes[i]);
+    sprintf(buffer, "%"PRIu64"%c", size, suffixes[i]);
     return;
 }
 
@@ -148,13 +148,13 @@ void die (const char * format, ...) {
 }
 
 uint64_t four_kb_alignment(uint64_t size) {
-    unsigned remainder = size % 4096; // Would this even be negative? Guess not
+    unsigned remainder = size % 0x1000; // Would this even be negative? Guess not
     if ( remainder ) {
         size_byte_to_human_readable(s_buffer_1, size);
-        printf("Warning: size/offset %llu (%s) is rounded up to ", size, s_buffer_1);
-        size += (4096-remainder);
+        printf("Warning: size/offset %"PRIu64" (%s) is rounded up to ", size, s_buffer_1);
+        size += (0x1000-remainder);
         size_byte_to_human_readable(s_buffer_1, size);
-        printf("%llu (%s) for 4K alignment\n", size, s_buffer_1);
+        printf("%"PRIu64" (%s) for 4K alignment\n", size, s_buffer_1);
     }
     return size;
 }
@@ -351,16 +351,16 @@ void partition_from_argument (struct partition *partition, char *argument, struc
         if (partition->offset < disk->start) {
             size_byte_to_human_readable(s_buffer_1, partition->offset);
             size_byte_to_human_readable(s_buffer_2, disk->start);
-            die("Partition offset smaller than end of last partition: %llu(%s) < %llu(%s)", partition->offset, s_buffer_1, disk->start, s_buffer_2);
+            die("Partition offset smaller than end of last partition: %"PRIu64"(%s) < %"PRIu64"(%s)", partition->offset, s_buffer_1, disk->start, s_buffer_2);
         }
         if (partition->offset > disk->size) {
             size_byte_to_human_readable(s_buffer_1, partition->offset);
             size_byte_to_human_readable(s_buffer_2, disk->start);
-            die("Partition offset greater than disk size:  %llu(%s) > %llu(%s)", partition->offset, s_buffer_1,  disk->start, s_buffer_2);
+            die("Partition offset greater than disk size:  %"PRIu64"(%s) > %"PRIu64"(%s)", partition->offset, s_buffer_1,  disk->start, s_buffer_2);
         }
     }
     size_byte_to_human_readable(s_buffer_1, partition->offset);
-    printf(" - Offset: %llu (%s)\n", partition->offset, s_buffer_1);
+    printf(" - Offset: %"PRIu64" (%s)\n", partition->offset, s_buffer_1);
     arg += length + 1;
     // Size
     length = get_part_argument_length(arg, false);
@@ -376,13 +376,13 @@ void partition_from_argument (struct partition *partition, char *argument, struc
         if ( partition_end > disk->size) {
             size_byte_to_human_readable(s_buffer_1, partition_end);
             size_byte_to_human_readable(s_buffer_2, disk->free);
-            die("Partition end point overflows! End point greater than disk size: %llu (%s) > %llu (%s)", partition_end, s_buffer_1, disk->free, s_buffer_2);
+            die("Partition end point overflows! End point greater than disk size: %"PRIu64" (%s) > %"PRIu64" (%s)", partition_end, s_buffer_1, disk->free, s_buffer_2);
         }
     }
     disk->start = partition_end;
     disk->free = disk->size - partition_end;
     size_byte_to_human_readable(s_buffer_1, partition->size);
-    printf(" - Size: %llu (%s)\n", partition->size, s_buffer_1);
+    printf(" - Size: %"PRIu64" (%s)\n", partition->size, s_buffer_1);
     arg += length + 1;
     // Mask
     length = get_part_argument_length(arg, true);
@@ -423,7 +423,7 @@ void partition_from_argument_clone(struct partition *partition, char *argument) 
     }
     partition->offset = size_human_readable_to_byte_no_prefix(arg, false);
     size_byte_to_human_readable(s_buffer_1, partition->offset);
-    printf(" - Offset: %llu (%s)\n", partition->offset, s_buffer_1);
+    printf(" - Offset: %"PRIu64" (%s)\n", partition->offset, s_buffer_1);
     arg += length + 1;
     // Size
     length = get_part_argument_length(arg, false);
@@ -433,7 +433,7 @@ void partition_from_argument_clone(struct partition *partition, char *argument) 
     }
     partition->size=size_human_readable_to_byte_no_prefix(arg, false);
     size_byte_to_human_readable(s_buffer_1, partition->size);
-    printf(" - Size: %llu (%s)\n", partition->size, s_buffer_1);
+    printf(" - Size: %"PRIu64" (%s)\n", partition->size, s_buffer_1);
     arg += length + 1;
     // Mask
     length = get_part_argument_length(arg, true);
@@ -565,7 +565,7 @@ uint64_t summary_partition_table(struct partition_table *table) {
         puts(" - If your device bricks, do not blame on ampart as it's just the one helping you discovering it");
     }
     size_byte_to_human_readable(s_buffer_1, offset);
-    printf("Disk size totalling %llu (%s) according to partition table\n", offset, s_buffer_1);
+    printf("Disk size totalling %"PRIu64" (%s) according to partition table\n", offset, s_buffer_1);
     return offset;
 }
 
@@ -731,7 +731,7 @@ void get_options(int argc, char **argv) {
             case 'O':
                 options.offset = four_kb_alignment(size_human_readable_to_byte(optarg, NULL));
                 size_byte_to_human_readable(buffer, options.offset);
-                printf("Using offset %llu (%s) for reserved partition\n", options.offset, buffer);
+                printf("Using offset %"PRIu64" (%s) for reserved partition\n", options.offset, buffer);
                 puts("Warning: unless your reserved partition offset has been modified by the OEM, you should not overwrite the offset");
                 break;
             case 's':
@@ -882,7 +882,7 @@ uint64_t get_disk_size() {
     }
     if (size_disk) {
         size_byte_to_human_readable(s_buffer_1, size_disk);
-        printf("Disk size is %llu (%s)\n", size_disk, s_buffer_1);
+        printf("Disk size is %"PRIu64" (%s)\n", size_disk, s_buffer_1);
     }
     return size_disk;
 }
@@ -898,7 +898,7 @@ uint64_t read_partition_table(struct table_helper *table_h) {
     char buffer[9];
     if (!options.input_reserved) {
         size_byte_to_human_readable(buffer, options.offset);
-        printf("Notice: Seeking %llu (%s) (offset of reserved partition) into disk\n", options.offset, buffer);
+        printf("Notice: Seeking %"PRIu64" (%s) (offset of reserved partition) into disk\n", options.offset, buffer);
         fseek(fp, options.offset, SEEK_SET);
     }
     fread(table, SIZE_TABLE, 1, fp);
@@ -940,7 +940,7 @@ void snapshot(struct partition_table * table) {
     struct partition *part;
     for (int i=0; i<table->part_num; ++i) {
         part=&(table->partitions[i]);
-        printf("%s:%llu:%llu:%u ", part->name, part->offset, part->size, part->mask_flags);
+        printf("%s:%"PRIu64":%"PRIu64":%u ", part->name, part->offset, part->size, part->mask_flags);
     }
     putc('\n', stdout);
     for (int i=0; i<table->part_num; ++i) {
@@ -1005,7 +1005,7 @@ struct partition_table * process_table(struct disk_helper *disk, struct table_he
         size_byte_to_human_readable(s_buffer_1, disk->free);
         size_byte_to_human_readable(s_buffer_2, reserved_end);
         size_byte_to_human_readable(s_buffer_3, table_h->env->size);
-        printf("Usable space of the disk is %llu (%s)\n - This is due to reserved partition ends at %llu (%s)\n - And env partition takes %llu (%s) \n", disk->free, s_buffer_1, reserved_end, s_buffer_2, table_h->env->size, s_buffer_3);
+        printf("Usable space of the disk is %"PRIu64" (%s)\n - This is due to reserved partition ends at %"PRIu64" (%s)\n - And env partition takes %"PRIu64" (%s) \n", disk->free, s_buffer_1, reserved_end, s_buffer_2, table_h->env->size, s_buffer_3);
         puts("Make sure you've backed up the env partition as its offset will mostly change\n - This is because all user-defined partitions will be created after the env partition\n - Yet most likely the old env partition was created after a cache partition\n - Which wastes a ton of space if we start at there");
         if (partitions_count > 29) {
             partitions_count = 29;
@@ -1046,7 +1046,7 @@ void write_table(struct partition_table *table, struct partition *env_p) {
     }
     if (!options.input_reserved) {
         size_byte_to_human_readable(s_buffer_1, options.offset);
-        printf("Notice: Seeking %llu (%s) (offset of reserved partition) into disk\n", options.offset, s_buffer_1);
+        printf("Notice: Seeking %"PRIu64" (%s) (offset of reserved partition) into disk\n", options.offset, s_buffer_1);
         fseek(fp, options.offset, SEEK_SET);
     }
     fwrite(table, SIZE_TABLE, 1, fp);
@@ -1094,7 +1094,7 @@ int main(int argc, char **argv) {
         disk.size = size_disk_table;
     }
     size_byte_to_human_readable(s_buffer_1, disk.size);
-    printf("Using %llu (%s) as the disk size\n", disk.size, s_buffer_1);
+    printf("Using %"PRIu64" (%s) as the disk size\n", disk.size, s_buffer_1);
     if ( options.snapshot ) {
         snapshot(table);
     }

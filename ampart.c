@@ -997,7 +997,6 @@ struct partition_table * process_table(struct disk_helper *disk, struct table_he
     char *partition_arg;
     int partitions_count = *argc - optind;
     int i=0;
-    printf("optind: %d\n", optind);
     if ( options.clone ) {
         if (partitions_count > 32) {
             die("You've defined too many partitions (%d>32), this is forbidden in clone mode", partitions_count);
@@ -1105,14 +1104,14 @@ int main(int argc, char **argv) {
     if (!disk.size) { // Only when disk.size is 0, will we use the size got from partition table
         disk.size = size_disk_table;
     }
-    size_byte_to_human_readable(s_buffer_1, disk.size);
-    printf("Using %"PRIu64" (%s) as the disk size\n", disk.size, s_buffer_1);
     if ( options.snapshot ) {
         snapshot(table);
     }
     if ( optind == argc ) { // optind is static from getopt
         exit(EXIT_SUCCESS);
     }
+    size_byte_to_human_readable(s_buffer_1, disk.size);
+    printf("Using %"PRIu64" (%s) as the disk size\n", disk.size, s_buffer_1);
     struct partition_table * table_new = process_table(&disk, &table_h, &argc, argv);
     if ( options.dryrun ) {
         puts("Running in dry-run mode, no actual writting, exiting...");

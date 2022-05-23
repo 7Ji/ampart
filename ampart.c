@@ -739,7 +739,9 @@ void get_options(int argc, char **argv) {
                 options.dryrun = true;
                 break;
             case 'p':
-                break;
+                puts("Notice: forcing partprobe");
+                reload_emmc();
+                exit(EXIT_SUCCESS);
             case 'n':
                 break;
             case 'o':
@@ -871,29 +873,27 @@ uint64_t read_partition_table(struct table_helper *table_h) {
 
 void reload_emmc() {
     // Notifying kernel about emmc partition table change
-    if ( options.input_device ) {
-        const char device[] = "emmc:0001";
-        const char path_unbind[] = "/sys/bus/mmc/drivers/mmcblk/unbind";
-        const char path_bind[] = "/sys/bus/mmc/drivers/mmcblk/bind";
-        puts("Notifying kernel about partition table change...");
-        puts("We need to reload the driver for emmc as the meson-mmc driver does not like partition table being hot-updated");
-        printf("Opening '%s' so we can unbind driver for '%s'\n", path_unbind, device);
-        FILE *fp = fopen(path_unbind, "w");
-        if ( fp == NULL ) {
-            die("ERROR: can not open '%s' for unbinding driver for '%s', \n - You will need to reboot manually for the new partition table to be picked up by kernel \n - DO NOT access the old parititions under /dev for now as they are not updated!", path_unbind, device);
-        }
-        fputs(device, fp);
-        fclose(fp);
-        puts("Successfully unbinded the driver, all partitions and the disk itself are not present under /dev as a result of this");
-        printf("Opening '%s' so we can bind driver for '%s'\n", path_bind, device);
-        fp = fopen(path_bind, "w");
-        if ( fp == NULL ) {
-            die("ERROR: can not open '%s' for binding driver for '%s', \n - You will need to reboot manually for the new partition table to be picked up \n - You can not access the old partitions and the disk for now.", path_unbind, device);
-        }
-        fputs(device, fp);
-        fclose(fp);
-        puts("Successfully binded the driver, you can use the new partition table now!");
-    };
+    const char device[] = "emmc:0001";
+    const char path_unbind[] = "/sys/bus/mmc/drivers/mmcblk/unbind";
+    const char path_bind[] = "/sys/bus/mmc/drivers/mmcblk/bind";
+    puts("Notifying kernel about partition table change...");
+    puts("We need to reload the driver for emmc as the meson-mmc driver does not like partition table being hot-updated");
+    printf("Opening '%s' so we can unbind driver for '%s'\n", path_unbind, device);
+    FILE *fp = fopen(path_unbind, "w");
+    if ( fp == NULL ) {
+        die("ERROR: can not open '%s' for unbinding driver for '%s', \n - You will need to reboot manually for the new partition table to be picked up by kernel \n - DO NOT access the old parititions under /dev for now as they are not updated!", path_unbind, device);
+    }
+    fputs(device, fp);
+    fclose(fp);
+    puts("Successfully unbinded the driver, all partitions and the disk itself are not present under /dev as a result of this");
+    printf("Opening '%s' so we can bind driver for '%s'\n", path_bind, device);
+    fp = fopen(path_bind, "w");
+    if ( fp == NULL ) {
+        die("ERROR: can not open '%s' for binding driver for '%s', \n - You will need to reboot manually for the new partition table to be picked up \n - You can not access the old partitions and the disk for now.", path_unbind, device);
+    }
+    fputs(device, fp);
+    fclose(fp);
+    puts("Successfully binded the driver, you can use the new partition table now!");
 }
 
 void snapshot(struct partition_table * table) {

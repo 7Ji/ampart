@@ -794,37 +794,6 @@ void get_options(int argc, char **argv) {
     return;
 }
 
-bool is_mounted(char *path) {
-    printf("Checking if partition/disk '%s' is mounted");
-    FILE *fp = fopen("/proc/mounts", "r");
-    if (fp == NULL) {
-        fclose(fp);
-        die("Can not open /proc/mounts for checking if partation is mounted");
-    }
-    char * line = NULL;
-    size_t len = 0;
-    size_t len_path = strlen(path);
-    ssize_t read;
-    char target[len_path + 2]; // one for \0, one for space we want to add
-    strcpy(target, path);
-    target[len_path] = ' ';
-    target[len_path + 1] = '\0';
-    while ((read = getline(&line, &len, fp)) != -1) {
-        if (!strncmp(line, target, len_path + 1)) {
-            fclose(fp);
-            if (line) {
-                free(line);
-            }
-            return true;
-        }
-    }
-    fclose(fp);
-    if (line) {
-        free(line);
-    }
-    return false;
-}
-
 uint64_t get_disk_size() {
     struct stat stat_input;
     if (stat(options.path_input, &stat_input)) {
@@ -1049,6 +1018,46 @@ struct partition_table * process_table(struct disk_helper *disk, struct table_he
     return table_new;
 }
 
+void no_mounted(struct partition_table *table) {
+    FILE *fp = fopen("/proc/mounts", "r");
+    if (fp == NULL) {
+        fclose(fp);
+        die("Can not open /proc/mounts for checking if partation is mounted");
+    }
+    char * line = NULL;
+    size_t len = 0;
+    ssize_t read;
+    int i;
+    char target[22]; // 5 for /dev/, 15 for name, 1 for space, 1 for null
+    struct partition *parts = table->partitions;
+    struct partition *part;
+    while ((read = getline(&line, &len, fp)) != -1) {
+        if (strncmp(line, "/dev/", 5)) {
+            continue;
+        }
+        if (!strncmp(line, options.path_disk, 12)) {
+            char *token = strtok(line, " ");
+            die("Partition '%s' on the disk is mounted, refuse to continue", token);
+        }
+        for (i=0; i<table->part_num; ++i) {
+            part = &parts[i];
+            sprintf(target, "/dev/%s ", part->name);
+            if (!strncmp(line, target, strlen(target))) {
+                fclose(fp);
+                if (line) {
+                    free(line);
+                }
+                die("Partition '%s' on the disk is mounted, refuse to continue", part->name);
+            }
+        }
+    }
+    fclose(fp);
+    if (line) {
+        free(line);
+    }
+    return;
+}
+
 void write_table(struct partition_table *table, struct partition *env_p) {
     printf("Oopening input path '%s' as read/append to write new patition table...\n", options.path_input);
     FILE *fp = fopen(options.path_input, "r+");
@@ -1109,6 +1118,10 @@ int main(int argc, char **argv) {
     }
     if ( optind == argc ) { // optind is static from getopt
         exit(EXIT_SUCCESS);
+    }
+    if (options.input_device) {
+        printf("Warning: input is a device, check if any partitions under its corresponding emmc disk '%s' is mounted...\n", options.path_disk);
+        no_mounted(table);
     }
     size_byte_to_human_readable(s_buffer_1, disk.size);
     printf("Using %"PRIu64" (%s) as the disk size\n", disk.size, s_buffer_1);

@@ -26,6 +26,7 @@
 #include <inttypes.h>
 #include <libgen.h>
 #include <linux/fs.h>
+#include <unistd.h>
 #define PART_NUM    32      // Maximum of part number, set here to ease the pain if one day thiis changes
 #define SIZE_PART   40      // This should ALWAYS be 40, regardless of platform
 #define SIZE_TABLE  1304    // This should ALWAYS be 1304, regardless of platform
@@ -1098,6 +1099,7 @@ uint64_t read_partition_table(struct table_helper *table_h) {
 
 void reload_emmc() {
     // Notifying kernel about emmc partition table change
+    sync();
     const char device[] = "emmc:0001";
     const char path_unbind[] = "/sys/bus/mmc/drivers/mmcblk/unbind";
     const char path_bind[] = "/sys/bus/mmc/drivers/mmcblk/bind";

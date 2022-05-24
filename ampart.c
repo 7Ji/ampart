@@ -1124,7 +1124,7 @@ void reload_emmc() {
 }
 
 void snapshot(struct partition_table * table) {
-    puts("Give one of the following partition arguments with options --clone/-c to ampart to restore the partition table to what it looks like now:");
+    puts("Give one of the following partition arguments with options --clone/-c to ampart to reset the partition table to what it looks like now:");
     struct partition *part;
     for (int i=0; i<table->part_num; ++i) {
         part=&(table->partitions[i]);
@@ -1325,7 +1325,6 @@ void write_table(struct partition_table *table, struct partition *env_p) {
             die("Failed to find env partition in the new partition table!");
         }
     }
-    fflush(fp);  // Why the hell do I need to flush fp when fclose would flush it anyway? For fuck's sake there must be a goddamn glitch in linux-amlogic kernel or meson-mmc driver
     fclose(fp);
     fsync(fp);
     if (options.input_device) {

@@ -17,8 +17,9 @@ Everything is done in a **single session**, without any **repeated execution** o
   * Android updates would be possible if you don't mess up with all of the parts before data
 * **update mode**: Work on the old partition layout and add minor tweaks here and there. 
   * All partitons not defined in the update array will not be affected
-  * Scripts can operate in this mode if they just want some shrink and addition. i.e. ``ampart /dev/mmcblk --update data::-2G: hybrid:::`` would shrink the data partition by 2G, and create a ``hybrid`` partition after it to take all of the new free space. 
+  * Scripts can operate in this mode if they just want some shrink and addition. i.e. ``ampart /dev/mmcblk --update ^data:::-2G: hybrid:::`` would shrink the data partition by 2G, and create a ``hybrid`` partition after it to take all of the new free space. 
   * Android updates will always be possible as long as you keep your new parts after data
+  * Android+CoreELEC/EmuELEC dual boot on emmc can be achived in this mode
   * Updates happend on the **partition level**, not **filesystem level**, corresponding data backup and recovery and fs-createion needs to be done with other tools
 
 All of the above modes will both update the partition table itself and block devices under /dev, i.e. you would expect a /dev/whatever to be present immediately after you create it.
@@ -32,7 +33,7 @@ In which the positional arguments are:
 *Arguments with \* are required*
 * **reserved/emmc\*** the path to ``/dev/reserved`` or ``/dev/mmcblkN`` or any image file you dumped from them (e.g. via ``dd if=/dev/mmcblk0 of=emmc.img``, or ``dd if=/dev/reserved of=reserved.img``).  
 Whether it's a whole emmc disk or a reserved partition will be identified by its name and header, but you can also force its type by options ``--reserved`` / ``-r`` or ``--disk`` / ``-d``  
-* **partition**(s) (normal/clone mode) partition(s) you would like to create, when omitted **ampart** will only print the old partition table. Should be in format **name**:**offset**:**size**:**mask**. In which:  
+* **partition**(s) (**normal/clone** mode) partition(s) you would like to create, when omitted **ampart** will only print the old partition table. Should be in format **name**:**offset**:**size**:**mask**. In which:  
     * **name\*** the partition name, supports **a**-**z**, **A**-**Z** and **_**(underscore), 15 characters at max.  
     e.g. boot, system, data  
     ***A**-**Z** and **_** are supported but not **suggested**, as it **may confuse some kernel and bootloader***    
@@ -77,32 +78,36 @@ Whether it's a whole emmc disk or a reserved partition will be identified by its
       2. **ampart** will clone the content of the env partition from its old location to the new location, and the content at the new location will be the same on the **binary level**, but you can always ``dd if=/dev/env of=env.img`` for double insurance.
   
 
-* **partition**(s) (update mode) partition(s) you would like to update, when omitted **ampart** will only print the old partition table. Should be in format **selector(operator)**(:**name**:**offset**:**size**:**mask**). In which:  
-  * **selector** partition name existing in the old table, or positive interger to select a part from the beginning, or negative interger to select a part from the end.   
-  If omitted, creates a partition according to the remaining args just like in normal mode  
+* **partition**(s) (**update mode**) partition(s) you would like to update, when omitted **ampart** will only print the old partition table. Should be in either format **selector**(:**name**:**offset**:**size**:**mask**) or **name**:**offset**:**size**:**mask**. In which:  
+  * **selector** starts with ^, a partition name existing in the old table, or positive interger to select a part from the beginning, or negative interger to select a part from the end.   
+  If omitted, the **name**:**offset**:**size**:**mask** argument is parsed similiarly like it would in **normal mode**  
   e.g.   
-    * -1 selects the last partition
-    * 2 selects the second partition (in most cases this would be reserved partition)
+    * ^-1 selects the last partition
+    * ^2 selects the second partition (in most cases this would be reserved partition)
     * data selects the data partition
     * *(empty)* selects nothing, create a part according to the remaining args
-  * **(operator)** optional suffix of selector that defines special behaviour:
-    * ! deletes the selected partition, ignore other args
-    * ^ clone the selected partition, give it a name defined in **name**, ignore other args
+  * **(operator)** optional suffix added after selector can define special behaviour:
+    * ? deletes the selected partition, no other args after : are needed. think it as *oh, where's the part now? I don't remember it anymore.*
+    * % clone the selected partition, give it a name after : ignore other args. think it as *cut that part, and clone it! I want them to be identical just that those two o in the %*
   * **name** unless operator is ^, is the same as normal/clone mode, would update parts name if set, or do nothing if omitted
   * **offset** integer number with optional +/- prefix and optional B/K/M/G suffix. Without prefix for replacing offset, with prefix for increasing/decreasing offset
   * **size** integer number with optional +/- prefix and optional B/K/M/G suffix. Without prefix for replacing size, with prefix for increasing/decreasing size
   * **mask** either 0, 1, 2 or 4, same as clone mode
 
   e.g.
-  * ``-1!`` deletes the last partition
-  * ``-1:::-512M:`` shrinks the last part by 512M
-  * ``-1^:CE_STORAGE`` clones the last part, create a partition after it with the same offset, size, and mask and name it ``CE_STORAGE``
-  * ``data^CE_STORAGE`` clones the data partition like the last one, except we select by name this time
-  * ``:CE_FLASH::512M:`` creates a new partition ``CE_FLASH`` with size 512M
+  * ``^-1?`` deletes the last partition
+  * ``^-1:::-512M:`` shrinks the last part by 512M
+  * ``^-1%:CE_STORAGE`` clones the last part (usually data) to a new part ``CE_STORAGE``
+  * ``^data:CE_STORAGE`` clones the data partition like the last one, except we select by name this time
+  * ``CE_FLASH::512M:`` creates a new partition ``CE_FLASH`` with size 512M, just like you would in **normal mode**
 
   The following one-line command achives a same partition layout as what ceemmc in dual-boot mode would do:
   ````
-  ampart --update /dev/mmcblk0 -1:::-512M: -1^:CE_STORAGE :CE_FLASH::512M:
+  ampart --update /dev/mmcblk0 ^-1:::-512M: ^-1%:CE_STORAGE CE_FLASH:::
+  ````
+  and the following would shrink the data more so EmuELEC can be stored:
+  ````
+  ampart --update /dev/mmcblk0 ^-1:::2G: ^-1%:CE_STORAGE CE_FLASH:::
   ````
   And partition /dev/CE_STORAGE and /dev/CE_FLASH are available right after you've executed the command, you can then immediately mount and edit their content as you like.
 
@@ -129,6 +134,10 @@ And options are:
     (the machine-friendly output)
     ````
     bootloader:0B:4M:0 reserved:36M:64M:0 cache:108M:512M:2 env:628M:8M:0 logo:644M:32M:1 recovery:684M:32M:1 rsv:724M:8M:1 tee:740M:8M:1 crypt:756M:32M:1 misc:796M:32M:1 boot:836M:32M:1 system:876M:2G:1 data:2932M:4524M:4
+    ````
+    later if you regret about the new part table, you can call ampart with --clone and pass it one of the lines above:
+    ````
+    ampart --clone /dev/mmcblk0 bootloader:0B:4M:0 reserved:36M:64M:0 cache:108M:512M:2 env:628M:8M:0 logo:644M:32M:1 recovery:684M:32M:1 rsv:724M:8M:1 tee:740M:8M:1 crypt:756M:32M:1 misc:796M:32M:1 boot:836M:32M:1 system:876M:2G:1 data:2932M:4524M:4
     ````
    
 * **--clone**/**-c** enable clone mode, only verify some args of the parts, partition arguments must be set **explicitly**
@@ -157,18 +166,26 @@ All of the above would seem complicated but the CLI is really **clean and easy**
 ````
 # Print the partition table of /dev/mmcblk0
 ampart /dev/mmcblk0
+
 # Print the partition table of underlying disk of /dev/reserved
 ampart /dev/reserved
+
 # Create a single data partition to utilize all the space
 ampart /dev/mmcblk0 data:::
+
 # Create a 2G system partition, mask2, and a data partition to utilize all the remaining space
 ampart /dev/mmcblk0 system::2G:2 data:::
+
 # Same as the last one, except we leave a 8M gap before the 2 partitions, like some OEMs would do
 ampart /dev/mmcblk0 system:+8M:2G:2 data:+8M::
 # A layout for EmuELEC
 ampart /dev/mmcblk0 system::2G:2 data::2G: eeroms:::
+
 # Recreate a previous taken snapshot
 ampart /dev/mmcblk0 --clone bootloader:0B:4M:0 reserved:36M:64M:0 cache:108M:512M:2 env:628M:8M:0 logo:644M:32M:1 recovery:684M:32M:1 rsv:724M:8M:1 tee:740M:8M:1 crypt:756M:32M:1 misc:796M:32M:1 boot:836M:32M:1 system:876M:2G:1 data:2932M:4524M:
+
+# Shrink, clone data, then create CE_FLASH, just like ceemmc in dual boot mode
+ampart --update /dev/mmcblk0 ^-1:::-512M: ^-1%:CE_STORAGE CE_FLASH:::
 ````
 (*In all of the commands above, those which create new partition tables will clear all partitions, copy the old partition info of bootloader, reserved and env as partition 0-2, then change the offset of env to the end of reserved, then clone the content of the env partition if it's moved.*)
 
@@ -379,6 +396,128 @@ env                6400000( 100.00M)    800000(   8.00M)     0
 system             6c00000( 108.00M)  80000000(   2.00G)     2
 data              86c00000(   2.11G) 14b400000(   5.18G)     4
 ==============================================================
+````
+Replica what ceemmc in dual mode would do to the part table:
+````
+EmuELEC:~ # ampart /dev/mmcblk0 --update ^-1:::-2G: ^-1%:CE_STORAGE CE_FLASH:::
+Notice: running in update mode
+Path '/dev/mmcblk0' seems a device file
+Path '/dev/mmcblk0' detected as whole emmc disk
+Path '/dev/mmcblk0' is a device, getting its size via ioctl
+Disk size is 7818182656 (7.28G)
+Reading old partition table...
+Validating partition table...
+Partitions count: 13, GOOD √
+Magic: MPT, GOOD √
+Version: 01.00.00, GOOD √
+Checksum: calculated 5e11f97, recorded 5e11f97, GOOD √
+Partition table read from 'imgs/gxl.img':
+==============================================================
+NAME                          OFFSET                SIZE  MARK
+==============================================================
+bootloader               0(   0.00B)    400000(   4.00M)     0
+  (GAP)                                2000000(  32.00M)
+reserved           2400000(  36.00M)   4000000(  64.00M)     0
+  (GAP)                                 800000(   8.00M)
+cache              6c00000( 108.00M)  20000000( 512.00M)     2
+  (GAP)                                 800000(   8.00M)
+env               27400000( 628.00M)    800000(   8.00M)     0
+  (GAP)                                 800000(   8.00M)
+logo              28400000( 644.00M)   2000000(  32.00M)     1
+  (GAP)                                 800000(   8.00M)
+recovery          2ac00000( 684.00M)   2000000(  32.00M)     1
+  (GAP)                                 800000(   8.00M)
+rsv               2d400000( 724.00M)    800000(   8.00M)     1
+  (GAP)                                 800000(   8.00M)
+tee               2e400000( 740.00M)    800000(   8.00M)     1
+  (GAP)                                 800000(   8.00M)
+crypt             2f400000( 756.00M)   2000000(  32.00M)     1
+  (GAP)                                 800000(   8.00M)
+misc              31c00000( 796.00M)   2000000(  32.00M)     1
+  (GAP)                                 800000(   8.00M)
+boot              34400000( 836.00M)   2000000(  32.00M)     1
+  (GAP)                                 800000(   8.00M)
+system            36c00000( 876.00M)  80000000(   2.00G)     1
+  (GAP)                                 800000(   8.00M)
+data              b7400000(   2.86G) 11ac00000(   4.42G)     4
+==============================================================
+Disk size totalling 7818182656 (7.28G) according to partition table
+Using 7818182656 (7.28G) as the disk size
+Parsing user input for partition operation (update mode): ^-1:::-2G:
+Notice: negative selector encountered
+Relative selector before parsing: -1
+Partition selected: 12:data
+ - Size -> 2596274176(2.42G)
+Parsing user input for partition operation (update mode): ^-1%:CE_STORAGE
+Notice: negative selector encountered
+Relative selector before parsing: -1
+Partition selected: 12:data
+Warning: Misbehaviour found in partition name 'CE_STORAGE':
+ - Uppercase letter (A-Z) is used, this is not recommended as it may confuse some kernel and bootloader
+ - Underscore (_) is used, this is not recommended as it may confuse some kernel and bootloader
+Parsing user input for partition operation (update mode): CE_FLASH:::
+No selector found, normal creation mode
+Warning: Misbehaviour found in partition name 'CE_FLASH':
+ - Uppercase letter (A-Z) is used, this is not recommended as it may confuse some kernel and bootloader
+ - Underscore (_) is used, this is not recommended as it may confuse some kernel and bootloader
+ - Name: CE_FLASH
+ - Offset: 5670699008 (5.28G)
+ - Size: 2147483648 (2.00G)
+ - Mask: 4
+New partition table is generated successfully in memory
+Validating partition table...
+Partitions count: 15, GOOD √
+Magic: MPT, GOOD √
+Version: 01.00.00, GOOD √
+Checksum: calculated b803c1fd, recorded b803c1fd, GOOD √
+Warning: Misbehaviour found in partition name 'CE_STORAGE':
+ - Uppercase letter (A-Z) is used, this is not recommended as it may confuse some kernel and bootloader
+ - Underscore (_) is used, this is not recommended as it may confuse some kernel and bootloader
+Warning: Misbehaviour found in partition name 'CE_FLASH':
+ - Uppercase letter (A-Z) is used, this is not recommended as it may confuse some kernel and bootloader
+ - Underscore (_) is used, this is not recommended as it may confuse some kernel and bootloader
+==============================================================
+NAME                          OFFSET                SIZE  MARK
+==============================================================
+bootloader               0(   0.00B)    400000(   4.00M)     0
+  (GAP)                                2000000(  32.00M)
+reserved           2400000(  36.00M)   4000000(  64.00M)     0
+  (GAP)                                 800000(   8.00M)
+cache              6c00000( 108.00M)  20000000( 512.00M)     2
+  (GAP)                                 800000(   8.00M)
+env               27400000( 628.00M)    800000(   8.00M)     0
+  (GAP)                                 800000(   8.00M)
+logo              28400000( 644.00M)   2000000(  32.00M)     1
+  (GAP)                                 800000(   8.00M)
+recovery          2ac00000( 684.00M)   2000000(  32.00M)     1
+  (GAP)                                 800000(   8.00M)
+rsv               2d400000( 724.00M)    800000(   8.00M)     1
+  (GAP)                                 800000(   8.00M)
+tee               2e400000( 740.00M)    800000(   8.00M)     1
+  (GAP)                                 800000(   8.00M)
+crypt             2f400000( 756.00M)   2000000(  32.00M)     1
+  (GAP)                                 800000(   8.00M)
+misc              31c00000( 796.00M)   2000000(  32.00M)     1
+  (GAP)                                 800000(   8.00M)
+boot              34400000( 836.00M)   2000000(  32.00M)     1
+  (GAP)                                 800000(   8.00M)
+system            36c00000( 876.00M)  80000000(   2.00G)     1
+  (GAP)                                 800000(   8.00M)
+data              b7400000(   2.86G)  9ac00000(   2.42G)     4
+  (OVERLAP)                           9ac00000(   2.42G)
+CE_STORAGE        b7400000(   2.86G)  9ac00000(   2.42G)     4
+CE_FLASH         152000000(   5.28G)  80000000(   2.00G)     4
+==============================================================
+Warning: Overlap found in partition table, this is extremely dangerous as your Android installation might already be broken.
+ - Please confirm if you've failed with ceemmc as it may overlay data with CE_STORAGE
+ - If your device bricks, do not blame on ampart as it's just the one helping you discovering it
+Disk size totalling 7818182656 (7.28G) according to partition table
+Oopening 'imgs/gxl.img' as read/append to write new patition table...
+Notice: Seeking 37748736 (36.00M) (offset of reserved partition) into disk
+Warning: input is a whole emmc disk, checking if we should copy the env partition as the env partition may be moved
+Offset of the env partition has changed, copying content of it...
+Copied content env partiton
+Everything done! Enjoy your fresh-new partition table!
 ````
 Apply a previous taken snapshot from stock Android installation:
 ````

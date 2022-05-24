@@ -192,7 +192,9 @@ ampart --update /dev/mmcblk0 ^-1:::-512M: ^-1%:CE_STORAGE CE_FLASH:::
 ## Examples
 Print the table when an Android installation is on an 8G emmc:    
 
-    CoreELEC:~ # ampart /dev/mmcblk0
+    CoreELEC:~ # ./ampart /dev/mmcblk0
+    Path '/dev/mmcblk0' seems a device file
+    Path '/dev/mmcblk0' detected as whole emmc disk
     Path '/dev/mmcblk0' is a device, getting its size via ioctl
     Disk size is 7818182656 (7.28G)
     Reading old partition table...
@@ -201,7 +203,7 @@ Print the table when an Android installation is on an 8G emmc:
     Partitions count: 13, GOOD √
     Magic: MPT, GOOD √
     Version: 01.00.00, GOOD √
-    Checksum: calculated 3d5695ff, recorded 3d5695ff, GOOD √
+    Checksum: calculated 5e11f97, recorded 5e11f97, GOOD √
     Partition table read from '/dev/mmcblk0':
     ==============================================================
     NAME                          OFFSET                SIZE  MARK
@@ -233,10 +235,13 @@ Print the table when an Android installation is on an 8G emmc:
     data              b7400000(   2.86G) 11ac00000(   4.42G)     4
     ==============================================================
     Disk size totalling 7818182656 (7.28G) according to partition table
-    Using 7818182656 (7.28G) as the disk size
-Print the table when ``ceemmc`` has altered the partition table and **bricked the box**:
 
-    CoreELEC:~ # ampart /dev/mmcblk0
+Take a snapshot of the partition table in case anything goes wrong:  
+
+    CoreELEC:~ # ./ampart --snapshot /dev/mmcblk0
+    Notice: running in snapshot mode, new partition table won't be parsed
+    Path '/dev/mmcblk0' seems a device file
+    Path '/dev/mmcblk0' detected as whole emmc disk
     Path '/dev/mmcblk0' is a device, getting its size via ioctl
     Disk size is 7818182656 (7.28G)
     Reading old partition table...
@@ -245,7 +250,7 @@ Print the table when ``ceemmc`` has altered the partition table and **bricked th
     Partitions count: 13, GOOD √
     Magic: MPT, GOOD √
     Version: 01.00.00, GOOD √
-    Checksum: calculated 3d5695ff, recorded 3d5695ff, GOOD √
+    Checksum: calculated 5e11f97, recorded 5e11f97, GOOD √
     Partition table read from '/dev/mmcblk0':
     ==============================================================
     NAME                          OFFSET                SIZE  MARK
@@ -274,25 +279,78 @@ Print the table when ``ceemmc`` has altered the partition table and **bricked th
       (GAP)                                 800000(   8.00M)
     system            36c00000( 876.00M)  80000000(   2.00G)     1
       (GAP)                                 800000(   8.00M)
-    data              b7400000(   2.86G)  fac00000(   3.92G)     4
-      (OVERLAP)                           fac00000(   3.92G)
-    CE_STORAGE        b7400000(   2.86G)  fac00000(   3.92G)     4
-    CE_FLASH         1b2000000(   6.78G)  20000000( 512.00M)     4
+    data              b7400000(   2.86G) 11ac00000(   4.42G)     4
     ==============================================================
     Disk size totalling 7818182656 (7.28G) according to partition table
-    Using 7818182656 (7.28G) as the disk size `1
-Format a single big chunky data partition on emmc:
+    Give one of the following partition arguments with options --clone/-c to ampart to reset the partition table to what it looks like now:
+    bootloader:0:4194304:0 reserved:37748736:67108864:0 cache:113246208:536870912:2 env:658505728:8388608:0 logo:675282944:33554432:1 recovery:717225984:33554432:1 rsv:759169024:8388608:1 tee:775946240:8388608:1 crypt:792723456:33554432:1 misc:834666496:33554432:1 boot:876609536:33554432:1 system:918552576:2147483648:1 data:3074424832:4743757824:4
+    bootloader:0B:4M:0 reserved:36M:64M:0 cache:108M:512M:2 env:628M:8M:0 logo:644M:32M:1 recovery:684M:32M:1 rsv:724M:8M:1 tee:740M:8M:1 crypt:756M:32M:1 misc:796M:32M:1 boot:836M:32M:1 system:876M:2G:1 data:2932M:4524M:4
+(For actual users instead of scripts, you should record the last line as it's shorter and easier to write/remember)  
 
-    CoreELEC:~ # ampart /dev/mmcblk0 data:::
+Get my partition table messed up and Android installation bricked by **ceemmc** (the **exact** reason I wrote ampart):
+
+    CoreELEC:~ # ceemmc -x
+
+    Starting CoreELEC eMMC installation tool...
+
+    System is not supported: gxl_p212_1g_slowemmc!
+
+    There is NO official support by Team CoreELEC
+    if you continue to run this tool!
+    Continue? [y]: y
+
+    eMMC size: 0x0001d2000000 [8GB]
+
+    No CoreELEC installation found on eMMC
+
+    Install in dual boot mode, CoreELEC and Android on eMMC
+      Use CoreELEC data from
+        [1] current used SD or USB device
+        [2] existing backup on current used SD or USB device
+
+    Install in single boot mode not possible!
+      No DT partition was found
+
+    Please choose one option? [1/2]: 1
+
+    Free space of 'partition CE_FLASH': 512MB
+    Free space of 'partition CE_STORAGE': 4149MB
+
+    Used space of '/flash': 233MB
+    Used space of '/storage': 4MB
+
+    There is enough free space on eMMC for installation!
+
+    Install CoreELEC on eMMC.
+    Continue? [y]: y
+    e2fsck 1.45.7 (28-Jan-2021)
+    Error running pclose on cmd: `e2fsck -fy /dev/loop2`. Error: 1
+    Error executing cmd 'e2fsck -fy /dev/loop2'
+    Failed to resize partition 'CE_STORAGE'!
+
+Oh no! What went wrong? I can just ``e2fsck -fy /dev/loop2`` and it returns 0 for success and nothing errored out! Let me check the source code of **ceemmc** to understand why this happend... Wait, **ceemmc** is proprietary code, it even left no core dump to debug! I just wish I can revert what it has done to my partition table...
+
+Oh, remember that snapshot you took with ampart? You can restore the partition table via an easy one-liner:
+
+    CoreELEC:~ # ./ampart --clone /dev/mmcblk0 bootloader:0B:4M:0 reserved:36M:64M:0 cache:108M:512M:2 env:628M:8M:0 logo:644M:32M:1 recovery:684M:32M:1 rsv:724M:8M:1 tee:740M:8M:1 crypt:756M:32M:1 misc:796M:32M:1 boot:836M:32M:1 system:876M:2G:1 data:2932M:4524M:4
+    Notice: running in clone mode, partition arguments won't be filtered, reserved partitions can be set
+    Path '/dev/mmcblk0' seems a device file
+    Path '/dev/mmcblk0' detected as whole emmc disk
     Path '/dev/mmcblk0' is a device, getting its size via ioctl
     Disk size is 7818182656 (7.28G)
     Reading old partition table...
     Notice: Seeking 37748736 (36.00M) (offset of reserved partition) into disk
     Validating partition table...
-    Partitions count: 5, GOOD √
+    Partitions count: 15, GOOD √
     Magic: MPT, GOOD √
     Version: 01.00.00, GOOD √
-    Checksum: calculated 3d5695ff, recorded 3d5695ff, GOOD √
+    Checksum: calculated b803c1fd, recorded b803c1fd, GOOD √
+    Warning: Misbehaviour found in partition name 'CE_STORAGE':
+    - Uppercase letter (A-Z) is used, this is not recommended as it may confuse some kernel and bootloader
+    - Underscore (_) is used, this is not recommended as it may confuse some kernel and bootloader
+    Warning: Misbehaviour found in partition name 'CE_FLASH':
+    - Uppercase letter (A-Z) is used, this is not recommended as it may confuse some kernel and bootloader
+    - Underscore (_) is used, this is not recommended as it may confuse some kernel and bootloader
     Partition table read from '/dev/mmcblk0':
     ==============================================================
     NAME                          OFFSET                SIZE  MARK
@@ -326,7 +384,171 @@ Format a single big chunky data partition on emmc:
     CE_STORAGE        b7400000(   2.86G)  fac00000(   3.92G)     4
     CE_FLASH         1b2000000(   6.78G)  20000000( 512.00M)     4
     ==============================================================
+    Warning: Overlap found in partition table, this is extremely dangerous as your Android installation might already be broken.
+    - Please confirm if you've failed with ceemmc as it may overlay data with CE_STORAGE
+    - If your device bricks, do not blame on ampart as it's just the one helping you discovering it
     Disk size totalling 7818182656 (7.28G) according to partition table
+    Warning: input is a device, check if any partitions under its corresponding emmc disk '/dev/mmcblk0' is mounted...
+    Using 7818182656 (7.28G) as the disk size
+    Parsing user input for partition (clone mode): bootloader:0B:4M:0
+    - Name: bootloader
+    - Offset: 0 (0.00B)
+    - Size: 4194304 (4.00M)
+    - Mask: 0
+    Parsing user input for partition (clone mode): reserved:36M:64M:0
+    - Name: reserved
+    - Offset: 37748736 (36.00M)
+    - Size: 67108864 (64.00M)
+    - Mask: 0
+    Parsing user input for partition (clone mode): cache:108M:512M:2
+    - Name: cache
+    - Offset: 113246208 (108.00M)
+    - Size: 536870912 (512.00M)
+    - Mask: 2
+    Parsing user input for partition (clone mode): env:628M:8M:0
+    - Name: env
+    - Offset: 658505728 (628.00M)
+    - Size: 8388608 (8.00M)
+    - Mask: 0
+    Parsing user input for partition (clone mode): logo:644M:32M:1
+    - Name: logo
+    - Offset: 675282944 (644.00M)
+    - Size: 33554432 (32.00M)
+    - Mask: 1
+    Parsing user input for partition (clone mode): recovery:684M:32M:1
+    - Name: recovery
+    - Offset: 717225984 (684.00M)
+    - Size: 33554432 (32.00M)
+    - Mask: 1
+    Parsing user input for partition (clone mode): rsv:724M:8M:1
+    - Name: rsv
+    - Offset: 759169024 (724.00M)
+    - Size: 8388608 (8.00M)
+    - Mask: 1
+    Parsing user input for partition (clone mode): tee:740M:8M:1
+    - Name: tee
+    - Offset: 775946240 (740.00M)
+    - Size: 8388608 (8.00M)
+    - Mask: 1
+    Parsing user input for partition (clone mode): crypt:756M:32M:1
+    - Name: crypt
+    - Offset: 792723456 (756.00M)
+    - Size: 33554432 (32.00M)
+    - Mask: 1
+    Parsing user input for partition (clone mode): misc:796M:32M:1
+    - Name: misc
+    - Offset: 834666496 (796.00M)
+    - Size: 33554432 (32.00M)
+    - Mask: 1
+    Parsing user input for partition (clone mode): boot:836M:32M:1
+    - Name: boot
+    - Offset: 876609536 (836.00M)
+    - Size: 33554432 (32.00M)
+    - Mask: 1
+    Parsing user input for partition (clone mode): system:876M:2G:1
+    - Name: system
+    - Offset: 918552576 (876.00M)
+    - Size: 2147483648 (2.00G)
+    - Mask: 1
+    Parsing user input for partition (clone mode): data:2932M:4524M:4
+    - Name: data
+    - Offset: 3074424832 (2.86G)
+    - Size: 4743757824 (4.42G)
+    - Mask: 4
+    New partition table is generated successfully in memory
+    Validating partition table...
+    Partitions count: 13, GOOD √
+    Magic: MPT, GOOD √
+    Version: 01.00.00, GOOD √
+    Checksum: calculated 5e11f97, recorded 5e11f97, GOOD √
+    ==============================================================
+    NAME                          OFFSET                SIZE  MARK
+    ==============================================================
+    bootloader               0(   0.00B)    400000(   4.00M)     0
+      (GAP)                                2000000(  32.00M)
+    reserved           2400000(  36.00M)   4000000(  64.00M)     0
+      (GAP)                                 800000(   8.00M)
+    cache              6c00000( 108.00M)  20000000( 512.00M)     2
+      (GAP)                                 800000(   8.00M)
+    env               27400000( 628.00M)    800000(   8.00M)     0
+      (GAP)                                 800000(   8.00M)
+    logo              28400000( 644.00M)   2000000(  32.00M)     1
+      (GAP)                                 800000(   8.00M)
+    recovery          2ac00000( 684.00M)   2000000(  32.00M)     1
+      (GAP)                                 800000(   8.00M)
+    rsv               2d400000( 724.00M)    800000(   8.00M)     1
+      (GAP)                                 800000(   8.00M)
+    tee               2e400000( 740.00M)    800000(   8.00M)     1
+      (GAP)                                 800000(   8.00M)
+    crypt             2f400000( 756.00M)   2000000(  32.00M)     1
+      (GAP)                                 800000(   8.00M)
+    misc              31c00000( 796.00M)   2000000(  32.00M)     1
+      (GAP)                                 800000(   8.00M)
+    boot              34400000( 836.00M)   2000000(  32.00M)     1
+      (GAP)                                 800000(   8.00M)
+    system            36c00000( 876.00M)  80000000(   2.00G)     1
+      (GAP)                                 800000(   8.00M)
+    data              b7400000(   2.86G) 11ac00000(   4.42G)     4
+    ==============================================================
+    Disk size totalling 7818182656 (7.28G) according to partition table
+    Oopening '/dev/mmcblk0' as read/append to write new patition table...
+    Notice: Seeking 37748736 (36.00M) (offset of reserved partition) into disk
+    Warning: input is a whole emmc disk, checking if we should copy the env partition as the env partition may be moved
+    Offset of env partition not changed, no need to copy it
+    Notifying kernel about partition table change...
+    We need to reload the driver for emmc as the meson-mmc driver does not like partition table being hot-updated
+    Opening '/sys/bus/mmc/drivers/mmcblk/unbind' so we can unbind driver for 'emmc:0001'
+    Successfully unbinded the driver, all partitions and the disk itself are not present under /dev as a result of this
+    Opening '/sys/bus/mmc/drivers/mmcblk/bind' so we can bind driver for 'emmc:0001'
+    Successfully binded the driver, you can use the new partition table now!
+    Everything done! Enjoy your fresh-new partition table!
+
+And I can just partition the emmc in any way I would like to! What about a single data partition and no Android BS? I would use the /dev/data as a storage partition and have no problem Android not working:
+
+    CoreELEC:~ # ./ampart /dev/mmcblk0 data:::
+    Path '/dev/mmcblk0' seems a device file
+    Path '/dev/mmcblk0' detected as whole emmc disk
+    Path '/dev/mmcblk0' is a device, getting its size via ioctl
+    Disk size is 7818182656 (7.28G)
+    Reading old partition table...
+    Notice: Seeking 37748736 (36.00M) (offset of reserved partition) into disk
+    Validating partition table...
+    Partitions count: 13, GOOD √
+    Magic: MPT, GOOD √
+    Version: 01.00.00, GOOD √
+    Checksum: calculated 5e11f97, recorded 5e11f97, GOOD √
+    Partition table read from '/dev/mmcblk0':
+    ==============================================================
+    NAME                          OFFSET                SIZE  MARK
+    ==============================================================
+    bootloader               0(   0.00B)    400000(   4.00M)     0
+      (GAP)                                2000000(  32.00M)
+    reserved           2400000(  36.00M)   4000000(  64.00M)     0
+      (GAP)                                 800000(   8.00M)
+    cache              6c00000( 108.00M)  20000000( 512.00M)     2
+      (GAP)                                 800000(   8.00M)
+    env               27400000( 628.00M)    800000(   8.00M)     0
+      (GAP)                                 800000(   8.00M)
+    logo              28400000( 644.00M)   2000000(  32.00M)     1
+      (GAP)                                 800000(   8.00M)
+    recovery          2ac00000( 684.00M)   2000000(  32.00M)     1
+      (GAP)                                 800000(   8.00M)
+    rsv               2d400000( 724.00M)    800000(   8.00M)     1
+      (GAP)                                 800000(   8.00M)
+    tee               2e400000( 740.00M)    800000(   8.00M)     1
+      (GAP)                                 800000(   8.00M)
+    crypt             2f400000( 756.00M)   2000000(  32.00M)     1
+      (GAP)                                 800000(   8.00M)
+    misc              31c00000( 796.00M)   2000000(  32.00M)     1
+      (GAP)                                 800000(   8.00M)
+    boot              34400000( 836.00M)   2000000(  32.00M)     1
+      (GAP)                                 800000(   8.00M)
+    system            36c00000( 876.00M)  80000000(   2.00G)     1
+      (GAP)                                 800000(   8.00M)
+    data              b7400000(   2.86G) 11ac00000(   4.42G)     4
+    ==============================================================
+    Disk size totalling 7818182656 (7.28G) according to partition table
+    Warning: input is a device, check if any partitions under its corresponding emmc disk '/dev/mmcblk0' is mounted...
     Using 7818182656 (7.28G) as the disk size
     Usable space of the disk is 7704936448 (7.18G)
     - This is due to reserved partition ends at 104857600 (100.00M)
@@ -356,7 +578,7 @@ Format a single big chunky data partition on emmc:
     data               6c00000( 108.00M) 1cb400000(   7.18G)     4
     ==============================================================
     Disk size totalling 7818182656 (7.28G) according to partition table
-    Re-opening input path '/dev/mmcblk0' to write new patition table...
+    Oopening '/dev/mmcblk0' as read/append to write new patition table...
     Notice: Seeking 37748736 (36.00M) (offset of reserved partition) into disk
     Warning: input is a whole emmc disk, checking if we should copy the env partition as the env partition may be moved
     Offset of the env partition has changed, copying content of it...
@@ -368,299 +590,86 @@ Format a single big chunky data partition on emmc:
     Opening '/sys/bus/mmc/drivers/mmcblk/bind' so we can bind driver for 'emmc:0001'
     Successfully binded the driver, you can use the new partition table now!
     Everything done! Enjoy your fresh-new partition table!
+Now I have a 7.18 G data partition **located immediately at /dev/data** and I can format/use it just in the way I like! There's no tricky loop mount or BS rebooting over and over again.
 
+What about formatting it to just a system partition and data partition? I would like to have a pure CoreELEC/EmuELEC installation and cares nothing about those Android BS:
 
-Running the new installtointernal script in EmuELEC I've written for EmuELEC and HybridELEC, if you choose to create EEROMS, the partition table would be:
+    CoreELEC:~ # ./ampart /dev/mmcblk0 system::512M: data:::
+    Path '/dev/mmcblk0' seems a device file
+    Path '/dev/mmcblk0' detected as whole emmc disk
+    Path '/dev/mmcblk0' is a device, getting its size via ioctl
+    Disk size is 7818182656 (7.28G)
+    Reading old partition table...
+    Notice: Seeking 37748736 (36.00M) (offset of reserved partition) into disk
+    Validating partition table...
+    Partitions count: 4, GOOD √
+    Magic: MPT, GOOD √
+    Version: 01.00.00, GOOD √
+    Checksum: calculated 644544cc, recorded 644544cc, GOOD √
+    Partition table read from '/dev/mmcblk0':
+    ==============================================================
+    NAME                          OFFSET                SIZE  MARK
+    ==============================================================
+    bootloader               0(   0.00B)    400000(   4.00M)     0
+      (GAP)                                2000000(  32.00M)
+    reserved           2400000(  36.00M)   4000000(  64.00M)     0
+    env                6400000( 100.00M)    800000(   8.00M)     0
+    data               6c00000( 108.00M) 1cb400000(   7.18G)     4
+    ==============================================================
+    Disk size totalling 7818182656 (7.28G) according to partition table
+    Warning: input is a device, check if any partitions under its corresponding emmc disk '/dev/mmcblk0' is mounted...
+    Using 7818182656 (7.28G) as the disk size
+    Usable space of the disk is 7704936448 (7.18G)
+    - This is due to reserved partition ends at 104857600 (100.00M)
+    - And env partition takes 8388608 (8.00M)
+    Make sure you've backed up the env partition as its offset will mostly change
+    - This is because all user-defined partitions will be created after the env partition
+    - Yet most likely the old env partition was created after a cache partition
+    - Which wastes a ton of space if we start at there
+    Parsing user input for partition: system::512M:
+    - Name: system
+    - Offset: 113246208 (108.00M)
+    - Size: 536870912 (512.00M)
+    - Mask: 4
+    Parsing user input for partition: data:::
+    - Name: data
+    - Offset: 650117120 (620.00M)
+    - Size: 7168065536 (6.68G)
+    - Mask: 4
+    New partition table is generated successfully in memory
+    Validating partition table...
+    Partitions count: 5, GOOD √
+    Magic: MPT, GOOD √
+    Version: 01.00.00, GOOD √
+    Checksum: calculated 3d5695ff, recorded 3d5695ff, GOOD √
+    ==============================================================
+    NAME                          OFFSET                SIZE  MARK
+    ==============================================================
+    bootloader               0(   0.00B)    400000(   4.00M)     0
+      (GAP)                                2000000(  32.00M)
+    reserved           2400000(  36.00M)   4000000(  64.00M)     0
+    env                6400000( 100.00M)    800000(   8.00M)     0
+    system             6c00000( 108.00M)  20000000( 512.00M)     4
+    data              26c00000( 620.00M) 1ab400000(   6.68G)     4
+    ==============================================================
+    Disk size totalling 7818182656 (7.28G) according to partition table
+    Oopening '/dev/mmcblk0' as read/append to write new patition table...
+    Notice: Seeking 37748736 (36.00M) (offset of reserved partition) into disk
+    Warning: input is a whole emmc disk, checking if we should copy the env partition as the env partition may be moved
+    Offset of env partition not changed, no need to copy it
+    Notifying kernel about partition table change...
+    We need to reload the driver for emmc as the meson-mmc driver does not like partition table being hot-updated
+    Opening '/sys/bus/mmc/drivers/mmcblk/unbind' so we can unbind driver for 'emmc:0001'
+    Successfully unbinded the driver, all partitions and the disk itself are not present under /dev as a result of this
+    Opening '/sys/bus/mmc/drivers/mmcblk/bind' so we can bind driver for 'emmc:0001'
+    Successfully binded the driver, you can use the new partition table now!
+    Everything done! Enjoy your fresh-new partition table!
+
+Wait, I think I don't want to install or format anything, I want to take a regret pill and get my old partition table back. Oh, I can just go back with the snapshot I've taken before!
 ````
-==============================================================
-NAME                          OFFSET                SIZE  MARK
-==============================================================
-bootloader               0(   0.00B)    400000(   4.00M)     0
-  (GAP)                                2000000(  32.00M)
-reserved           2400000(  36.00M)   4000000(  64.00M)     0
-env                6400000( 100.00M)    800000(   8.00M)     0
-system             6c00000( 108.00M)  80000000(   2.00G)     2
-data              86c00000(   2.11G)  80000000(   2.00G)     4
-eeroms           106c00000(   4.11G)  cb400000(   3.18G)     4
-==============================================================
+CoreELEC:~ # ./ampart --clone /dev/mmcblk0 bootloader:0B:4M:0 reserved:36M:64M:0 cache:108M:512M:2 env:628M:8M:0 logo:644M:32M:1 recovery:684M:32M:1 rsv:724M:8M:1 tee:740M:8M:1 crypt:756M:32M:1 misc:796M:32M:1 boot:836M:32M:1 system:876M:2G:1 data:2932M:4524M:4
 ````
-Or if you don't choose to create EEROMS:
-````
-==============================================================
-NAME                          OFFSET                SIZE  MARK
-==============================================================
-bootloader               0(   0.00B)    400000(   4.00M)     0
-  (GAP)                                2000000(  32.00M)
-reserved           2400000(  36.00M)   4000000(  64.00M)     0
-env                6400000( 100.00M)    800000(   8.00M)     0
-system             6c00000( 108.00M)  80000000(   2.00G)     2
-data              86c00000(   2.11G) 14b400000(   5.18G)     4
-==============================================================
-````
-Replica what ceemmc in dual mode would do to the part table:
-````
-EmuELEC:~ # ampart /dev/mmcblk0 --update ^-1:::-2G: ^-1%:CE_STORAGE CE_FLASH:::
-Notice: running in update mode
-Path '/dev/mmcblk0' seems a device file
-Path '/dev/mmcblk0' detected as whole emmc disk
-Path '/dev/mmcblk0' is a device, getting its size via ioctl
-Disk size is 7818182656 (7.28G)
-Reading old partition table...
-Validating partition table...
-Partitions count: 13, GOOD √
-Magic: MPT, GOOD √
-Version: 01.00.00, GOOD √
-Checksum: calculated 5e11f97, recorded 5e11f97, GOOD √
-Partition table read from 'imgs/gxl.img':
-==============================================================
-NAME                          OFFSET                SIZE  MARK
-==============================================================
-bootloader               0(   0.00B)    400000(   4.00M)     0
-  (GAP)                                2000000(  32.00M)
-reserved           2400000(  36.00M)   4000000(  64.00M)     0
-  (GAP)                                 800000(   8.00M)
-cache              6c00000( 108.00M)  20000000( 512.00M)     2
-  (GAP)                                 800000(   8.00M)
-env               27400000( 628.00M)    800000(   8.00M)     0
-  (GAP)                                 800000(   8.00M)
-logo              28400000( 644.00M)   2000000(  32.00M)     1
-  (GAP)                                 800000(   8.00M)
-recovery          2ac00000( 684.00M)   2000000(  32.00M)     1
-  (GAP)                                 800000(   8.00M)
-rsv               2d400000( 724.00M)    800000(   8.00M)     1
-  (GAP)                                 800000(   8.00M)
-tee               2e400000( 740.00M)    800000(   8.00M)     1
-  (GAP)                                 800000(   8.00M)
-crypt             2f400000( 756.00M)   2000000(  32.00M)     1
-  (GAP)                                 800000(   8.00M)
-misc              31c00000( 796.00M)   2000000(  32.00M)     1
-  (GAP)                                 800000(   8.00M)
-boot              34400000( 836.00M)   2000000(  32.00M)     1
-  (GAP)                                 800000(   8.00M)
-system            36c00000( 876.00M)  80000000(   2.00G)     1
-  (GAP)                                 800000(   8.00M)
-data              b7400000(   2.86G) 11ac00000(   4.42G)     4
-==============================================================
-Disk size totalling 7818182656 (7.28G) according to partition table
-Using 7818182656 (7.28G) as the disk size
-Parsing user input for partition operation (update mode): ^-1:::-2G:
-Notice: negative selector encountered
-Relative selector before parsing: -1
-Partition selected: 12:data
- - Size -> 2596274176(2.42G)
-Parsing user input for partition operation (update mode): ^-1%:CE_STORAGE
-Notice: negative selector encountered
-Relative selector before parsing: -1
-Partition selected: 12:data
-Warning: Misbehaviour found in partition name 'CE_STORAGE':
- - Uppercase letter (A-Z) is used, this is not recommended as it may confuse some kernel and bootloader
- - Underscore (_) is used, this is not recommended as it may confuse some kernel and bootloader
-Parsing user input for partition operation (update mode): CE_FLASH:::
-No selector found, normal creation mode
-Warning: Misbehaviour found in partition name 'CE_FLASH':
- - Uppercase letter (A-Z) is used, this is not recommended as it may confuse some kernel and bootloader
- - Underscore (_) is used, this is not recommended as it may confuse some kernel and bootloader
- - Name: CE_FLASH
- - Offset: 5670699008 (5.28G)
- - Size: 2147483648 (2.00G)
- - Mask: 4
-New partition table is generated successfully in memory
-Validating partition table...
-Partitions count: 15, GOOD √
-Magic: MPT, GOOD √
-Version: 01.00.00, GOOD √
-Checksum: calculated b803c1fd, recorded b803c1fd, GOOD √
-Warning: Misbehaviour found in partition name 'CE_STORAGE':
- - Uppercase letter (A-Z) is used, this is not recommended as it may confuse some kernel and bootloader
- - Underscore (_) is used, this is not recommended as it may confuse some kernel and bootloader
-Warning: Misbehaviour found in partition name 'CE_FLASH':
- - Uppercase letter (A-Z) is used, this is not recommended as it may confuse some kernel and bootloader
- - Underscore (_) is used, this is not recommended as it may confuse some kernel and bootloader
-==============================================================
-NAME                          OFFSET                SIZE  MARK
-==============================================================
-bootloader               0(   0.00B)    400000(   4.00M)     0
-  (GAP)                                2000000(  32.00M)
-reserved           2400000(  36.00M)   4000000(  64.00M)     0
-  (GAP)                                 800000(   8.00M)
-cache              6c00000( 108.00M)  20000000( 512.00M)     2
-  (GAP)                                 800000(   8.00M)
-env               27400000( 628.00M)    800000(   8.00M)     0
-  (GAP)                                 800000(   8.00M)
-logo              28400000( 644.00M)   2000000(  32.00M)     1
-  (GAP)                                 800000(   8.00M)
-recovery          2ac00000( 684.00M)   2000000(  32.00M)     1
-  (GAP)                                 800000(   8.00M)
-rsv               2d400000( 724.00M)    800000(   8.00M)     1
-  (GAP)                                 800000(   8.00M)
-tee               2e400000( 740.00M)    800000(   8.00M)     1
-  (GAP)                                 800000(   8.00M)
-crypt             2f400000( 756.00M)   2000000(  32.00M)     1
-  (GAP)                                 800000(   8.00M)
-misc              31c00000( 796.00M)   2000000(  32.00M)     1
-  (GAP)                                 800000(   8.00M)
-boot              34400000( 836.00M)   2000000(  32.00M)     1
-  (GAP)                                 800000(   8.00M)
-system            36c00000( 876.00M)  80000000(   2.00G)     1
-  (GAP)                                 800000(   8.00M)
-data              b7400000(   2.86G)  9ac00000(   2.42G)     4
-  (OVERLAP)                           9ac00000(   2.42G)
-CE_STORAGE        b7400000(   2.86G)  9ac00000(   2.42G)     4
-CE_FLASH         152000000(   5.28G)  80000000(   2.00G)     4
-==============================================================
-Warning: Overlap found in partition table, this is extremely dangerous as your Android installation might already be broken.
- - Please confirm if you've failed with ceemmc as it may overlay data with CE_STORAGE
- - If your device bricks, do not blame on ampart as it's just the one helping you discovering it
-Disk size totalling 7818182656 (7.28G) according to partition table
-Oopening 'imgs/gxl.img' as read/append to write new patition table...
-Notice: Seeking 37748736 (36.00M) (offset of reserved partition) into disk
-Warning: input is a whole emmc disk, checking if we should copy the env partition as the env partition may be moved
-Offset of the env partition has changed, copying content of it...
-Copied content env partiton
-Everything done! Enjoy your fresh-new partition table!
-````
-Apply a previous taken snapshot from stock Android installation:
-````
-EmuELEC:~ # ./ampart /dev/mmcblk0 --clone bootloader:0B:4M:0 reserved:36M:64M:0 cache:108M:512M:2 env:628M:8M:0 logo:644M:32M:1 recovery:684M:32M:1 rsv:724M:8M:1 tee:740M:8M:1 crypt:756M:32M:1 misc:796M:32M:1 boot:836M:32M:1 system:876M:2G:1 data:2932M:4524M:4
-Notice: running in clone mode, partition arguments won't be filtered, reserved partitions can be set
-Path '/dev/mmcblk0' seems a device file
-Path '/dev/mmcblk0' detected as whole emmc disk
-Path '/dev/mmcblk0' is a device, getting its size via ioctl
-Disk size is 7818182656 (7.28G)
-Reading old partition table...
-Notice: Seeking 37748736 (36.00M) (offset of reserved partition) into disk
-Validating partition table...
-Partitions count: 5, GOOD √
-Magic: MPT, GOOD √
-Version: 01.00.00, GOOD √
-Checksum: calculated 3d5695ff, recorded 3d5695ff, GOOD √
-Partition table read from '/dev/mmcblk0':
-==============================================================
-NAME                          OFFSET                SIZE  MARK
-==============================================================
-bootloader               0(   0.00B)    400000(   4.00M)     0
-  (GAP)                                2000000(  32.00M)
-reserved           2400000(  36.00M)   4000000(  64.00M)     0
-env                6400000( 100.00M)    800000(   8.00M)     0
-system             6c00000( 108.00M)  80000000(   2.00G)     2
-data              86c00000(   2.11G) 14b400000(   5.18G)     4
-==============================================================
-Disk size totalling 7818182656 (7.28G) according to partition table
-Using 7818182656 (7.28G) as the disk size
-Parsing user input for partition (clone mode): bootloader:0B:4M:0
- - Name: bootloader
- - Offset: 0 (0.00B)
- - Size: 4194304 (4.00M)
- - Mask: 0
-Parsing user input for partition (clone mode): reserved:36M:64M:0
- - Name: reserved
- - Offset: 37748736 (36.00M)
- - Size: 67108864 (64.00M)
- - Mask: 0
-Parsing user input for partition (clone mode): cache:108M:512M:2
- - Name: cache
- - Offset: 113246208 (108.00M)
- - Size: 536870912 (512.00M)
- - Mask: 2
-Parsing user input for partition (clone mode): env:628M:8M:0
- - Name: env
- - Offset: 658505728 (628.00M)
- - Size: 8388608 (8.00M)
- - Mask: 0
-Parsing user input for partition (clone mode): logo:644M:32M:1
- - Name: logo
- - Offset: 675282944 (644.00M)
- - Size: 33554432 (32.00M)
- - Mask: 1
-Parsing user input for partition (clone mode): recovery:684M:32M:1
- - Name: recovery
- - Offset: 717225984 (684.00M)
- - Size: 33554432 (32.00M)
- - Mask: 1
-Parsing user input for partition (clone mode): rsv:724M:8M:1
- - Name: rsv
- - Offset: 759169024 (724.00M)
- - Size: 8388608 (8.00M)
- - Mask: 1
-Parsing user input for partition (clone mode): tee:740M:8M:1
- - Name: tee
- - Offset: 775946240 (740.00M)
- - Size: 8388608 (8.00M)
- - Mask: 1
-Parsing user input for partition (clone mode): crypt:756M:32M:1
- - Name: crypt
- - Offset: 792723456 (756.00M)
- - Size: 33554432 (32.00M)
- - Mask: 1
-Parsing user input for partition (clone mode): misc:796M:32M:1
- - Name: misc
- - Offset: 834666496 (796.00M)
- - Size: 33554432 (32.00M)
- - Mask: 1
-Parsing user input for partition (clone mode): boot:836M:32M:1
- - Name: boot
- - Offset: 876609536 (836.00M)
- - Size: 33554432 (32.00M)
- - Mask: 1
-Parsing user input for partition (clone mode): system:876M:2G:1
- - Name: system
- - Offset: 918552576 (876.00M)
- - Size: 2147483648 (2.00G)
- - Mask: 1
-Parsing user input for partition (clone mode): data:2932M:4524M:4
- - Name: data
- - Offset: 3074424832 (2.86G)
- - Size: 4743757824 (4.42G)
- - Mask: 4
-New partition table is generated successfully in memory
-Validating partition table...
-Partitions count: 13, GOOD √
-Magic: MPT, GOOD √
-Version: 01.00.00, GOOD √
-Checksum: calculated 5e11f97, recorded 5e11f97, GOOD √
-==============================================================
-NAME                          OFFSET                SIZE  MARK
-==============================================================
-bootloader               0(   0.00B)    400000(   4.00M)     0
-  (GAP)                                2000000(  32.00M)
-reserved           2400000(  36.00M)   4000000(  64.00M)     0
-  (GAP)                                 800000(   8.00M)
-cache              6c00000( 108.00M)  20000000( 512.00M)     2
-  (GAP)                                 800000(   8.00M)
-env               27400000( 628.00M)    800000(   8.00M)     0
-  (GAP)                                 800000(   8.00M)
-logo              28400000( 644.00M)   2000000(  32.00M)     1
-  (GAP)                                 800000(   8.00M)
-recovery          2ac00000( 684.00M)   2000000(  32.00M)     1
-  (GAP)                                 800000(   8.00M)
-rsv               2d400000( 724.00M)    800000(   8.00M)     1
-  (GAP)                                 800000(   8.00M)
-tee               2e400000( 740.00M)    800000(   8.00M)     1
-  (GAP)                                 800000(   8.00M)
-crypt             2f400000( 756.00M)   2000000(  32.00M)     1
-  (GAP)                                 800000(   8.00M)
-misc              31c00000( 796.00M)   2000000(  32.00M)     1
-  (GAP)                                 800000(   8.00M)
-boot              34400000( 836.00M)   2000000(  32.00M)     1
-  (GAP)                                 800000(   8.00M)
-system            36c00000( 876.00M)  80000000(   2.00G)     1
-  (GAP)                                 800000(   8.00M)
-data              b7400000(   2.86G) 11ac00000(   4.42G)     4
-==============================================================
-Disk size totalling 7818182656 (7.28G) according to partition table
-Re-opening input path '/dev/mmcblk0' to write new patition table...
-Notice: Seeking 37748736 (36.00M) (offset of reserved partition) into disk
-Warning: input is a whole emmc disk, checking if we should copy the env partition as the env partition may be moved
-Offset of the env partition has changed, copying content of it...
-Copied content env partiton
-Notifying kernel about partition table change...
-We need to reload the driver for emmc as the meson-mmc driver does not like partition table being hot-updated
-Opening '/sys/bus/mmc/drivers/mmcblk/unbind' so we can unbind driver for 'emmc:0001'
-Successfully unbinded the driver, all partitions and the disk itself are not present under /dev as a result of this
-Opening '/sys/bus/mmc/drivers/mmcblk/bind' so we can bind driver for 'emmc:0001'
-Successfully binded the driver, you can use the new partition table now!
-Everything done! Enjoy your fresh-new partition table!
-````
+
 ## About
 The main reason I started to write this is that **CoreELEC**'s proprietary **ceemmc** which bricked **my only S905X** box can not be modified for reverting what it has done, and intalling EmuELEC and HybridELEC to internal emmc, as its partition sizes are **hard-coded** and refuse to change the way it works because the writer decides they should decide what users want, and this triggers me deeply for my KISS (Keep It Simple, Stupid) principles.
 

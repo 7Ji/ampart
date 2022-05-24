@@ -336,7 +336,7 @@ int get_part_argument_length (char *argument, bool allow_end) {
         ++c;
     }
     if (!valid) {
-        die("Partation argument incomplete! msut be in format of name:offset:size:mask");
+        die("Partation argument incomplete!");
     }
     return i; // the length here does not contain : or \0
 }
@@ -352,8 +352,8 @@ void partition_from_argument (struct partition *partition, char *argument, struc
     if ( length > 15 ) {
         die("Partition name '%s' too long! It can only be 15 characters long!", arg);
     }
+    valid_partition_name(arg, false);
     strcpy(partition->name, arg);
-    valid_partition_name(partition->name, false);
     printf(" - Name: %s\n", partition->name);
     arg += length + 1;
     // Offset
@@ -431,8 +431,8 @@ void partition_from_argument_clone(struct partition *partition, char *argument) 
     if ( length > 15 ) {
         die("Partition name '%s' too long! It can only be 15 characters long!", arg);
     }
+    valid_partition_name(arg, true);
     strcpy(partition->name, arg);
-    valid_partition_name(partition->name, true);
     printf(" - Name: %s\n", partition->name);
     arg += length + 1;
     // Offset
@@ -468,11 +468,210 @@ void partition_from_argument_clone(struct partition *partition, char *argument) 
     return;
 }
 
-void table_update(struct partition_table *table, char * argument) {
-    
+uint64_t get_max_part_end(struct partition_table *table) {
+    int i;
+    uint64_t end=0, part_end=0;
+    struct partition * part=NULL;
+    for (i=0; i<table->part_num; ++i) {
+        part = &(table->partitions[i]);
+        part_end = part->offset + part->size;
+        if (part_end>end) {
+            end=part_end;
+        }
+    }
+    return end;
+}
 
-
-
+#define ACTION_NORMAL 0
+#define ACTION_DELETE 1
+#define ACTION_CLONE  2
+void table_update(struct partition_table *table, char * argument, struct disk_helper *disk) {
+    disk->start = get_max_part_end(table);
+    disk->free=disk->size-disk->start;
+    // size_byte_to_human_readable(s_buffer_1, disk->start);
+    // size_byte_to_human_readable(s_buffer_2, disk->free);
+    // size_byte_to_human_readable(s_buffer_3, disk->size);
+    // printf("Disk before update: used %"PRIu64" (%s) / free %"PRIu64" (%s) / total %"PRIu64" (%s)\n", disk->start, s_buffer_1, disk->free, s_buffer_2, disk->size, s_buffer_3);
+    char argument_new[strlen(argument)+1], *arg=argument_new; 
+    strcpy(argument_new, argument);
+    int length;
+    if (argument[0] != '^') { // No selector, creation mode
+        puts("No selector found, normal creation mode");
+        if (table->part_num == PART_NUM) {
+            die("Attempting to add partition when partition count is already at its maximum (32)");
+        }
+        partition_from_argument(&(table->partitions[(table->part_num)++]), arg, disk);
+        return;
+    }
+    ++arg; // From the selector themselvies
+    short action=ACTION_NORMAL; // 0 for normal, 1 for delete, 2 for clone
+    short relative=0;
+    int id;
+    if (arg[0] == '-') { // Tail selection
+        puts("Notice: negative selector encountered");
+        relative=-1;
+    }
+    else if (arg[0] >= '0' && arg[0] <= '9') { // Head selection
+        puts("Notice: positive selector encountered");
+        relative=1;
+    }
+    length=get_part_argument_length(arg, true);
+    if (!length) {
+        die("Partition selector must be EXPLICTLY set");
+    }
+    if (arg[length-1] == '?') {
+        action=ACTION_DELETE;
+        arg[length-1] = '\0';
+    }
+    else if (arg[length-1] == '%') {
+        action=ACTION_CLONE;
+        if (table->part_num == PART_NUM) {
+            die("Trying to clone clone a partition when partition count is already at its maximum (32)");
+        }
+        arg[length-1] = '\0';
+    }
+    if (!length) {
+        die("Partition selector must be EXPLICTLY set");
+    }
+    int i;
+    struct partition *part=NULL;
+    if (relative) {
+        id = atoi(arg);
+        printf("Relative selector before parsing: %i\n", id);
+        if (relative == -1) {
+            id = table->part_num + id;
+        }
+        if (id < 0 || id > table->part_num) {
+            die("Illegal part id: %d. Max: %i", id, table->part_num);
+        }
+        part = &(table->partitions[id]);
+    }
+    else {
+        struct partition *part_cmp=NULL;
+        for (i=0; i<table->part_num; ++i) {
+            part_cmp = &(table->partitions[i]);
+            if (!strcmp(part_cmp->name, arg)) {
+                id = i;
+                part=part_cmp;
+                break;
+            }
+        }
+        if (part == NULL) {
+            die("Failed to find a partition with name '%s' in the old partition table", arg);
+        }
+    }
+    if (part == NULL) {
+        // It's really unneccessary to check it again here, but just for safety
+        die("No partition selected, refuse to continue");
+    }
+    printf("Partition selected: %i:%s\n", id, part->name);
+    if (action==ACTION_DELETE) {
+        for (i=id; i<table->part_num-1; ++i) {  // Move all parts one backwards
+            memcpy(&(table->partitions[i]), &(table->partitions[i+1]), SIZE_PART);
+        }
+        memset(&(table->partitions[i]), 0, SIZE_PART);
+        --(table->part_num);
+        printf("Deleted partition %i (oh, I forgot what it actually was)\n", id);
+        return;
+    }
+    if (action==ACTION_CLONE) {
+        arg += length + 1;
+        length = get_part_argument_length(arg, true);
+        if (!length) {
+            die("Partition name must be set for the new cloned partition");
+        }
+        if (length > 15) {
+            die("Partition name '%s' for the new cloned partition too long! It can only be 15 characters long!", arg);
+        }
+        valid_partition_name(arg, false);
+        memcpy(&(table->partitions[(table->part_num++)]), part, SIZE_PART);
+        strcpy(table->partitions[table->part_num-1].name, arg);
+        return;
+    }
+    // Modification mode
+    // name
+    arg += length + 1;
+    length = get_part_argument_length(arg, false);
+    if (length) {
+        if (length > 15) {
+            die("New partition name '%s' too long! It can only be 15 characters long!", arg);
+        }
+        valid_partition_name(arg, false);
+        strcpy(part->name, arg);
+        printf(" - Name -> %s\n", part->name);
+    }
+    // offset
+    arg += length + 1;
+    length = get_part_argument_length(arg, false);
+    relative = 0;
+    uint64_t temp;
+    if (length) {
+        if ( arg[0] == '-' ) {
+            relative = -1;
+        }
+        else if (arg[0] == '+') {
+            relative = 1;
+        }
+        if (relative) {
+            temp = size_human_readable_to_byte_no_prefix(arg+1, false);
+        }
+        if (relative) {
+            if (relative == 1) {
+                part->offset += temp;
+            }
+            else {
+                part->offset -= temp;
+            }
+        }
+        else {
+            part->offset = temp;
+        }
+        part->offset = four_kb_alignment(part->offset);
+        size_byte_to_human_readable(s_buffer_1, part->offset);
+        printf(" - Offset -> %"PRIu64"(%s)\n", part->offset, s_buffer_1);
+    }
+    // Size
+    arg += length + 1;
+    length = get_part_argument_length(arg, false);
+    relative = 0;
+    if (length) {
+        if ( arg[0] == '-' ) {
+            relative = -1;
+        }
+        else if (arg[0] == '+') {
+            relative = 1;
+        }
+        if (relative) {
+            temp = size_human_readable_to_byte_no_prefix(arg+1, false);
+        }
+        if (relative) {
+            if (relative == 1) {
+                part->size += temp;
+            }
+            else {
+                part->size -= temp;
+            }
+        }
+        else {
+            part->size = temp;
+        }
+        part->size = four_kb_alignment(part->size);
+        size_byte_to_human_readable(s_buffer_1, part->size);
+        printf(" - Size -> %"PRIu64"(%s)\n", part->size, s_buffer_1);
+    }
+    // Mask
+    arg += length + 1;
+    length = get_part_argument_length(arg, true);
+    if (length) {
+        printf("%d\n", length);
+        part->mask_flags=atoi(arg);
+        printf("%d\n", part->mask_flags);
+        puts(arg);
+        if ((part->mask_flags != 1) && (part->mask_flags != 2) && (part->mask_flags != 4)) {
+            die("Invalid mask %u, must be either 0, 1, 2 or 4, or leave it empty to not touch it", part->mask_flags);
+        }
+        printf(" - Mask -> %d", part->mask_flags);
+    }
     return;
 }
 
@@ -594,9 +793,10 @@ uint64_t summary_partition_table(struct partition_table *table) {
         puts(" - Please confirm if you've failed with ceemmc as it may overlay data with CE_STORAGE");
         puts(" - If your device bricks, do not blame on ampart as it's just the one helping you discovering it");
     }
-    size_byte_to_human_readable(s_buffer_1, offset);
-    printf("Disk size totalling %"PRIu64" (%s) according to partition table\n", offset, s_buffer_1);
-    return offset;
+    uint64_t size=get_max_part_end(table);
+    size_byte_to_human_readable(s_buffer_1, size);
+    printf("Disk size totalling %"PRIu64" (%s) according to partition table\n", size, s_buffer_1);
+    return size;
 }
 
 void is_reserved(struct options *options) {
@@ -988,7 +1188,7 @@ struct partition_table * parse_table(struct disk_helper *disk, struct table_help
         while ( optind < *argc ) {
             partition_arg = argv[optind++];
             printf("Parsing user input for partition operation (update mode): %s\n", partition_arg);
-            table_update(table_new, partition_arg);
+            table_update(table_new, partition_arg, disk);
         }
     }
     else {

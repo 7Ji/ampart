@@ -1326,7 +1326,6 @@ void write_table(struct partition_table *table, struct partition *env_p) {
         }
     }
     fclose(fp);
-    fsync(fp);
     if (options.input_device) {
         if (options.no_reload) {
             puts("Warning: no-reload is set, skip notifying the kernel about part layout changes\n - Remember to call ampart with --partprobe to properly reload the partition layout for system");
@@ -1335,7 +1334,6 @@ void write_table(struct partition_table *table, struct partition *env_p) {
             reload_emmc();
         }
     }
-    sync();
     puts("Everything done! Enjoy your fresh-new partition table!");
 }
 

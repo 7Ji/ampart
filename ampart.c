@@ -63,6 +63,19 @@ struct disk_helper {
     uint64_t size;
 };
 
+struct dtb_header {
+    uint32_t magic;
+    uint32_t totalsize;
+    uint32_t off_dt_struct;
+    uint32_t off_dt_strings;
+    uint32_t off_mem_rsvmap;
+    uint32_t version;
+    uint32_t last_comp_version;
+    uint32_t boot_cpuid_phys;
+    uint32_t size_dt_strings;
+    uint32_t size_dt_struct;
+};
+
 struct options {
     bool input_reserved;
     bool input_device;
@@ -1196,7 +1209,17 @@ struct partition_table * parse_table(struct disk_helper *disk, struct table_help
     else {
         // Only when partition is defined, will we try to parse partition table defined by user
         uint64_t reserved_end = table_h->reserved->offset + table_h->reserved->size;
-        disk->start = reserved_end + table_h->env->size;
+        bool env_insert;
+        uint64_t bootloader_end = table_h->bootloader->offset + table_h->bootloader->size; // Just in case one day bootloader does not start at 0
+        uint64_t bootloader_reserved_gap = table_h->reserved->offset - bootloader_end;
+        if (bootloader_reserved_gap > table_h->env->size) {
+            env_insert = true;
+            disk->start = reserved_end;
+        }
+        else {
+            env_insert = false;
+            disk->start = reserved_end + table_h->env->size;
+        }
         disk->free = disk->size - disk->start;
         size_byte_to_human_readable(s_buffer_1, disk->free);
         size_byte_to_human_readable(s_buffer_2, reserved_end);
@@ -1217,9 +1240,17 @@ struct partition_table * parse_table(struct disk_helper *disk, struct table_help
         //memcpy(table_new, table, 16); // 4byte for magic, 16byte for version
         table_new->part_num = partitions_count + 3;
         memcpy(&(table_new->partitions[0]), table_h->bootloader, SIZE_PART);
-        memcpy(&(table_new->partitions[1]), table_h->reserved, SIZE_PART);
-        memcpy(&(table_new->partitions[2]), table_h->env, SIZE_PART);
-        table_new->partitions[2].offset=reserved_end;
+        if (env_insert) {
+            memcpy(&(table_new->partitions[1]), table_h->env, SIZE_PART);
+            memcpy(&(table_new->partitions[2]), table_h->reserved, SIZE_PART);
+            table_new->partitions[1].offset=bootloader_end;
+            // Move env, if size between is enough
+        }
+        else {
+            memcpy(&(table_new->partitions[1]), table_h->reserved, SIZE_PART);
+            memcpy(&(table_new->partitions[2]), table_h->env, SIZE_PART);
+            table_new->partitions[2].offset=reserved_end;
+        }
         for (i=0; i<partitions_count; ++i) {
             memcpy(&(table_new->partitions[i+3]), &partitions_new[i], SIZE_PART);
         }
@@ -1273,6 +1304,101 @@ void no_mounted(struct partition_table *table) {
     return;
 }
 
+
+#define DTB_SIZE 0x40000
+#define DTB_OFFSET 0x400000
+#define PAGE_SIZE 0x800
+#define DTB_HEADER_SIZE 40
+
+uint32_t swap_bytes_u32(uint32_t b)
+{
+    return ((b & 0xFF000000) >> 24) |
+           ((b & 0x00FF0000) >> 8) |
+           ((b & 0x0000FF00) << 8) |
+           (b << 24);
+}
+
+const unsigned char dtb_partitions_start[]={0x70, 0x61, 0x72, 0x74, 0x69, 0x74, 0x69, 0x6F, 0x6E, 0x73};
+#define LEN_DTB_PARTITIONS_START 10
+const unsigned char dtb_partitions_end[]= {0,0,0,2,0,0,0,2,0,0,0,1};
+#define LEN_DTB_PARTITIONS_END 12
+const unsigned char dtb_magic[] = {0xD0, 0x0D, 0xFE, 0xED};
+const unsigned char aml_magic[] = {0x41, 0x4D, 0x4C, 0x5F};
+
+unsigned char *pattern_finder(unsigned char * haystack, unsigned char * pattern, uint32_t size, unsigned length) {
+    unsigned char *rtr, *ptr=haystack;
+    unsigned matched=0;
+    uint32_t i = 0;
+    while (i<size) {  // Do not overflow
+        if (haystack[i] == pattern[matched]) {
+            ++matched;
+            if (matched == length) {
+                return &(haystack[i+1-matched]);
+            }
+        }
+        else {
+            i-=matched;
+            matched=0;
+        }
+        ++i;
+    }
+    return NULL;
+}
+
+void remove_dtb_partitions(unsigned char *dtb) {
+    struct dtb_header *header = malloc(DTB_HEADER_SIZE);
+    memcpy(header, dtb, DTB_HEADER_SIZE);
+    uint32_t dtb_size = swap_bytes_u32(header->totalsize);
+    unsigned char * parts_start=pattern_finder(dtb+DTB_HEADER_SIZE, dtb_partitions_start, dtb_size-DTB_HEADER_SIZE, LEN_DTB_PARTITIONS_START);  // Where partitions node start
+    if (parts_start) {
+        puts("Notice: partitions node found in dtb, removing it");
+    }
+    else {
+        free(header);
+        return;
+    }
+    unsigned char * parts_end=pattern_finder(parts_start, dtb_partitions_end, dtb_size-(parts_start-dtb), LEN_DTB_PARTITIONS_END);
+    uint32_t  dtb_size_diff = parts_end - parts_start + LEN_DTB_PARTITIONS_END;
+    unsigned char *ptr;
+    for (ptr=parts_start; ptr<(dtb+dtb_size)-dtb_size_diff; ++ptr) {
+        *ptr = *(ptr+dtb_size_diff);
+    }
+    header->totalsize = swap_bytes_u32(dtb_size-dtb_size_diff);
+    header->off_dt_strings = swap_bytes_u32(swap_bytes_u32(header->off_dt_strings)-dtb_size_diff);
+    header->size_dt_struct = swap_bytes_u32(swap_bytes_u32(header->size_dt_struct)-dtb_size_diff);
+    memcpy(dtb, header, DTB_HEADER_SIZE);
+    free(header);
+    return;
+}
+
+void remove_dtbs_partitions(FILE *fp) {
+    uint64_t offset_dtbs;
+    if (!options.input_device && options.input_reserved) {
+        offset_dtbs = DTB_OFFSET;
+    }
+    else {
+        offset_dtbs = options.offset + DTB_OFFSET;
+    }
+    fseek(fp, offset_dtbs, SEEK_SET);
+    unsigned char *dtbs = malloc(DTB_SIZE);
+    fread(dtbs, DTB_SIZE, 1, fp);
+    if (!strncmp(dtbs, aml_magic, 4)) {
+        unsigned char *dtb = pattern_finder(dtbs, dtb_magic, DTB_SIZE, 4);
+        while (dtb != NULL) {
+            remove_dtb_partitions(dtb);
+            dtb = pattern_finder(dtb+PAGE_SIZE, dtb_magic, DTB_SIZE, 4); // 0x800 is page size
+        }
+    }
+    else if (!strncmp(dtbs, dtb_magic, 4)) {
+        // A single dtb
+        remove_dtb_partitions(dtbs);
+    }
+    fseek(fp, offset_dtbs, SEEK_SET);
+    fwrite(dtbs, DTB_SIZE, 1, fp); // A duplicate copy should be written
+    fwrite(dtbs, DTB_SIZE, 1, fp);
+    return;
+}
+
 void write_table(struct partition_table *table, struct partition *env_p) {
     char *path_write;
     if (options.input_device && options.input_reserved) {
@@ -1281,7 +1407,7 @@ void write_table(struct partition_table *table, struct partition *env_p) {
     }
     else {
         path_write = options.path_input;
-    }
+    }  // 1.Device disk: to disk; 2.Device reserved: to disk; 3.Image disk: to disk; 4:Image reserved: to reserved
     printf("Oopening '%s' as read/append to write new patition table...\n", path_write);
     FILE *fp = fopen(path_write, "r+");
     if (fp==NULL) {
@@ -1296,6 +1422,7 @@ void write_table(struct partition_table *table, struct partition *env_p) {
         fseek(fp, options.offset, SEEK_SET);
     }
     fwrite(table, SIZE_TABLE, 1, fp);
+    remove_dtbs_partitions(fp);
     if (!options.input_device && options.input_reserved) {
         puts("Warning: unable to migrate env partition since input is a dumped image for reserved partition\n - You'll need to restore it from a backup image of env partition if you want to write this image to the real reserved partition");
     }

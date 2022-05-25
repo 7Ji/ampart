@@ -1393,6 +1393,9 @@ void remove_dtbs_partitions(FILE *fp) {
         // A single dtb
         remove_dtb_partitions(dtbs);
     }
+    else {
+        die("Failed to find dtb header or amlogic multi-dtb header\n - Refuse to continue as we can't make sure there is no partitions node in dtb\n - And if there is, the part table will be reverted by u-boot");
+    }
     fseek(fp, offset_dtbs, SEEK_SET);
     fwrite(dtbs, DTB_SIZE, 1, fp); // A duplicate copy should be written
     fwrite(dtbs, DTB_SIZE, 1, fp);
@@ -1413,8 +1416,10 @@ void write_table(struct partition_table *table, struct partition *env_p) {
     if (fp==NULL) {
         die("Can not open path '%s' as read/write/append, new partition table not written, check your permission!");
     }
+    remove_dtbs_partitions(fp);
     if (!options.input_device && options.input_reserved) {
         puts("Notice: input is a dumped image for reserved partition, no seeking");
+        fseek(fp, 0, SEEK_SET);
     }
     else {
         size_byte_to_human_readable(s_buffer_1, options.offset);
@@ -1422,7 +1427,6 @@ void write_table(struct partition_table *table, struct partition *env_p) {
         fseek(fp, options.offset, SEEK_SET);
     }
     fwrite(table, SIZE_TABLE, 1, fp);
-    remove_dtbs_partitions(fp);
     if (!options.input_device && options.input_reserved) {
         puts("Warning: unable to migrate env partition since input is a dumped image for reserved partition\n - You'll need to restore it from a backup image of env partition if you want to write this image to the real reserved partition");
     }

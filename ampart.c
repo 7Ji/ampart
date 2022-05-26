@@ -1,5 +1,5 @@
 /*
- * A simple, fast, yet reliable partition tool for Amlogic's proprietary emmc partition format
+ * A simple, fast, yet powerful partition tool for Amlogic's proprietary emmc partition format
  *
  * Copyright (C) 2022 7Ji (pugokushin@gmail.com)
  *
@@ -27,12 +27,48 @@
 #include <libgen.h>
 #include <linux/fs.h>
 #include <unistd.h>
-#define PART_NUM    32      // Maximum of part number, set here to ease the pain if one day thiis changes
-#define SIZE_PART   40      // This should ALWAYS be 40, regardless of platform
-#define SIZE_TABLE  1304    // This should ALWAYS be 1304, regardless of platform
-#define SIZE_HEADER 0x200   // Count of bytes that should be \0 for whole emmc disk, things may become tricky if users have created a mbr partition table, as 0x200 is the size of mbr and it then becomes occupied
-#define SIZE_ENV    0x800000
-#define VERSION     "v0.1"
+#include <zlib.h>
+
+//#define VERSION     "v0.1"           // This should ONLY be uncommented for actual releases, for snapshot builds it will be generated using git commit hash instead
+#define PART_NUM                  0x20 // This should ALWAYS be 0x20=32, regardless of platform. Defining it here saves some precious time used on sizeof()
+#define SIZE_PART                 0x28 // This should ALWAYS be 0x28=40, regardless of platform. Defining it here saves some precious time used on sizeof()
+#define SIZE_TABLE               0x518 // This should ALWAYS be 0x518=1304, regardless of platform. Defining it here saves some precious time used on sizeof()
+#define SIZE_DTB_HEADER           0x28 // This should ALWAYS be 0x28=40, regardless of platform. Defining it here saves some precious time used on sizeof()
+#define SIZE_MBR                 0x200 // Count of bytes that should be \0 for whole emmc disk, as stock Amlogic emmc should have no MBR. Things may become tricky if users have created a mbr partition table. In that case auto-recognization may not work for dumped image for whole emmc (for whole emmc disk DEVICE though, auto-recognization works without checking MBR)
+#define SIZE_DTB               0x40000  //256K
+#define SIZE_DTB_GUNZIP       0xA00000  //10M, yeah I know it's a lot, but hey, just in case there is a 'Super Compressor' that can compress this much data into a tiny 256K gzip (wow, a 40:1 ratio)
+#define DTB_OFFSET            0x400000  //4M, relative to reserved part
+#define PAGE_SIZE                0x800  //Minimum emmc I/O size
+
+#define MAGIC_MULTI_DTB     0x5F4C4D41
+#define MAGIC_SINGLE_DTB    0xEDFE0DD0
+#define MAGIC_GZIPPED_DTB   0x00008B1F
+#define MAGIC_XIAOMI_DTB    0x000089EF  // The BS Xiaomi proprietary DTB format, found on a user's Xiaomi mibox3s (Chinese firmware, the global firmware does not have such a format)
+#define MAGIC_PHICOMM_DTB   0x000004DA  // The BS Phicomm proprietary DTB format, found on a user's Phicomm N1
+
+// These are helper value used to parse around, to save extra process time after the first comparision using those magics listed above
+#define DTB_TYPE_ILLEGAL             0  // We consider the initialized value 0 as illegal
+#define DTB_TYPE_SINGLE              1
+#define DTB_TYPE_MULTI               2
+#define DTB_TYPE_GZIP                3
+
+#define SYS_EMMC_DEVICE     "emmc:0001"
+#define SYS_MMCBLK          "/sys/bus/mmc/drivers/mmcblk"
+#define SYS_MMCBLK_UNBIND   SYS_MMCBLK"/unbind"
+#define SYS_MMCBLK_BIND     SYS_MMCBLK"/bind"
+
+#define RESERVED_DEV_NAMES  "amaudio amaudio_ctl amaudio_utils amstream_abuf amstream_hevc amstream_mpps amstream_mpts amstream_rm amstream_sub amstream_vbuf amstream_vframe amsubtitle amvdac amvecm amvideo amvideo_poll aocec autofs block bus char console cpu_dma_latency cvbs ddr_parameter disk display dtb efuse esm fd firmware_vdec framerate_dev full fuse hwrng initctl input ion kmem kmsg log mali mapper media mem mqueue net network_latency null port ppmgr ppp psaux ptmx pts random rfkill rtc secmem shm snd stderr stdin stdout tsync tty ubi_ctrl uhid uinput unifykeys urandom vad vcs vcsa vfm vhci watchdog wifi_power zero"
+
+#define TABLE_UPDATE_ACTION_NORMAL    0
+#define TABLE_UPDATE_ACTION_DELETE    1
+#define TABLE_UPDATE_ACTION_CLONE     2
+
+const unsigned char dtb_partitions_start[]={0x70, 0x61, 0x72, 0x74, 0x69, 0x74, 0x69, 0x6F, 0x6E, 0x73};
+const unsigned char dtb_partitions_end[]= {0,0,0,2,0,0,0,2,0,0,0,1};
+
+#define LEN_DTB_PARTITIONS_START 10
+#define LEN_DTB_PARTITIONS_END 12
+
 
 struct partition {
 	char name[16];
@@ -65,15 +101,16 @@ struct disk_helper {
 
 struct dtb_header {
     uint32_t magic;
-    uint32_t totalsize;
+    uint32_t totalsize;  // Change if partitions removed
     uint32_t off_dt_struct;
-    uint32_t off_dt_strings;
+    uint32_t off_dt_strings;  // Change if partitions removed
     uint32_t off_mem_rsvmap;
     uint32_t version;
     uint32_t last_comp_version;
     uint32_t boot_cpuid_phys;
     uint32_t size_dt_strings;
-    uint32_t size_dt_struct;
+    uint32_t size_dt_struct;  // Change if partitions removed
+    // The three bad-boys will be decreased on the same level
 };
 
 struct options {
@@ -84,7 +121,11 @@ struct options {
     bool mode_update;
     bool dryrun;
     bool no_reload;
-    char path_input[128];
+    bool check_compatibility;
+    bool no_node;
+    int dtb_type;
+    int dtb_subtype; // when type is gzipped, this stores the subtype (multi/single), otherwise always 0
+    char path_input[128]; // For fuck's sake, will there be a maniac hide their image this deeply?
     char path_disk[128];
     char dir_input[64];
     char name_input[64];
@@ -93,7 +134,8 @@ struct options {
     uint64_t size;
 } options = {0};
 
-char s_buffer_1[9]; // Dedicated string buffer
+// Dedicated string buffer, so we don't need to allocate over and over again
+char s_buffer_1[9]; 
 char s_buffer_2[9];
 char s_buffer_3[9];
 
@@ -268,7 +310,7 @@ uint64_t size_human_readable_to_byte_no_prefix(char * size_h, bool allow_empty) 
 }
 
 void no_device_names(char *name) {
-    char device_names[] = "amaudio amaudio_ctl amaudio_utils amstream_abuf amstream_hevc amstream_mpps amstream_mpts amstream_rm amstream_sub amstream_vbuf amstream_vframe amsubtitle amvdac amvecm amvideo amvideo_poll aocec autofs block bus char console cpu_dma_latency cvbs ddr_parameter disk display dtb efuse esm fd firmware_vdec framerate_dev full fuse hwrng initctl input ion kmem kmsg log mali mapper media mem mqueue net network_latency null port ppmgr ppp psaux ptmx pts random rfkill rtc secmem shm snd stderr stdin stdout tsync tty ubi_ctrl uhid uinput unifykeys urandom vad vcs vcsa vfm vhci watchdog wifi_power zero";
+    char device_names[] = RESERVED_DEV_NAMES;
     char *token = strtok(device_names, " ");
     while( token != NULL ) {
         if (!strcmp(token, name)) {
@@ -496,16 +538,10 @@ uint64_t get_max_part_end(struct partition_table *table) {
     return end;
 }
 
-#define ACTION_NORMAL 0
-#define ACTION_DELETE 1
-#define ACTION_CLONE  2
+
 void table_update(struct partition_table *table, char * argument, struct disk_helper *disk) {
     disk->start = get_max_part_end(table);
     disk->free=disk->size-disk->start;
-    // size_byte_to_human_readable(s_buffer_1, disk->start);
-    // size_byte_to_human_readable(s_buffer_2, disk->free);
-    // size_byte_to_human_readable(s_buffer_3, disk->size);
-    // printf("Disk before update: used %"PRIu64" (%s) / free %"PRIu64" (%s) / total %"PRIu64" (%s)\n", disk->start, s_buffer_1, disk->free, s_buffer_2, disk->size, s_buffer_3);
     char argument_new[strlen(argument)+1], *arg=argument_new; 
     strcpy(argument_new, argument);
     int length;
@@ -518,7 +554,7 @@ void table_update(struct partition_table *table, char * argument, struct disk_he
         return;
     }
     ++arg; // From the selector themselvies
-    short action=ACTION_NORMAL; // 0 for normal, 1 for delete, 2 for clone
+    short action=TABLE_UPDATE_ACTION_NORMAL; // 0 for normal, 1 for delete, 2 for clone
     short relative=0;
     int id;
     if (arg[0] == '-') { // Tail selection
@@ -534,11 +570,11 @@ void table_update(struct partition_table *table, char * argument, struct disk_he
         die("Partition selector must be EXPLICTLY set");
     }
     if (arg[length-1] == '?') {
-        action=ACTION_DELETE;
+        action=TABLE_UPDATE_ACTION_DELETE;
         arg[length-1] = '\0';
     }
     else if (arg[length-1] == '%') {
-        action=ACTION_CLONE;
+        action=TABLE_UPDATE_ACTION_CLONE;
         if (table->part_num == PART_NUM) {
             die("Trying to clone clone a partition when partition count is already at its maximum (32)");
         }
@@ -579,7 +615,7 @@ void table_update(struct partition_table *table, char * argument, struct disk_he
         die("No partition selected, refuse to continue");
     }
     printf("Partition selected: %i:%s\n", id, part->name);
-    if (action==ACTION_DELETE) {
+    if (action==TABLE_UPDATE_ACTION_DELETE) {
         for (i=id; i<table->part_num-1; ++i) {  // Move all parts one backwards
             memcpy(&(table->partitions[i]), &(table->partitions[i+1]), SIZE_PART);
         }
@@ -588,7 +624,7 @@ void table_update(struct partition_table *table, char * argument, struct disk_he
         printf("Deleted partition %i (oh, I forgot what it actually was)\n", id);
         return;
     }
-    if (action==ACTION_CLONE) {
+    if (action==TABLE_UPDATE_ACTION_CLONE) {
         arg += length + 1;
         length = get_part_argument_length(arg, true);
         if (!length) {
@@ -856,14 +892,14 @@ void is_reserved(struct options *options) {
     }
     else { // A normal file
         printf("Path '%s' seems a dumped image, checking the head bytes to distinguish it...\n", options->path_input);
-        char buffer[SIZE_HEADER];
+        char buffer[SIZE_MBR];
         FILE *fp = fopen(options->path_input, "r");
         if (fp==NULL) {
             die("Can not open path '%s' as read-only, check your permission!", options->path_input);
         }
-        fread(buffer, SIZE_HEADER, 1, fp);
+        fread(buffer, SIZE_MBR, 1, fp);
         options->input_reserved = false;
-        for (int i=0; i<SIZE_HEADER; ++i) {
+        for (int i=0; i<SIZE_MBR; ++i) {
             if (buffer[i]) {
                 options->input_reserved = true;
                 break;
@@ -880,7 +916,7 @@ void is_reserved(struct options *options) {
 }
 
 void version() {
-    puts("\nampart (Amlogic emmc partition tool) "VERSION"\nCopyright (C) 2022 7Ji (pugokushin@gmail.com)\nLicense GPLv3: GNU GPL version 3 <https://gnu.org/licenses/gpl.html>.\nThis is free software: you are free to change and redistribute it.\nThere is NO WARRANTY, to the extent permitted by law.\n");
+    puts("\nampart (AMLogic emmc partition tool) "VERSION"\nCopyright (C) 2022 7Ji (pugokushin@gmail.com)\nLicense GPLv3: GNU GPL version 3 <https://gnu.org/licenses/gpl.html>.\nThis is free software: you are free to change and redistribute it.\nThere is NO WARRANTY, to the extent permitted by law.\n");
 }
 
 void help(char *path) {
@@ -928,6 +964,8 @@ void get_options(int argc, char **argv) {
         {"snapshot",no_argument,        NULL,   's'},
         {"clone",   no_argument,        NULL,   'c'},
         {"update",  no_argument,        NULL,   'u'},
+        {"compatible",no_argument,      NULL,   'C'},
+        {"no-node", no_argument,        NULL,   'N'},
         {"dry-run", no_argument,        NULL,   'D'},
         {"partprobe",no_argument,       NULL,   'p'},
         {"no-reload",no_argument,       NULL,   'n'},
@@ -936,7 +974,7 @@ void get_options(int argc, char **argv) {
     };
     char buffer[9];
     bool input_disk = false;
-    while ((c = getopt_long(argc, argv, "vhdrO:scuDpno:", long_options, &option_index)) != -1) {
+    while ((c = getopt_long(argc, argv, "vhdrO:scuCNDpno:", long_options, &option_index)) != -1) {
         int this_option_optind = optind ? optind : 1;
         switch (c) {
             case 'v':
@@ -967,6 +1005,14 @@ void get_options(int argc, char **argv) {
             case 'u':
                 puts("Notice: running in update mode");
                 options.mode_update = true;
+                break;
+            case 'C':
+                puts("Notice: running in compatibility check mode, new table won't be parsed and we will only check if the dtbs can be modified so we can remove the partitions node to avoid u-boot reverting the table");
+                options.check_compatibility = true;
+                break;
+            case 'N':
+                puts("Notice: running in no-partitions-node-removal mode\n - ampart will not check dtb or try to remove the partitions node from it\n - unless you are sure your u-boot won't check and revert the partition table according to partitions node in dtb, \n - you should NOT enable this.\n - as your new partitions may only be available during this boot.");
+                options.no_node = true;
                 break;
             case 'D':
                 puts("Notice: running in dry-run mode, changes won't be written to disk");
@@ -1104,34 +1150,33 @@ uint64_t read_partition_table(struct table_helper *table_h) {
         fseek(fp, options.offset, SEEK_SET);
     }
     fread(table, SIZE_TABLE, 1, fp);
-    fclose(fp);
     valid_partition_table(table_h);
     printf("Partition table read from '%s':\n", options.path_input);
-    return summary_partition_table(table);
+    uint64_t size=summary_partition_table(table);
+    get_dtb_type(fp);
+    fclose(fp); 
+    return size;
 };
 
 void reload_emmc() {
     // Notifying kernel about emmc partition table change
     sync();
-    const char device[] = "emmc:0001";
-    const char path_unbind[] = "/sys/bus/mmc/drivers/mmcblk/unbind";
-    const char path_bind[] = "/sys/bus/mmc/drivers/mmcblk/bind";
     puts("Notifying kernel about partition table change...");
     puts("We need to reload the driver for emmc as the meson-mmc driver does not like partition table being hot-updated");
-    printf("Opening '%s' so we can unbind driver for '%s'\n", path_unbind, device);
-    FILE *fp = fopen(path_unbind, "w");
+    printf("Opening '%s' so we can unbind driver for '%s'\n", SYS_MMCBLK_UNBIND, SYS_EMMC_DEVICE);
+    FILE *fp = fopen(SYS_MMCBLK_UNBIND, "w");
     if ( fp == NULL ) {
-        die("ERROR: can not open '%s' for unbinding driver for '%s', \n - You will need to reboot manually for the new partition table to be picked up by kernel \n - DO NOT access the old parititions under /dev for now as they are not updated!", path_unbind, device);
+        die("ERROR: can not open '%s' for unbinding driver for '%s', \n - You will need to reboot manually for the new partition table to be picked up by kernel \n - DO NOT access the old parititions under /dev for now as they are not updated!", SYS_MMCBLK_UNBIND, SYS_EMMC_DEVICE);
     }
-    fputs(device, fp);
+    fputs(SYS_EMMC_DEVICE, fp);
     fclose(fp);
     puts("Successfully unbinded the driver, all partitions and the disk itself are not present under /dev as a result of this");
-    printf("Opening '%s' so we can bind driver for '%s'\n", path_bind, device);
-    fp = fopen(path_bind, "w");
+    printf("Opening '%s' so we can bind driver for '%s'\n", SYS_MMCBLK_BIND, SYS_EMMC_DEVICE);
+    fp = fopen(SYS_MMCBLK_BIND, "w");
     if ( fp == NULL ) {
-        die("ERROR: can not open '%s' for binding driver for '%s', \n - You will need to reboot manually for the new partition table to be picked up \n - You can not access the old partitions and the disk for now.", path_unbind, device);
+        die("ERROR: can not open '%s' for binding driver for '%s', \n - You will need to reboot manually for the new partition table to be picked up \n - You can not access the old partitions and the disk for now.", SYS_MMCBLK_BIND, SYS_EMMC_DEVICE);
     }
-    fputs(device, fp);
+    fputs(SYS_MMCBLK_BIND, fp);
     fclose(fp);
     puts("Successfully binded the driver, you can use the new partition table now!");
 }
@@ -1177,6 +1222,22 @@ void no_coreelec() {
     if (line) {
         free(line);
     }
+}
+
+struct insertion_helper {
+    struct partition *part;
+    bool insert;
+};
+
+struct insertions_helper {
+    struct insertion_helper *env;
+    struct insertion_helper *logo;
+    struct insertion_helper *misc;
+};
+
+void insert_optimizer(struct insertions_helper *parts) {
+    
+
 }
 
 struct partition_table * parse_table(struct disk_helper *disk, struct table_helper *table_h, int *argc, char **argv) {
@@ -1305,11 +1366,6 @@ void no_mounted(struct partition_table *table) {
 }
 
 
-#define DTB_SIZE 0x40000
-#define DTB_OFFSET 0x400000
-#define PAGE_SIZE 0x800
-#define DTB_HEADER_SIZE 40
-
 uint32_t swap_bytes_u32(uint32_t b)
 {
     return ((b & 0xFF000000) >> 24) |
@@ -1318,10 +1374,7 @@ uint32_t swap_bytes_u32(uint32_t b)
            (b << 24);
 }
 
-const unsigned char dtb_partitions_start[]={0x70, 0x61, 0x72, 0x74, 0x69, 0x74, 0x69, 0x6F, 0x6E, 0x73};
-#define LEN_DTB_PARTITIONS_START 10
-const unsigned char dtb_partitions_end[]= {0,0,0,2,0,0,0,2,0,0,0,1};
-#define LEN_DTB_PARTITIONS_END 12
+
 const unsigned char dtb_magic[] = {0xD0, 0x0D, 0xFE, 0xED};
 const unsigned char aml_magic[] = {0x41, 0x4D, 0x4C, 0x5F};
 
@@ -1345,11 +1398,92 @@ unsigned char *pattern_finder(unsigned char * haystack, unsigned char * pattern,
     return NULL;
 }
 
+
+void get_dtb_type(FILE *fp) {
+    // fp should be previous opened as read-only by the outer function read_partition_table
+    uint64_t offset_dtb;
+    if (!options.input_device && options.input_reserved) {
+        offset_dtb = DTB_OFFSET;
+    }
+    else {
+        offset_dtb = options.offset + DTB_OFFSET;
+    }
+    fseek(fp, offset_dtb, SEEK_SET);
+    //unsigned char *dtb = malloc(SIZE_DTB);
+    uint32_t magic;
+    fread(&magic, sizeof(magic), 1, fp);
+    printf("DTB is stored in ");
+    if (magic == MAGIC_MULTI_DTB) {
+        puts("plain Amlogic multi-dtb format");
+        options.dtb_type=DTB_TYPE_MULTI;
+    }
+    else if (magic == MAGIC_SINGLE_DTB) {
+        puts("plain dtb format");
+        options.dtb_type=DTB_TYPE_SINGLE;
+    }
+    else {
+        uint32_t magic_half = magic & 0x0000FFFF;
+        if (magic_half == MAGIC_GZIPPED_DTB) {
+            puts("gzipped format");
+            options.dtb_type=DTB_TYPE_GZIP;
+            FILE* tmp = tmpfile();
+            if (!tmp) {
+                fclose(fp);
+                die("Failed to create temporary file to analyze gzipped dtb");
+            }
+            unsigned char *buffer = malloc(SIZE_DTB);
+            fseek(fp, offset_dtb, SEEK_SET);
+            fread(buffer, SIZE_DTB, 1, fp);
+            fwrite(buffer, SIZE_DTB, 1, tmp);
+            rewind(tmp);
+            // I'm not into reinventing the wheel, so I'll just use the gz- functions provided by zlib. Some lazy buddys on the other hand, just steal the gzip code from uboot-amlogic and don't even think too much. Well, let me explain, gzip codes in uboot-amlogic was written before gzip was implemented in zlib, so they had to build their own. 
+            gzFile *gp = gzdopen(fileno(tmp), "r"); 
+            uint32_t magic_sub;
+            gzread(gp, &magic_sub, 4);
+            gzclose(gp);
+            printf(" - In which, DTB is stored in ");
+            if (magic_sub == MAGIC_MULTI_DTB) {
+                puts("Amlogic multi-dtb format");
+                options.dtb_subtype=DTB_TYPE_MULTI;
+            }
+            else if (magic_sub == MAGIC_SINGLE_DTB) {
+                puts("standard dtb format");
+                options.dtb_subtype=DTB_TYPE_SINGLE;
+            }
+            else {
+                puts("unknown format");
+                if (!options.no_node) {
+                    fclose(fp);
+                    die("dtbs are neither stored in standard dtb format nor Amlogic multi-dtb format, this is not an expected behaviour\n - Maybe your dtb is corrupted?");
+                }
+                options.dtb_subtype=DTB_TYPE_ILLEGAL;
+            }
+        }
+        else {
+            if (magic_half == MAGIC_XIAOMI_DTB) {
+                puts("Xiaomi's proprietary format");
+            }
+            else if (magic_half == MAGIC_PHICOMM_DTB) {
+                puts("Phicomm's proprietary format");
+            }
+            else {
+                puts("unknown format");
+            }
+            if (!options.no_node) {
+                fclose(fp);
+                die("Refuse to continue as we can not modify the on-emmc DTB to remove the partitions node\n - U-boot will compare the partitions node in on-emmc dtb and the actual partitions\n - And will 'friendly' 'fix' it if they are different\n - The new partition table will be reverted after a reboot\n - If you are sure your u-boot won't do this, or you've modified the dtb yourself\n - You can run ampart with --no-node/-N to force a modification");
+            }
+            options.dtb_type=DTB_TYPE_ILLEGAL; // We set it anyway, in case we will use it for one day in the future
+        }
+    }
+}
+
+
 void remove_dtb_partitions(unsigned char *dtb) {
-    struct dtb_header *header = malloc(DTB_HEADER_SIZE);
-    memcpy(header, dtb, DTB_HEADER_SIZE);
+    struct dtb_header *header = malloc(SIZE_DTB_HEADER);
+    memcpy(header, dtb, SIZE_DTB_HEADER);
     uint32_t dtb_size = swap_bytes_u32(header->totalsize);
-    unsigned char * parts_start=pattern_finder(dtb+DTB_HEADER_SIZE, dtb_partitions_start, dtb_size-DTB_HEADER_SIZE, LEN_DTB_PARTITIONS_START);  // Where partitions node start
+    unsigned char * parts_start=pattern_finder(dtb+SIZE_DTB_HEADER, dtb_partitions_start, dtb_size-SIZE_DTB_HEADER, LEN_DTB_PARTITIONS_START);  // Where partitions node start
     if (parts_start) {
         puts("Notice: partitions node found in dtb, removing it");
     }
@@ -1366,8 +1500,21 @@ void remove_dtb_partitions(unsigned char *dtb) {
     header->totalsize = swap_bytes_u32(dtb_size-dtb_size_diff);
     header->off_dt_strings = swap_bytes_u32(swap_bytes_u32(header->off_dt_strings)-dtb_size_diff);
     header->size_dt_struct = swap_bytes_u32(swap_bytes_u32(header->size_dt_struct)-dtb_size_diff);
-    memcpy(dtb, header, DTB_HEADER_SIZE);
+    memcpy(dtb, header, SIZE_DTB_HEADER);
     free(header);
+    return;
+}
+
+void dtbs_plain_from_gzipped(unsigned char *dtb_plain, unsigned char *dtb_gzipped) {
+    
+
+
+    return;
+}
+
+void dtbs_gzipped_from_plain(unsigned char *dtb_gzipped, unsigned char *dtb_plain) {
+
+
     return;
 }
 
@@ -1380,25 +1527,39 @@ void remove_dtbs_partitions(FILE *fp) {
         offset_dtbs = options.offset + DTB_OFFSET;
     }
     fseek(fp, offset_dtbs, SEEK_SET);
-    unsigned char *dtbs = malloc(DTB_SIZE);
-    fread(dtbs, DTB_SIZE, 1, fp);
+    unsigned char *dtbs_raw = malloc(SIZE_DTB), *dtbs;
+    fread(dtbs_raw, SIZE_DTB, 1, fp);
+    if (strncmp(dtbs_raw, aml_magic, 4) || strncmp(dtbs_raw, dtb_magic, 4)) {
+        puts("Note: no dtb magic or amlogic multi-dtb magic found, checking if dtb is stored in gzipped format");
+        unsigned char *dtbs_inflate = malloc(SIZE_DTB);
+        dtbs_plain_from_gzipped(dtbs, dtbs_raw);
+        dtbs = dtbs_inflate;
+        // Maybe gziped dtb
+        free(dtbs_raw);
+        fclose(fp);
+        die("Failed to find dtb header or amlogic multi-dtb header\n - Refuse to continue as we can't make sure there is no partitions node in dtb\n - And if there is, the part table will be reverted by u-boot");
+    }
+    else {
+        dtbs = dtbs_raw;
+    }
     if (!strncmp(dtbs, aml_magic, 4)) {
-        unsigned char *dtb = pattern_finder(dtbs, dtb_magic, DTB_SIZE, 4);
+        unsigned char *dtb = pattern_finder(dtbs, dtb_magic, SIZE_DTB, 4);
         while (dtb != NULL) {
             remove_dtb_partitions(dtb);
-            dtb = pattern_finder(dtb+PAGE_SIZE, dtb_magic, DTB_SIZE, 4); // 0x800 is page size
+            dtb = pattern_finder(dtb+PAGE_SIZE, dtb_magic, SIZE_DTB, 4); // 0x800 is page size
         }
     }
     else if (!strncmp(dtbs, dtb_magic, 4)) {
         // A single dtb
         remove_dtb_partitions(dtbs);
     }
-    else {
-        die("Failed to find dtb header or amlogic multi-dtb header\n - Refuse to continue as we can't make sure there is no partitions node in dtb\n - And if there is, the part table will be reverted by u-boot");
+    if (dtbs != dtbs_raw) {
+        dtbs_gzipped_from_plain(dtbs_raw, dtbs);
     }
     fseek(fp, offset_dtbs, SEEK_SET);
-    fwrite(dtbs, DTB_SIZE, 1, fp); // A duplicate copy should be written
-    fwrite(dtbs, DTB_SIZE, 1, fp);
+    fwrite(dtbs_raw, SIZE_DTB, 1, fp); // A duplicate copy should be written
+    fwrite(dtbs_raw, SIZE_DTB, 1, fp);
+    free(dtbs_raw);
     return;
 }
 

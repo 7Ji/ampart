@@ -334,7 +334,6 @@ void valid_partition_name(char *name, bool allow_reserved) {
     int i, length;
     bool warned = false, warned_uppercase = false, warned_underscore = false;
     char *c;
-    puts(name);
     for(i=0; i<16; ++i) { // i can be 0-16, when it's 16, oops
         c = &name[i];
         if ( 'a' <= *c && *c <= 'z' ) {
@@ -1239,8 +1238,10 @@ void no_coreelec() {
     }
 }
 
-struct partition_table * parse_table(struct disk_helper *disk, struct table_helper *table_h, int *argc, char **argv) {
+struct table_helper * parse_table(struct disk_helper *disk, struct table_helper *table_h, int *argc, char **argv) {
+    struct table_helper *table_h_new = calloc(1, sizeof(struct table_helper));
     struct partition_table *table_new = calloc(1, SIZE_TABLE);
+    table_h_new->table=table_new;
     struct partition *partition_new;
     char *partition_arg;
     int partitions_count = *argc - optind;
@@ -1309,11 +1310,10 @@ struct partition_table * parse_table(struct disk_helper *disk, struct table_help
     }
     memcpy(table_new, table_h->table, 16);// 4byte for magic, 12byte for version
     table_new->checksum = table_checksum(table_new->partitions, table_new->part_num);
-    struct table_helper table_h_new = {table_new, 0};
     puts("New partition table is generated successfully in memory");
-    valid_partition_table(&table_h_new);
+    valid_partition_table(table_h_new);
     summary_partition_table(table_new);
-    return table_new;
+    return table_h_new;
 }
 
 void no_mounted(struct partition_table *table) {
@@ -1610,8 +1610,70 @@ void insertion_optimizer (struct insertion_helper *insert_helpers, uint64_t spac
     return;
 }
 
+void migrate_parts(struct table_helper *table_h_new, struct table_helper *table_h_old, FILE *fp) {
+    if (!options.input_device && options.input_reserved) {
+        puts("Warning: unable to migrate partitions since input is a dumped image for reserved partition\n - You may need to restore env, logo and misc from a backup image if you want to write this image to the real reserved partition");
+    }
+    else {
+        puts("Warning: input is a whole emmc disk, checking if we should migrate env, logo and misc partitions as their position may be moved");
+        // Dude, I'm writing all of these at 23:45 PM and it just makes me DIZZY
+        bool migrate_env = table_h_old->env && table_h_new->env && table_h_old->env->offset != table_h_old->env->offset != table_h_new->env->offset;
+        bool migrate_logo = table_h_old->logo && table_h_new->logo && table_h_old->logo->offset != table_h_new->logo->offset;
+        bool migrate_misc = table_h_old->misc && table_h_new->misc && table_h_old->misc->offset != table_h_new->misc->offset;
+        unsigned char *buffer_env=NULL, *buffer_logo=NULL, *buffer_misc=NULL;
+        if (migrate_env) {
+            puts("Warning: offset of reserved partition env changed, it should be migrated");
+            buffer_env = malloc(table_h_old->env->size);
+            if (!buffer_env) {
+                die("Failed to allocate memory for migration of reserved partition env");
+            }
+            fseek(fp, table_h_old->env->offset, SEEK_SET);
+            fread(buffer_env, table_h_old->env->size, 1, fp);
+        }
+        if (migrate_logo) {
+            puts("Warning: offset of reserved partition logo changed, it should be migrated");
+            buffer_logo = malloc(table_h_old->logo->size);
+            if (!buffer_env) {
+                die("Failed to allocate memory for migration of reserved partition logo");
+            }
+            fseek(fp, table_h_old->logo->offset, SEEK_SET);
+            fread(buffer_env, table_h_old->logo->size, 1, fp);
+        }
+        if (migrate_misc) {
+            puts("Warning: offset of reserved partition misc changed, it should be migrated");
+            buffer_misc = malloc(table_h_old->misc->size);
+            if (!buffer_misc) {
+                die("Failed to allocate memory for migration of reserved partition misc");
+            }
+            fseek(fp, table_h_old->misc->offset, SEEK_SET);
+            fread(buffer_env, table_h_old->misc->size, 1, fp);
+        }
+        // Read all of them, in case we overwrite them
+        if (migrate_env || migrate_logo || migrate_misc) {
+            puts("Old reserved partitions read into memory");
+        }
+        if (migrate_env) {
+            puts("Writing env to its new partition...");
+            fseek(fp, table_h_new->env->offset, SEEK_SET);
+            fwrite(buffer_env, table_h_new->env->size, 1, fp);
+            free(buffer_env);
+        }
+        if (migrate_logo) {
+            puts("Writing logo to its new partition...");
+            fseek(fp, table_h_new->logo->offset, SEEK_SET);
+            fwrite(buffer_env, table_h_new->logo->size, 1, fp);
+            free(buffer_logo);
+        }
+        if (migrate_misc) {
+            puts("Writing misc to its new partition...");
+            fseek(fp, table_h_new->misc->offset, SEEK_SET);
+            fwrite(buffer_env, table_h_new->misc->size, 1, fp);
+            free(buffer_misc);
+        }
+    }
+}
 
-void write_table(struct partition_table *table, struct partition *env_p) {
+void write_table(struct table_helper *table_h_new, struct table_helper *table_h_old) {
     char *path_write;
     if (options.input_device && options.input_reserved) {
         puts("Notice: input is a reserved partition and is a device, we would write to corresponding disk instead");
@@ -1625,8 +1687,10 @@ void write_table(struct partition_table *table, struct partition *env_p) {
     if (fp==NULL) {
         die("Can not open path '%s' as read/write/append, new partition table not written, check your permission!");
     }
-    remove_dtbs_partitions(fp);
-    exit(EXIT_SUCCESS);
+    if (!options.no_node) {
+        remove_dtbs_partitions(fp);
+    }
+    migrate_parts(table_h_new, table_h_old, fp);
     if (!options.input_device && options.input_reserved) {
         puts("Notice: input is a dumped image for reserved partition, no seeking");
         fseek(fp, 0, SEEK_SET);
@@ -1636,36 +1700,7 @@ void write_table(struct partition_table *table, struct partition *env_p) {
         printf("Notice: Seeking %"PRIu64" (%s) (offset of reserved partition) into disk\n", options.offset, s_buffer_1);
         fseek(fp, options.offset, SEEK_SET);
     }
-    fwrite(table, SIZE_TABLE, 1, fp);
-    if (!options.input_device && options.input_reserved) {
-        puts("Warning: unable to migrate env partition since input is a dumped image for reserved partition\n - You'll need to restore it from a backup image of env partition if you want to write this image to the real reserved partition");
-    }
-    else {
-        puts("Warning: input is a whole emmc disk, checking if we should copy the env partition as the env partition may be moved");
-        bool env_found = false;
-        for (int i=0; i<table->part_num; ++i) {
-            if (!strcmp(table->partitions[i].name, "env")) {
-                env_found = true;
-                if (table->partitions[i].offset != env_p->offset) {
-                    puts("Offset of the env partition has changed, copying content of it...");
-                    char *env = malloc(env_p->size);
-                    fseek(fp, env_p->offset, SEEK_SET);
-                    fread(env, env_p->size, 1, fp);
-                    fseek(fp, table->partitions[i].offset, SEEK_SET);
-                    fwrite(env, table->partitions[i].size, 1, fp);
-                    puts("Copied content env partiton");
-                }
-                else {
-                    puts("Offset of env partition not changed, no need to copy it");
-                }
-                break;
-            }
-        }
-        if (!env_found) {
-            fclose(fp);
-            die("Failed to find env partition in the new partition table!");
-        }
-    }
+    fwrite(table_h_new->table, SIZE_TABLE, 1, fp);
     fclose(fp);
     if (options.input_device) {
         if (options.no_reload) {
@@ -1700,11 +1735,11 @@ int main(int argc, char **argv) {
     }
     size_byte_to_human_readable(s_buffer_1, disk.size);
     printf("Using %"PRIu64" (%s) as the disk size\n", disk.size, s_buffer_1);
-    struct partition_table * table_new = parse_table(&disk, &table_h, &argc, argv);
+    struct table_helper * table_h_new = parse_table(&disk, &table_h, &argc, argv);
     if ( options.dryrun ) {
         puts("Running in dry-run mode, no actual writting, exiting...");
         exit(EXIT_SUCCESS);
     }
-    write_table(table_new, table_h.env);
+    write_table(table_h_new, &table_h);
     exit(EXIT_SUCCESS);
 }

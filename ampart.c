@@ -334,6 +334,7 @@ void valid_partition_name(char *name, bool allow_reserved) {
     int i, length;
     bool warned = false, warned_uppercase = false, warned_underscore = false;
     char *c;
+    puts(name);
     for(i=0; i<16; ++i) { // i can be 0-16, when it's 16, oops
         c = &name[i];
         if ( 'a' <= *c && *c <= 'z' ) {
@@ -983,7 +984,6 @@ void get_options(int argc, char **argv) {
         {"snapshot",no_argument,        NULL,   's'},
         {"clone",   no_argument,        NULL,   'c'},
         {"update",  no_argument,        NULL,   'u'},
-        {"compatible",no_argument,      NULL,   'C'},
         {"no-node", no_argument,        NULL,   'N'},
         {"dry-run", no_argument,        NULL,   'D'},
         {"partprobe",no_argument,       NULL,   'p'},
@@ -1024,10 +1024,6 @@ void get_options(int argc, char **argv) {
             case 'u':
                 puts("Notice: running in update mode");
                 options.mode_update = true;
-                break;
-            case 'C':
-                puts("Notice: running in compatibility check mode, new table won't be parsed and we will only check if the dtbs can be modified so we can remove the partitions node to avoid u-boot reverting the table");
-                options.check_compatibility = true;
                 break;
             case 'N':
                 puts("Notice: running in no-partitions-node-removal mode\n - ampart will not check dtb or try to remove the partitions node from it\n - unless you are sure your u-boot won't check and revert the partition table according to partitions node in dtb, \n - you should NOT enable this.\n - as your new partitions may only be available during this boot.");
@@ -1577,6 +1573,7 @@ void insertion_optimizer (struct insertion_helper *insert_helpers, uint64_t spac
     unsigned i, j;
     bool insert[len], insert_best[len];
     uint64_t free, min_free=space;
+    memset(insert_best,0,sizeof(insert));
     for (i=0; i<len; ++i) {
         memset(insert,0,sizeof(insert));
         free=space;

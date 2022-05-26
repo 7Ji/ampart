@@ -962,8 +962,9 @@ void help(char *path) {
         "\t--snapshot/-s\toutputs partition arguments that can be used to restore the partition table to what it looks like now, early quit\n"
         "\t--clone/-c\trun in clone mode, parse partition arguments outputed by --snapshot/-s, no filter\n"
         "\t--update/-u\trun in update mode, exact partition can be selected and altered"
+        "\t--no-node/-N\tdon't try to remove partitions node from dtb"
         "\t--dry-run/-D\tdo not actually update the part table\n"
-        "\t--partprobe\tforce a notification to the kernel about the partition layout change, early quit\n"
+        "\t--partprobe/-p\tforce a notification to the kernel about the partition layout change, early quit\n"
         "\t--no-reload/-n\tdo not notify kernel about the partition layout changes, remember to end your session with a --partprobe call\n\t\t\tif you are calling ampart for multiple times in a script\n"
         "\t--output/-o [path]\n"
         "\t\t\twrite the updated part table to somewhere else, instead of the input itself\n";
@@ -1200,14 +1201,14 @@ void snapshot(struct partition_table * table) {
     struct partition *part;
     for (int i=0; i<table->part_num; ++i) {
         part=&(table->partitions[i]);
-        printf("%s:%"PRIu64":%"PRIu64":%u ", part->name, part->offset, part->size, part->mask_flags);
+        size_byte_to_human_readable_int(s_buffer_1, part->offset);
+        size_byte_to_human_readable_int(s_buffer_2, part->size);
+        printf("%s:%s:%s:%u ", part->name, s_buffer_1, s_buffer_2, part->mask_flags);
     }
     putc('\n', stdout);
     for (int i=0; i<table->part_num; ++i) {
         part=&(table->partitions[i]);
-        size_byte_to_human_readable_int(s_buffer_1, part->offset);
-        size_byte_to_human_readable_int(s_buffer_2, part->size);
-        printf("%s:%s:%s:%u ", part->name, s_buffer_1, s_buffer_2, part->mask_flags);
+        printf("%s:%"PRIu64":%"PRIu64":%u ", part->name, part->offset, part->size, part->mask_flags);
     }
     putc('\n', stdout);
     exit(EXIT_SUCCESS);

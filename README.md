@@ -73,9 +73,12 @@ Whether it's a whole emmc disk or a reserved partition will be identified by its
     **Warning**: unless running in clone mode, some partitions are **reserved** and **can't be defined by user**, they will be **generated** according to the old partition table:  
     1. **bootloader** This is where **u-boot** is stored, and it should always be the **first 4M** of the emmc device. It **won't** be touched.
     2. **reserved** This is where **partition table**, **dtb** and many other stuffs are stored, it usually starts at 36M and leaves an 32M gap between it and **bootloader** partition. It **won't** be touched.
-    3. **env** This is where u-boot envs are stored, it is usually 8M, and placed after a cache partition. It **will be moved** as the cache partition takes 512M and does not make much sense for a pure ELEC installation.  
-      1. Partitions defined by users will start at **end of reserved partition** + **size of env partition** as a result of this, to maximize the usable disk space by avoiding those precious ~512M taken by cache partition.   
-      2. **ampart** will clone the content of the env partition from its old location to the new location, and the content at the new location will be the same on the **binary level**, but you can always ``dd if=/dev/env of=env.img`` for double insurance.
+    3. **env** This is where u-boot envs are stored, it is usually 8M, and placed after a cache partition. It **will most likely be moved** as the cache partition takes 512M and does not make much sense for a pure ELEC installation.  
+    4. **logo** This is where u-boot logo is stored. It **will most likely be moved**
+    5. **misc** This is where shared args between kernel and u-boot are stored. It **will most likely be moved**
+    * In normal mode, ampart will try to insert env, logo and misc to the gap between bootloader and reserved to avoid disk space being wasted
+    * In all modes, when positions(offset) of env, logo and misc are changed, they will be migrated automatically by ampart (read all, write all, so don't worry about overwriting things we haven't read)
+    * Even though ampart will migrate the content of the env, logo and misc partition from their old locations to their new locations, and the content at the new locations will be the same on the **binary level**, you can always backup images of these partitions for double insurance e.g. ``dd if=/dev/env of=env.img``
   
 
 * **partition**(s) (**update mode**) partition(s) you would like to update, when omitted **ampart** will only print the old partition table. Should be in either format **selector**(:**name**:**offset**:**size**:**mask**) or **name**:**offset**:**size**:**mask**. In which:  
@@ -105,7 +108,7 @@ Whether it's a whole emmc disk or a reserved partition will be identified by its
   ````
   ampart --update /dev/mmcblk0 ^-1:::-512M: ^-1%:CE_STORAGE CE_FLASH:::
   ````
-  and the following would shrink the data more so EmuELEC can be stored:
+  and the following would shrink the data more so EmuELEC or HybridELEC can be stored:
   ````
   ampart --update /dev/mmcblk0 ^-1:::2G: ^-1%:CE_STORAGE CE_FLASH:::
   ````
@@ -126,14 +129,14 @@ And options are:
   * default: 36M
 * **--snapshot**/**-s** outputs partition arguments that can be used to restore the partition table to what it looks like now, or as a start point for scripts that want to modify the part table in their way, early quit
   * ampart will quit after the part args are printed *(return 0 for success)*
-  * scripts can parse the last two lines to get the part table, the offset/size of the first one is always in byte, without suffix; the last one is human-readable for users to record  
+  * scripts can parse the last two lines to get the part table, the offset/size of the first one is always human-readable for users to record; the last one is always in byte, without suffix, script can get this with a simple ``ampart --snapshot /dev/mmcblk0 | tail -n 1``  
   e.g. (the human-readable output)
     ````
-    bootloader:0:4194304:0 reserved:37748736:67108864:0 cache:113246208:536870912:2 env:658505728:8388608:0 logo:675282944:33554432:1 recovery:717225984:33554432:1 rsv:759169024:8388608:1 tee:775946240:8388608:1 crypt:792723456:33554432:1 misc:834666496:33554432:1 boot:876609536:33554432:1 system:918552576:2147483648:1 data:3074424832:4743757824:4
+    bootloader:0B:4M:0 reserved:36M:64M:0 cache:108M:512M:2 env:628M:8M:0 logo:644M:32M:1 recovery:684M:32M:1 rsv:724M:8M:1 tee:740M:8M:1 crypt:756M:32M:1 misc:796M:32M:1 boot:836M:32M:1 system:876M:2G:1 data:2932M:4524M:4
     ````
     (the machine-friendly output)
     ````
-    bootloader:0B:4M:0 reserved:36M:64M:0 cache:108M:512M:2 env:628M:8M:0 logo:644M:32M:1 recovery:684M:32M:1 rsv:724M:8M:1 tee:740M:8M:1 crypt:756M:32M:1 misc:796M:32M:1 boot:836M:32M:1 system:876M:2G:1 data:2932M:4524M:4
+    bootloader:0:4194304:0 reserved:37748736:67108864:0 cache:113246208:536870912:2 env:658505728:8388608:0 logo:675282944:33554432:1 recovery:717225984:33554432:1 rsv:759169024:8388608:1 tee:775946240:8388608:1 crypt:792723456:33554432:1 misc:834666496:33554432:1 boot:876609536:33554432:1 system:918552576:2147483648:1 data:3074424832:4743757824:4
     ````
     later if you regret about the new part table, you can call ampart with --clone and pass it one of the lines above:
     ````
@@ -146,8 +149,11 @@ And options are:
   * users can pass the partition arguments generated by a previous **snapshot** session to restore the part to exactly what it was like back then, **byte-to-byte correct**
   * scripts can call ampart with modified args previously acquired by a **snapshot** call, and apply an updated part table, they can either keep almost all of the table not affected, or do a complete overhaul: you want the freedom, ampart gives you.
 * **--update**/**-u** enable update mode, [partitions] describe how you would like to modify some parts' info
+* **--no-node**/**-N** don't try to remove partitions node from dtb
 * **--dry-run**/**-D** will only generate the new partition table but not actually write it, this will help you to make sure the new partition table is desired.
   * ampart will quit before commiting changes *(return 0 for success)*
+* **--partprobe**/**-p** inform kernel about partition layout changes of the emmc (so you can use new partitions immediately). ampart auto does this when you update the part table so there is no nuch need to call this unless you run it with *--no-reload*/*-n*
+* **--no-reload**/**-n** do not notify kernel about the partition layout changes, remember to end your session with a --partprobe call if you are calling ampart for multiple times and don't want it to force the kernel to reload the partitions table every time (e.g. in a script, where you want to do stuffs in the GNU/parted -s way)
 * **--output**/**-o** **[path]** will write the ouput table to somewhere else rather than the path you set in [reserved/mmc]
   * **currently is not implemented**
 
@@ -283,54 +289,11 @@ Take a snapshot of the partition table in case anything goes wrong:
     ==============================================================
     Disk size totalling 7818182656 (7.28G) according to partition table
     Give one of the following partition arguments with options --clone/-c to ampart to reset the partition table to what it looks like now:
-    bootloader:0:4194304:0 reserved:37748736:67108864:0 cache:113246208:536870912:2 env:658505728:8388608:0 logo:675282944:33554432:1 recovery:717225984:33554432:1 rsv:759169024:8388608:1 tee:775946240:8388608:1 crypt:792723456:33554432:1 misc:834666496:33554432:1 boot:876609536:33554432:1 system:918552576:2147483648:1 data:3074424832:4743757824:4
     bootloader:0B:4M:0 reserved:36M:64M:0 cache:108M:512M:2 env:628M:8M:0 logo:644M:32M:1 recovery:684M:32M:1 rsv:724M:8M:1 tee:740M:8M:1 crypt:756M:32M:1 misc:796M:32M:1 boot:836M:32M:1 system:876M:2G:1 data:2932M:4524M:4
+    bootloader:0:4194304:0 reserved:37748736:67108864:0 cache:113246208:536870912:2 env:658505728:8388608:0 logo:675282944:33554432:1 recovery:717225984:33554432:1 rsv:759169024:8388608:1 tee:775946240:8388608:1 crypt:792723456:33554432:1 misc:834666496:33554432:1 boot:876609536:33554432:1 system:918552576:2147483648:1 data:3074424832:4743757824:4
 (For actual users instead of scripts, you should record the last line as it's shorter and easier to write/remember)  
 
-Get my partition table messed up and Android installation bricked by **ceemmc** (the **exact** reason I wrote ampart):
-
-    CoreELEC:~ # ceemmc -x
-
-    Starting CoreELEC eMMC installation tool...
-
-    System is not supported: gxl_p212_1g_slowemmc!
-
-    There is NO official support by Team CoreELEC
-    if you continue to run this tool!
-    Continue? [y]: y
-
-    eMMC size: 0x0001d2000000 [8GB]
-
-    No CoreELEC installation found on eMMC
-
-    Install in dual boot mode, CoreELEC and Android on eMMC
-      Use CoreELEC data from
-        [1] current used SD or USB device
-        [2] existing backup on current used SD or USB device
-
-    Install in single boot mode not possible!
-      No DT partition was found
-
-    Please choose one option? [1/2]: 1
-
-    Free space of 'partition CE_FLASH': 512MB
-    Free space of 'partition CE_STORAGE': 4149MB
-
-    Used space of '/flash': 233MB
-    Used space of '/storage': 4MB
-
-    There is enough free space on eMMC for installation!
-
-    Install CoreELEC on eMMC.
-    Continue? [y]: y
-    e2fsck 1.45.7 (28-Jan-2021)
-    Error running pclose on cmd: `e2fsck -fy /dev/loop2`. Error: 1
-    Error executing cmd 'e2fsck -fy /dev/loop2'
-    Failed to resize partition 'CE_STORAGE'!
-
-Oh no! What went wrong? I can just ``e2fsck -fy /dev/loop2`` and it returns 0 for success and nothing errored out! Let me check the source code of **ceemmc** to understand why this happend... Wait, **ceemmc** is proprietary code, it even left no core dump to debug! I just wish I can revert what it has done to my partition table...
-
-Oh, remember that snapshot you took with ampart? You can restore the partition table via an easy one-liner:
+If you want to go back to your stock layout after you've installed CE/EE/HE to emmc:
 
     CoreELEC:~ # ./ampart --clone /dev/mmcblk0 bootloader:0B:4M:0 reserved:36M:64M:0 cache:108M:512M:2 env:628M:8M:0 logo:644M:32M:1 recovery:684M:32M:1 rsv:724M:8M:1 tee:740M:8M:1 crypt:756M:32M:1 misc:796M:32M:1 boot:836M:32M:1 system:876M:2G:1 data:2932M:4524M:4
     Notice: running in clone mode, partition arguments won't be filtered, reserved partitions can be set
@@ -385,7 +348,6 @@ Oh, remember that snapshot you took with ampart? You can restore the partition t
     CE_FLASH         1b2000000(   6.78G)  20000000( 512.00M)     4
     ==============================================================
     Warning: Overlap found in partition table, this is extremely dangerous as your Android installation might already be broken.
-    - Please confirm if you've failed with ceemmc as it may overlay data with CE_STORAGE
     - If your device bricks, do not blame on ampart as it's just the one helping you discovering it
     Disk size totalling 7818182656 (7.28G) according to partition table
     Warning: input is a device, check if any partitions under its corresponding emmc disk '/dev/mmcblk0' is mounted...
@@ -671,22 +633,22 @@ CoreELEC:~ # ./ampart --clone /dev/mmcblk0 bootloader:0B:4M:0 reserved:36M:64M:0
 ````
 
 ## About
-The main reason I started to write this is that **CoreELEC**'s proprietary **ceemmc** which bricked **my only S905X** box can not be modified for reverting what it has done, and intalling EmuELEC and HybridELEC to internal emmc, as its partition sizes are **hard-coded** and refuse to change the way it works because the writer decides they should decide what users want, and this triggers me deeply for my KISS (Keep It Simple, Stupid) principles.
+The main reason I started to write this is that **CoreELEC**'s proprietary **ceemmc** can not be modified for intalling EmuELEC and HybridELEC to internal emmc, as its partition sizes are **hard-coded** 
 
 The partition tool is more or less a final step of the long journey of my past almost 2 months into achiving side-by-side dual-booting for CoreELEC+EmuELEC for all Amlogic devices, it is new, but the thoughts behind it is **mature** and **experienced**. You can expect an Amlogic-ng HybridELEC release utilizing ampart that can achive side-by-side dual-booting of CE+EE on the internal storage very soon.
 
-In theory **ampart** should work perfectly fine for any Amlogic device, mainly those with linux-amlogic kernel, e.g. **CoreELEC**, **EmuELEC**, etc. But your poor little developer 7Ji just has 2 used Amlogic TVboxs lying around, one Xiaomi mibox3 (MDZ-16-AA, gxbb_p200) with a locked bootloader that forced me into developing [HybridELEC](https://github.com/7Ji/HybridELEC) (it starts as a USB Burning Tool burnable image for CoreELEC), and one BesTV R3300L (gxl_p212) which **ceemmc bricks** that forced me into developing **ampart**. I can only test on these two boxes and have no willing of buying other development boards/TV boxes, or free money to do so. 
+In theory **ampart** should work perfectly fine for any Amlogic device, mainly those with linux-amlogic kernel, e.g. **CoreELEC**, **EmuELEC**, etc. But I only have 2 used non-mainstream Amlogic TVboxs lying around, one Xiaomi mibox3 (MDZ-16-AA, gxbb_p200) with a locked bootloader that forced me into developing [HybridELEC](https://github.com/7Ji/HybridELEC) (it starts as a USB Burning Tool burnable image for CoreELEC), and one BesTV R3300L (gxl_p212). I can only test on these two boxes and have no willing of buying other development boards/TV boxes, or free money to do so. 
 
 Even if you are using a system that does not run a linux-amlogic kernel (e.g. **Armbian**, **OpenWrt**), you can still use **ampart** to get the partition info of your emmc and partition it. You can then use the partitions by losetup or [blkdevparts=](https://www.kernel.org/doc/html/latest/block/cmdline-partition.html) kernel command line. In this way you won't mess up with the reserved partitions and utilize more space than the tricky 700M offset partitioning way.
 
-I'm into a big exam at the end of the year which I failed in the past two years and that's my last try, which would decide my fate greatly. A slang 'World War 3' is used for this in China .So every line I commit to ampart is precious and do me a favor, don't ask for much.
+I'm into a big exam at the end of the year which I failed in the past two years and that's my last try, which would decide my fate greatly. A slang 'World War 3' is used for this in China. So every line I commit to ampart is precious and do me a favor, don't ask for much.
 
 
 ## License
 **ampart**(Amlogic emmc partition tool) is licensed under [**GPL3**](https://gnu.org/licenses/gpl.html)
-* This is free software: you are free to change and redistribute it.
-* There is NO WARRANTY, to the extent permitted by law.
-* Modification of **ampart** should be open-source under the same license (**GPL3**)
-* Inclusion of **ampart** in close-source projects are **not allowed**.   
-  * Inclusion of **ampart**'s source code in your closed-source program is not allowed
-  * Calling binary executable of **ampart** from your closed-source program via any method is not allowed as it is not a system library
+ * Copyright (C) 2022 7Ji (pugokushin@gmail.com)
+ * This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version * of the License, or (at your option) any later version.
+
+ * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
+
+ * You should have received a copy of the GNU General Public License along with this program. If not, see <https://www.gnu.org/licenses/>.

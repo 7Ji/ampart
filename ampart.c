@@ -36,7 +36,7 @@
 #define SIZE_DTB_HEADER           0x28 // This should ALWAYS be 0x28=40, regardless of platform. Defining it here saves some precious time used on sizeof()
 #define SIZE_MBR                 0x200 // Count of bytes that should be \0 for whole emmc disk, as stock Amlogic emmc should have no MBR. Things may become tricky if users have created a mbr partition table. In that case auto-recognization may not work for dumped image for whole emmc (for whole emmc disk DEVICE though, auto-recognization works without checking MBR)
 #define SIZE_DTB               0x40000  //256K
-#define SIZE_DTB_GUNZIP       0xA00000  //10M, yeah I know it's a lot, but hey, just in case there is a 'Super Compressor' that can compress this much data into a tiny 256K gzip (wow, a 40:1 ratio)
+#define SIZE_DTB_UNCOMPRESS   0xA00000  //10M, yeah I know it's a lot, but hey, just in case there is a 'Super Compressor' that can compress this much data into a tiny 256K gzip (wow, a 40:1 ratio)
 #define DTB_OFFSET            0x400000  //4M, relative to reserved part
 #define PAGE_SIZE                0x800  //Minimum emmc I/O size
 
@@ -78,6 +78,11 @@ struct partition {
     // padding 4byte
 };
 
+struct insertion_helper {
+    struct partition *part;
+    bool insert;
+};
+
 struct partition_table {
 	char magic[4];
 	unsigned char version[12];
@@ -91,6 +96,10 @@ struct table_helper {
     struct partition *bootloader;
     struct partition *reserved;
     struct partition *env;
+    struct partition *logo;
+    struct partition *misc;
+    struct insertion_helper insertion[3];
+    short insertables;
 };
 
 struct disk_helper {
@@ -780,7 +789,7 @@ void valid_partition_table(struct table_helper *table_h) {
             has_bootloader = true;
         }
         else if (!strcmp(part->name, "reserved")) {
-            if (options.input_reserved) {  // We would like to write to corresponding disk, so ffset should be updated
+            if (options.input_reserved) {  // We would like to write to corresponding disk, so offset should be updated
                 options.offset = part->offset;
             }
             table_h->reserved=part;
@@ -788,7 +797,16 @@ void valid_partition_table(struct table_helper *table_h) {
         }
         else if (!strcmp(part->name, "env")) {
             table_h->env=part;
+            table_h->insertion[table_h->insertables++].part=part;
             has_env = true;
+        }
+        else if (!strcmp(part->name, "logo")) {
+            table_h->logo=part;
+            table_h->insertion[table_h->insertables++].part=part;
+        }
+        else if (!strcmp(part->name, "misc")) {
+            table_h->misc=part;
+            table_h->insertion[table_h->insertables++].part=part;
         }
         else {
             valid_partition_name(part->name, false);
@@ -1138,7 +1156,7 @@ uint64_t get_disk_size() {
 uint64_t read_partition_table(struct table_helper *table_h) {
     puts("Reading old partition table...");
     struct partition_table *table = table_h->table;
-    int fd=open(options.path_input, O_RDONLY);
+    // int fd=open(options.path_input, O_RDONLY);
     FILE *fp = fopen(options.path_input, "r");
     if ( fp == NULL ) {
         die("ERROR: Can not open input path as read mode, check your permission!\n");
@@ -1224,22 +1242,6 @@ void no_coreelec() {
     }
 }
 
-struct insertion_helper {
-    struct partition *part;
-    bool insert;
-};
-
-struct insertions_helper {
-    struct insertion_helper *env;
-    struct insertion_helper *logo;
-    struct insertion_helper *misc;
-};
-
-void insert_optimizer(struct insertions_helper *parts) {
-    
-
-}
-
 struct partition_table * parse_table(struct disk_helper *disk, struct table_helper *table_h, int *argc, char **argv) {
     struct partition_table *table_new = calloc(1, SIZE_TABLE);
     struct partition *partition_new;
@@ -1267,54 +1269,46 @@ struct partition_table * parse_table(struct disk_helper *disk, struct table_help
             table_update(table_new, partition_arg, disk);
         }
     }
-    else {
-        // Only when partition is defined, will we try to parse partition table defined by user
-        uint64_t reserved_end = table_h->reserved->offset + table_h->reserved->size;
-        bool env_insert;
-        uint64_t bootloader_end = table_h->bootloader->offset + table_h->bootloader->size; // Just in case one day bootloader does not start at 0
-        uint64_t bootloader_reserved_gap = table_h->reserved->offset - bootloader_end;
-        if (bootloader_reserved_gap > table_h->env->size) {
-            env_insert = true;
-            disk->start = reserved_end;
+    else {  // Normal mode
+        disk->start=table_h->bootloader->offset + table_h->bootloader->size; // Just in case one day bootloader does not start at 0
+        insertion_optimizer(table_h->insertion, table_h->reserved->offset-disk->start, table_h->insertables);
+        int j=0;
+        memcpy(&(table_new->partitions[j++]), table_h->bootloader, SIZE_PART);
+        for (i=0; i<table_h->insertables; ++i) {
+            if (table_h->insertion[i].insert) {
+                memcpy(&(table_new->partitions[j]), table_h->insertion[i].part, SIZE_PART);
+                table_new->partitions[j].offset = disk->start;
+                disk->start += table_new->partitions[j++].size;
+            }
         }
-        else {
-            env_insert = false;
-            disk->start = reserved_end + table_h->env->size;
+        memcpy(&(table_new->partitions[j++]), table_h->reserved, SIZE_PART);
+        disk->start = table_h->reserved->offset + table_h->reserved->size;
+        for (i=0; i<table_h->insertables; ++i) {
+            if (!table_h->insertion[i].insert) {
+                memcpy(&(table_new->partitions[j]), table_h->insertion[i].part, SIZE_PART);
+                table_new->partitions[j].offset = disk->start;
+                disk->start += table_new->partitions[j++].size;
+            }
         }
         disk->free = disk->size - disk->start;
         size_byte_to_human_readable(s_buffer_1, disk->free);
-        size_byte_to_human_readable(s_buffer_2, reserved_end);
-        size_byte_to_human_readable(s_buffer_3, table_h->env->size);
-        printf("Usable space of the disk is %"PRIu64" (%s)\n - This is due to reserved partition ends at %"PRIu64" (%s)\n - And env partition takes %"PRIu64" (%s) \n", disk->free, s_buffer_1, reserved_end, s_buffer_2, table_h->env->size, s_buffer_3);
-        puts("Make sure you've backed up the env partition as its offset will mostly change\n - This is because all user-defined partitions will be created after the env partition\n - Yet most likely the old env partition was created after a cache partition\n - Which wastes a ton of space if we start at there");
-        if (partitions_count > 29) {
-            partitions_count = 29;
-            puts("Warning: You've defined too many partitions, only 29 of them will be accepted");
+        printf("Usable space of the disk is %"PRIu64" (%s)\n", disk->free, s_buffer_1);
+        puts("Make sure you've backed up the env, logo and misc partitions as their offset will mostly change,\n - even ampart will auto-migrate them for you\n - This is because all user-defined partitions will be created after the reserved partition\n - Yet most likely these old partitions have gap before them\n - Which wastes a ton of space if we start at there");
+        if (partitions_count > 32 - j) {
+            partitions_count = 32 - j;
+            printf("Warning: You've defined too many partitions, only %d of them will be accepted\n - The theoretical maximum count of parts to have is 32\n - But 3 are reserved for bootloader, reserved and env\n And %d are reserved for logo and misc if they were present", partitions_count, j-3);
         }
-        struct partition partitions_new[29] = {0};
-        while ( optind < *argc && i < 29 ) { // 32 total - 3 reserved (bootloader + reserved + env)
-            partition_new = &partitions_new[i++];
+        // struct partition partitions_new[partitions_count];
+        // memset(partitions_new, 0, sizeof(partitions_new));
+        i = 0;
+        while ( optind < *argc && j < partitions_count + j ) { 
+            partition_new = &(table_new->partitions[j++]);
             partition_arg = argv[optind++];
             printf("Parsing user input for partition: %s\n", partition_arg);
             partition_from_argument(partition_new, partition_arg, disk);
         }
         //memcpy(table_new, table, 16); // 4byte for magic, 16byte for version
-        table_new->part_num = partitions_count + 3;
-        memcpy(&(table_new->partitions[0]), table_h->bootloader, SIZE_PART);
-        if (env_insert) {
-            memcpy(&(table_new->partitions[1]), table_h->env, SIZE_PART);
-            memcpy(&(table_new->partitions[2]), table_h->reserved, SIZE_PART);
-            table_new->partitions[1].offset=bootloader_end;
-            // Move env, if size between is enough
-        }
-        else {
-            memcpy(&(table_new->partitions[1]), table_h->reserved, SIZE_PART);
-            memcpy(&(table_new->partitions[2]), table_h->env, SIZE_PART);
-            table_new->partitions[2].offset=reserved_end;
-        }
-        for (i=0; i<partitions_count; ++i) {
-            memcpy(&(table_new->partitions[i+3]), &partitions_new[i], SIZE_PART);
-        }
+        table_new->part_num = j;
     }
     memcpy(table_new, table_h->table, 16);// 4byte for magic, 12byte for version
     table_new->checksum = table_checksum(table_new->partitions, table_new->part_num);
@@ -1373,10 +1367,6 @@ uint32_t swap_bytes_u32(uint32_t b)
            ((b & 0x0000FF00) << 8) |
            (b << 24);
 }
-
-
-const unsigned char dtb_magic[] = {0xD0, 0x0D, 0xFE, 0xED};
-const unsigned char aml_magic[] = {0x41, 0x4D, 0x4C, 0x5F};
 
 unsigned char *pattern_finder(unsigned char * haystack, unsigned char * pattern, uint32_t size, unsigned length) {
     unsigned char *rtr, *ptr=haystack;
@@ -1439,8 +1429,11 @@ void get_dtb_type(FILE *fp) {
             // I'm not into reinventing the wheel, so I'll just use the gz- functions provided by zlib. Some lazy buddys on the other hand, just steal the gzip code from uboot-amlogic and don't even think too much. Well, let me explain, gzip codes in uboot-amlogic was written before gzip was implemented in zlib, so they had to build their own. 
             gzFile *gp = gzdopen(fileno(tmp), "r"); 
             uint32_t magic_sub;
-            gzread(gp, &magic_sub, 4);
-            gzclose(gp);
+            int rtr = gzread(gp, &magic_sub, 4);
+            if (gzclose(gp) != Z_OK || rtr==-1) {
+                fclose(fp);
+                die("Failed to uncompress gzipped dtb");
+            }
             printf(" - In which, DTB is stored in ");
             if (magic_sub == MAGIC_MULTI_DTB) {
                 puts("Amlogic multi-dtb format");
@@ -1505,19 +1498,6 @@ void remove_dtb_partitions(unsigned char *dtb) {
     return;
 }
 
-void dtbs_plain_from_gzipped(unsigned char *dtb_plain, unsigned char *dtb_gzipped) {
-    
-
-
-    return;
-}
-
-void dtbs_gzipped_from_plain(unsigned char *dtb_gzipped, unsigned char *dtb_plain) {
-
-
-    return;
-}
-
 void remove_dtbs_partitions(FILE *fp) {
     uint64_t offset_dtbs;
     if (!options.input_device && options.input_reserved) {
@@ -1527,41 +1507,112 @@ void remove_dtbs_partitions(FILE *fp) {
         offset_dtbs = options.offset + DTB_OFFSET;
     }
     fseek(fp, offset_dtbs, SEEK_SET);
-    unsigned char *dtbs_raw = malloc(SIZE_DTB), *dtbs;
-    fread(dtbs_raw, SIZE_DTB, 1, fp);
-    if (strncmp(dtbs_raw, aml_magic, 4) || strncmp(dtbs_raw, dtb_magic, 4)) {
-        puts("Note: no dtb magic or amlogic multi-dtb magic found, checking if dtb is stored in gzipped format");
-        unsigned char *dtbs_inflate = malloc(SIZE_DTB);
-        dtbs_plain_from_gzipped(dtbs, dtbs_raw);
-        dtbs = dtbs_inflate;
-        // Maybe gziped dtb
-        free(dtbs_raw);
-        fclose(fp);
-        die("Failed to find dtb header or amlogic multi-dtb header\n - Refuse to continue as we can't make sure there is no partitions node in dtb\n - And if there is, the part table will be reverted by u-boot");
+    unsigned char *dtbs = malloc(SIZE_DTB), *dtbs_gzipped;
+    fread(dtbs, SIZE_DTB, 1, fp);
+    int rtr;
+    if (options.dtb_type == DTB_TYPE_GZIP) {
+        puts("Decompressing gzipped dtb...");
+        FILE* tmp = tmpfile();
+        if (!tmp) {
+            fclose(fp);
+            die("Failed to create temporary file to modify gzipped dtb");
+        }
+        fwrite(dtbs, SIZE_DTB, 1, tmp);
+        rewind(tmp);
+        dtbs_gzipped = dtbs;
+        dtbs = calloc(1, SIZE_DTB_UNCOMPRESS);
+        gzFile *gp = gzdopen(fileno(tmp), "r"); 
+        rtr = gzread(gp, dtbs, SIZE_DTB_UNCOMPRESS);
+        if (gzclose(gp) != Z_OK || rtr==-1) {
+            die("Failed to uncompress gzipped dtb");
+        }
     }
-    else {
-        dtbs = dtbs_raw;
-    }
-    if (!strncmp(dtbs, aml_magic, 4)) {
+    uint32_t dtb_magic_u32 = MAGIC_SINGLE_DTB;
+    unsigned char dtb_magic[4]; 
+    memcpy(dtb_magic, &dtb_magic_u32, 4);
+    if (options.dtb_type == DTB_TYPE_MULTI || options.dtb_subtype == DTB_TYPE_MULTI ) {
+        puts("Modifying Amlogic multi-dtb...");
         unsigned char *dtb = pattern_finder(dtbs, dtb_magic, SIZE_DTB, 4);
         while (dtb != NULL) {
             remove_dtb_partitions(dtb);
             dtb = pattern_finder(dtb+PAGE_SIZE, dtb_magic, SIZE_DTB, 4); // 0x800 is page size
         }
     }
-    else if (!strncmp(dtbs, dtb_magic, 4)) {
-        // A single dtb
+    else if (options.dtb_type == DTB_TYPE_SINGLE || options.dtb_subtype == DTB_TYPE_SINGLE ) {
+        puts("Modifying single dtb...");
         remove_dtb_partitions(dtbs);
     }
-    if (dtbs != dtbs_raw) {
-        dtbs_gzipped_from_plain(dtbs_raw, dtbs);
+    else {
+        puts("What??? This should not happen. The dtb type is invalid when trying to modify dtb");
+        exit(EXIT_FAILURE);
+    }
+    if (options.dtb_type == DTB_TYPE_GZIP) {
+        puts("Compressing gzipped dtb...");
+        FILE* tmp = tmpfile();
+        if (!tmp) {
+            fclose(fp);
+            die("Failed to create temporary file to compress dtb to gzip");
+        }
+        gzFile *gp = gzdopen(fileno(tmp), "w");
+        rtr = gzwrite(gp, dtbs, SIZE_DTB_UNCOMPRESS);
+        if (gzclose(gp) != Z_OK || !rtr) {
+            die("Failed to compress dtb to gzip");
+        }
+        if (ftell(tmp) > SIZE_DTB) {
+            die("Compressed dtb too big! It can only be 256K at most");
+        }
+        rewind(tmp);
+        fread(dtbs_gzipped, SIZE_DTB, 1, tmp);
+        free(dtbs);
+        dtbs=dtbs_gzipped;
     }
     fseek(fp, offset_dtbs, SEEK_SET);
-    fwrite(dtbs_raw, SIZE_DTB, 1, fp); // A duplicate copy should be written
-    fwrite(dtbs_raw, SIZE_DTB, 1, fp);
-    free(dtbs_raw);
+    fwrite(dtbs, SIZE_DTB, 1, fp); // A duplicate copy should be written
+    fwrite(dtbs, SIZE_DTB, 1, fp);
+    free(dtbs);
     return;
 }
+
+void insertion_optimizer (struct insertion_helper *insert_helpers, uint64_t space, unsigned len) {
+    unsigned i, j;
+    bool insert[len], insert_best[len];
+    uint64_t free, min_free=space;
+    for (i=0; i<len; ++i) {
+        memset(insert,0,sizeof(insert));
+        free=space;
+        for (j=i; j<len; ++j) {
+            if (insert_helpers[j].part->size <= free) {
+                free -= insert_helpers[j].part->size;
+                insert[j] = true;
+            }
+            if (!free) {
+                break;
+            }
+        }
+        if (free < min_free) {
+            min_free = free;
+            memcpy(insert_best, insert, sizeof(insert));
+        }
+        if (!free) {
+            break;
+        }
+    }
+    bool header=false;
+    for (i=0; i<len; ++i) {
+        if (insert_helpers[i].insert = insert_best[i]) {
+            if (!header) {
+                printf("[Insertion optimizer] the following partitions will be inserted into the gap between bootloader and reserved: ");
+                header=true;
+            }
+            printf("%s ", insert_helpers[i].part->name);
+        }
+    }
+    if (header) {
+        putc('\n', stdout);
+    }
+    return;
+}
+
 
 void write_table(struct partition_table *table, struct partition *env_p) {
     char *path_write;
@@ -1578,6 +1629,7 @@ void write_table(struct partition_table *table, struct partition *env_p) {
         die("Can not open path '%s' as read/write/append, new partition table not written, check your permission!");
     }
     remove_dtbs_partitions(fp);
+    exit(EXIT_SUCCESS);
     if (!options.input_device && options.input_reserved) {
         puts("Notice: input is a dumped image for reserved partition, no seeking");
         fseek(fp, 0, SEEK_SET);

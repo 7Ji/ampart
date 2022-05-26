@@ -858,7 +858,8 @@ uint64_t summary_partition_table(struct partition_table *table) {
     puts(line);
     if (overlap) {
         puts("Warning: Overlap found in partition table, this is extremely dangerous as your Android installation might already be broken.");
-        puts(" - Please confirm if you've failed with ceemmc as it may overlay data with CE_STORAGE");
+        puts(" - Please confirm if you've failed with other software");
+        puts(" - Or have run some installtion scripts/tools that may duplicate data partition");
         puts(" - If your device bricks, do not blame on ampart as it's just the one helping you discovering it");
     }
     uint64_t size=get_max_part_end(table);
@@ -1233,7 +1234,7 @@ void no_coreelec() {
             if (line) {
                 free(line);
             }
-            die("Refused to run on CoreELEC, you should use ceemmc instead as it's the official installation tool approved by Team CoreELEC\n - Altering the source code to force ampart to run is strongly not recommended\n - Yes ampart is a partition tool and should have nothing to do with ceemmc\n - But its manipulating of the partition table is dangerous\n - You as a CoreELEC user should not do these low level stuffs");
+            die("Refused to run on CoreELEC, you should use ceemmc instead as it's the official installation tool approved by Team CoreELEC\n - Altering the source code to force ampart to run is strongly not recommended\n - Even ampart is a partition tool and ceemmc is an installtion tool, they are different\n - But its manipulating of the partition table is dangerous\n - Modifying the part table in an approved way by Team CoreELEC will be way much safer");
         }
     }
     fclose(fp);
@@ -1426,7 +1427,6 @@ void get_dtb_type(FILE *fp) {
             fread(buffer, SIZE_DTB, 1, fp);
             fwrite(buffer, SIZE_DTB, 1, tmp);
             rewind(tmp);
-            // I'm not into reinventing the wheel, so I'll just use the gz- functions provided by zlib. Some lazy buddys on the other hand, just steal the gzip code from uboot-amlogic and don't even think too much. Well, let me explain, gzip codes in uboot-amlogic was written before gzip was implemented in zlib, so they had to build their own. 
             gzFile *gp = gzdopen(fileno(tmp), "r"); 
             uint32_t magic_sub;
             int rtr = gzread(gp, &magic_sub, 4);

@@ -791,6 +791,7 @@ void valid_partition_table(struct table_helper *table_h) {
         else if (!strcmp(part->name, "reserved")) {
             if (options.input_reserved) {  // We would like to write to corresponding disk, so offset should be updated
                 options.offset = part->offset;
+                printf("Notice: offset of reserved partition found in table, using %"PRIu64" instead for the offset of reserved partition\n", options.offset);
             }
             table_h->reserved=part;
             has_reserved = true;
@@ -1611,6 +1612,39 @@ void insertion_optimizer (struct insertion_helper *insert_helpers, uint64_t spac
     return;
 }
 
+bool should_migrate(struct partition *old, struct partition *new) {
+    return old && new && old->offset != new->offset;
+}
+
+void migrate_seek(struct partition *part, FILE *fp) {
+    if (fseek(fp, part->offset, SEEK_SET)) {
+        die("Failed to seek in the disk for migration of reserved partition %s", part->name);
+    }
+}
+
+unsigned char *migrate_read(struct partition *part, FILE *fp) {
+    printf("Warning: offset of reserved partition %s changed, it should be migrated\n", part->name);
+    unsigned char *buffer = malloc(part->size);
+    if (!buffer) {
+        die("Failed to allocate memory for migration of reserved partition %s", part->name);
+    }
+    migrate_seek(part, fp);
+    if (fread(buffer, part->size, 1, fp) != 1) {
+        die("Failed to read old reserved partiton %s into buffer for migration", part->name);
+    }
+    return buffer;
+}
+
+void migrate_write(unsigned char *buffer, struct partition *part, FILE *fp) {
+    printf("Writing reserved partition %s to its new location...\n", part->name);
+    migrate_seek(part, fp);
+    if (fwrite(buffer, part->size, 1, fp) != 1) {
+        die("Failed to write reserved partiton %s from buffer to its new location for migration", part->name);
+    }
+    free(buffer);
+    return;
+}
+
 void migrate_parts(struct table_helper *table_h_new, struct table_helper *table_h_old, FILE *fp) {
     if (!options.input_device && options.input_reserved) {
         puts("Warning: unable to migrate partitions since input is a dumped image for reserved partition\n - You may need to restore env, logo and misc from a backup image if you want to write this image to the real reserved partition");
@@ -1618,58 +1652,29 @@ void migrate_parts(struct table_helper *table_h_new, struct table_helper *table_
     else {
         puts("Warning: input is a whole emmc disk, checking if we should migrate env, logo and misc partitions as their position may be moved");
         // Dude, I'm writing all of these at 23:45 PM and it just makes me DIZZY
-        bool migrate_env = table_h_old->env && table_h_new->env && table_h_old->env->offset != table_h_old->env->offset != table_h_new->env->offset;
-        bool migrate_logo = table_h_old->logo && table_h_new->logo && table_h_old->logo->offset != table_h_new->logo->offset;
-        bool migrate_misc = table_h_old->misc && table_h_new->misc && table_h_old->misc->offset != table_h_new->misc->offset;
+        bool migrate_env = should_migrate(table_h_old->env, table_h_new->env), migrate_logo = should_migrate(table_h_old->logo, table_h_new->logo), migrate_misc = should_migrate(table_h_old->misc, table_h_new->misc);
         unsigned char *buffer_env=NULL, *buffer_logo=NULL, *buffer_misc=NULL;
         if (migrate_env) {
-            puts("Warning: offset of reserved partition env changed, it should be migrated");
-            buffer_env = malloc(table_h_old->env->size);
-            if (!buffer_env) {
-                die("Failed to allocate memory for migration of reserved partition env");
-            }
-            fseek(fp, table_h_old->env->offset, SEEK_SET);
-            fread(buffer_env, table_h_old->env->size, 1, fp);
+            buffer_env = migrate_read(table_h_old->env, fp);
         }
         if (migrate_logo) {
-            puts("Warning: offset of reserved partition logo changed, it should be migrated");
-            buffer_logo = malloc(table_h_old->logo->size);
-            if (!buffer_env) {
-                die("Failed to allocate memory for migration of reserved partition logo");
-            }
-            fseek(fp, table_h_old->logo->offset, SEEK_SET);
-            fread(buffer_env, table_h_old->logo->size, 1, fp);
+            buffer_logo = migrate_read(table_h_old->logo, fp);
         }
         if (migrate_misc) {
-            puts("Warning: offset of reserved partition misc changed, it should be migrated");
-            buffer_misc = malloc(table_h_old->misc->size);
-            if (!buffer_misc) {
-                die("Failed to allocate memory for migration of reserved partition misc");
-            }
-            fseek(fp, table_h_old->misc->offset, SEEK_SET);
-            fread(buffer_env, table_h_old->misc->size, 1, fp);
+            buffer_misc = migrate_read(table_h_old->misc, fp);
         }
         // Read all of them, in case we overwrite them
         if (migrate_env || migrate_logo || migrate_misc) {
-            puts("Old reserved partitions read into memory");
+            puts("Old reserved partitions all read into memory");
         }
         if (migrate_env) {
-            puts("Writing env to its new partition...");
-            fseek(fp, table_h_new->env->offset, SEEK_SET);
-            fwrite(buffer_env, table_h_new->env->size, 1, fp);
-            free(buffer_env);
+            migrate_write(buffer_env, table_h_new->env, fp);
         }
         if (migrate_logo) {
-            puts("Writing logo to its new partition...");
-            fseek(fp, table_h_new->logo->offset, SEEK_SET);
-            fwrite(buffer_env, table_h_new->logo->size, 1, fp);
-            free(buffer_logo);
+            migrate_write(buffer_logo, table_h_new->logo, fp);
         }
         if (migrate_misc) {
-            puts("Writing misc to its new partition...");
-            fseek(fp, table_h_new->misc->offset, SEEK_SET);
-            fwrite(buffer_env, table_h_new->misc->size, 1, fp);
-            free(buffer_misc);
+            migrate_write(buffer_misc, table_h_new->misc, fp);
         }
     }
 }

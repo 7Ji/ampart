@@ -1191,7 +1191,7 @@ void reload_emmc() {
     if ( fp == NULL ) {
         die("ERROR: can not open '%s' for binding driver for '%s', \n - You will need to reboot manually for the new partition table to be picked up \n - You can not access the old partitions and the disk for now.", SYS_MMCBLK_BIND, SYS_EMMC_DEVICE);
     }
-    fputs(SYS_MMCBLK_BIND, fp);
+    fputs(SYS_EMMC_DEVICE, fp);
     fclose(fp);
     puts("Successfully binded the driver, you can use the new partition table now!");
 }

@@ -8,21 +8,21 @@ Everything is done in a **single session**, without any **repeated execution** o
 **ampart** does not contain any interactive CLI. This is perfect for implementation in scripts but does not mean the user won't be able to understand what is happening.
 
 **ampart** works in 3 modes: 
-* **normal mode**(default): New partitions other than those reserved should be defined, i.e. a partition table without bootloader, reserved, env should be described by users. Most of the stuff are auto-generated, users do not need to know the detail of the underlying disk.
-  * Minor details will differ depend on the old partition table, ampart would try its best to preserve the reserved partitions, and then create user-defined partitions
+* **normal mode**(default): New partitions other than those reserved should be defined, i.e. a partition table without bootloader, reserved, env, logo and misc should be described by users. Most of the stuff are auto-generated, users do not need to know the detail of the underlying disk.
+  * Minor details will differ depending on the old partition table, ampart would try its best to preserve the reserved partitions, and then create user-defined partitions
   * A straight-forward pure CoreELEC/EmuELEC installation can be achived in this way.
-* **clone mode**: All partitions should be defined, i.e. a partition table with bootloader, reserved, env should be described by users, in an explicit way, almost all details of the part table can be modified as long as they are legal. This mode can be used to restore a snapshot or utilized by scripts that want to achive their specific partition layout.   
+* **clone mode**: All partitions should be defined, i.e. a partition table with bootloader, reserved, env, logo and misc should be described by users, in an explicit way, almost all details of the part table can be modified as long as they are legal. This mode can be used to restore a snapshot or utilized by scripts that want to achive their specific partition layout.   
   * The output of clone mode will be a 1:1 binary replica of what you would get from a ampart snapshot taken via ``ampart --snapshot``
   * Scripts can operate in this mode for specific devices, if the emmc capacity is believed to be always the same, i.e. ``ampart /dev/mmcblk0 --clone bootloader:0B:4M:0 reserved:36M:64M:0 cache:108M:512M:2 env:628M:8M:0 logo:644M:32M:1 recovery:684M:32M:1 rsv:724M:8M:1 tee:740M:8M:1 crypt:756M:32M:1 misc:796M:32M:1 boot:836M:32M:1 system:876M:2G:1 data:2932M:4524M:4`` would always update the partition layout to be 100% the same
   * Android updates would be possible if you don't mess up with all of the parts before data
 * **update mode**: Work on the old partition layout and add minor tweaks here and there. 
   * All partitons not defined in the update array will not be affected
-  * Scripts can operate in this mode if they just want some shrink and addition. i.e. ``ampart /dev/mmcblk --update ^data:::-2G: hybrid:::`` would shrink the data partition by 2G, and create a ``hybrid`` partition after it to take all of the new free space. 
+  * Scripts can operate in this mode if they just want some minor tweaks on the old table. i.e. ``ampart /dev/mmcblk --update ^data:::-2G: hybrid:::`` would shrink the data partition by 2G, and create a ``hybrid`` partition after it to take all of the new free space. 
   * Android updates will always be possible as long as you keep your new parts after data
   * Android+CoreELEC/EmuELEC dual boot on emmc can be achived in this mode
-  * Updates happend on the **partition level**, not **filesystem level**, corresponding data backup and recovery and fs-createion needs to be done with other tools
+  * Updates happend on the **partition level**, not **filesystem level**, corresponding data backup and recovery, fs-resize and fs-createion needs to be done with other tools
 
-All of the above modes will both update the partition table itself and block devices under /dev, i.e. you would expect a /dev/whatever to be present immediately after you create it.
+All of the above modes will both update the partition table itself and block devices under /dev, i.e. you would expect a /dev/whatever to be present immediately after you create it with ``ampart /dev/mmcblk0 whatever:::``.
 
 The command-line usage of **ampart** is very simple:
 
@@ -33,7 +33,7 @@ In which the positional arguments are:
 *Arguments with \* are required*
 * **reserved/emmc\*** the path to ``/dev/reserved`` or ``/dev/mmcblkN`` or any image file you dumped from them (e.g. via ``dd if=/dev/mmcblk0 of=emmc.img``, or ``dd if=/dev/reserved of=reserved.img``).  
 Whether it's a whole emmc disk or a reserved partition will be identified by its name and header, but you can also force its type by options ``--reserved`` / ``-r`` or ``--disk`` / ``-d``  
-* **partition**(s) (**normal/clone** mode) partition(s) you would like to create, when omitted **ampart** will only print the old partition table. Should be in format **name**:**offset**:**size**:**mask**. In which:  
+* (**normal/clone** mode) **partition**(s) partition(s) you would like to create, when omitted **ampart** will only print the old partition table. Should be in format **name**:**offset**:**size**:**mask**. In which:  
     * **name\*** the partition name, supports **a**-**z**, **A**-**Z** and **_**(underscore), 15 characters at max.  
     e.g. boot, system, data  
     ***A**-**Z** and **_** are supported but not **suggested**, as it **may confuse some kernel and bootloader***    
@@ -81,18 +81,18 @@ Whether it's a whole emmc disk or a reserved partition will be identified by its
     * Even though ampart will migrate the content of the env, logo and misc partition from their old locations to their new locations, and the content at the new locations will be the same on the **binary level**, you can always backup images of these partitions for double insurance e.g. ``dd if=/dev/env of=env.img``
   
 
-* **partition**(s) (**update mode**) partition(s) you would like to update, when omitted **ampart** will only print the old partition table. Should be in either format **selector**(:**name**:**offset**:**size**:**mask**) or **name**:**offset**:**size**:**mask**. In which:  
-  * **selector** starts with ^, a partition name existing in the old table, or positive interger to select a part from the beginning, or negative interger to select a part from the end.   
-  If omitted, the **name**:**offset**:**size**:**mask** argument is parsed similiarly like it would in **normal mode**  
+* (**update mode**) **partition**(s) partition(s) you would like to update, when omitted **ampart** will only print the old partition table. Should be in either format **selector**(:**name**:**offset**:**size**:**mask**) or **name**:**offset**:**size**:**mask**. In which:  
+  * **selector*** starts with ^, a partition name existing in the old table, or positive interger to select a part from the beginning, or negative interger to select a part from the end.   
+  If omitted, the **name**:**offset**:**size**:**mask** argument is parsed just like in **normal mode** (*Notice that, however, you can't use update mode as normal mode, even if you manually remove all parts except the reserved ones, as reserved parts will not be inserted into the gap to save disk space in this mode*)  
   e.g.   
     * ^-1 selects the last partition
-    * ^2 selects the second partition (in most cases this would be reserved partition)
-    * data selects the data partition
+    * ^0 selects the first partition (in most cases this would be bootloader partition)
+    * ^data selects the data partition
     * *(empty)* selects nothing, create a part according to the remaining args
   * **(operator)** optional suffix added after selector can define special behaviour:
     * ? deletes the selected partition, no other args after : are needed. think it as *oh, where's the part now? I don't remember it anymore.*
-    * % clone the selected partition, give it a name after : ignore other args. think it as *cut that part, and clone it! I want them to be identical just that those two o in the %*
-  * **name** unless operator is ^, is the same as normal/clone mode, would update parts name if set, or do nothing if omitted
+    * % clone the selected partition, give it a name after : ignore other args. think it as *get that part, and clone it! I want them to be identical just that those two o in the % symbol*
+  * **name** unless operator is defined and is ?, is the same as normal/clone mode, would update parts name if set, or do nothing if omitted
   * **offset** integer number with optional +/- prefix and optional B/K/M/G suffix. Without prefix for replacing offset, with prefix for increasing/decreasing offset
   * **size** integer number with optional +/- prefix and optional B/K/M/G suffix. Without prefix for replacing size, with prefix for increasing/decreasing size
   * **mask** either 0, 1, 2 or 4, same as clone mode
@@ -166,7 +166,8 @@ So you'd better make sure the new partition table is desired by option ``--dry-r
 
 New paritions should be available immediately under /dev after partitioning, **without reboot**
 
-**Warning**: ampart won't check if the partitions are in used or not, users should umount the old parts by themselvies if they don't want any data loss. **this also mean you can partition the emmc being used by system even if your system is running from it.** This is a **feature**, not a **bug**, you told ampart to do so and **you yourself should take the responsibility**.
+~~**Warning**: ampart won't check if the partitions are in used or not, users should umount the old parts by themselvies if they don't want any data loss. **this also mean you can partition the emmc being used by system even if your system is running from it.** This is a **feature**, not a **bug**, you told ampart to do so and **you yourself should take the responsibility**.~~  
+This is no longer the case, ampart will refuse to partition a disk if it's a device and any of its part is mounted
 
 All of the above would seem complicated but the CLI is really **clean and easy**, e.g.   
 ````
@@ -193,7 +194,8 @@ ampart /dev/mmcblk0 --clone bootloader:0B:4M:0 reserved:36M:64M:0 cache:108M:512
 # Shrink, clone data, then create CE_FLASH, just like ceemmc in dual boot mode
 ampart --update /dev/mmcblk0 ^-1:::-512M: ^-1%:CE_STORAGE CE_FLASH:::
 ````
-(*In all of the commands above, those which create new partition tables will clear all partitions, copy the old partition info of bootloader, reserved and env as partition 0-2, then change the offset of env to the end of reserved, then clone the content of the env partition if it's moved.*)
+~~(*In all of the commands above, those which create new partition tables will clear all partitions, copy the old partition info of bootloader, reserved and env as partition 0-2, then change the offset of env to the end of reserved, then clone the content of the env partition if it's moved.*)~~ *ampart now has an insertion optimizer algorithm that'll try its best to insert env, logo, misc into the gap between bootloader and reserved to save disk space (normal mode only)*
+
 
 ## Examples
 Print the table when an Android installation is on an 8G emmc:    
@@ -635,9 +637,11 @@ CoreELEC:~ # ./ampart --clone /dev/mmcblk0 bootloader:0B:4M:0 reserved:36M:64M:0
 ## About
 The main reason I started to write this is that **CoreELEC**'s proprietary **ceemmc** can not be modified for intalling EmuELEC and HybridELEC to internal emmc, as its partition sizes are **hard-coded** 
 
-The partition tool is more or less a final step of the long journey of my past almost 2 months into achiving side-by-side dual-booting for CoreELEC+EmuELEC for all Amlogic devices, it is new, but the thoughts behind it is **mature** and **experienced**. You can expect an Amlogic-ng HybridELEC release utilizing ampart that can achive side-by-side dual-booting of CE+EE on the internal storage very soon.
+The partition tool is more or less a final step of the long journey of my past almost 2 months into achiving side-by-side dual-booting for CoreELEC+EmuELEC for all Amlogic devices, it is new, but the thoughts behind it is **mature** and **experienced**. You can expect an Amlogic-ng HybridELEC release utilizing ampart that can achive side-by-side dual-booting of CE+EE on the internal storage very soon. 
 
 In theory **ampart** should work perfectly fine for any Amlogic device, mainly those with linux-amlogic kernel, e.g. **CoreELEC**, **EmuELEC**, etc. But I only have 2 used non-mainstream Amlogic TVboxs lying around, one Xiaomi mibox3 (MDZ-16-AA, gxbb_p200) with a locked bootloader that forced me into developing [HybridELEC](https://github.com/7Ji/HybridELEC) (it starts as a USB Burning Tool burnable image for CoreELEC), and one BesTV R3300L (gxl_p212). I can only test on these two boxes and have no willing of buying other development boards/TV boxes, or free money to do so. 
+
+If you want me to bring official support to other devices, you can donate some funds/device to me for development. Note that devices violating EULA of CoreELEC or EmuELEC (especially those come with pre-installed image and Roms) are never supported. I'm living in China so devices shipped from China are more appreciated. Email me at pugokushin@gmail.com if you want to do so, and I'm considering opening Paypal/Patreon for public donation in the future.
 
 Even if you are using a system that does not run a linux-amlogic kernel (e.g. **Armbian**, **OpenWrt**), you can still use **ampart** to get the partition info of your emmc and partition it. You can then use the partitions by losetup or [blkdevparts=](https://www.kernel.org/doc/html/latest/block/cmdline-partition.html) kernel command line. In this way you won't mess up with the reserved partitions and utilize more space than the tricky 700M offset partitioning way.
 

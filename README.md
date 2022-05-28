@@ -714,10 +714,6 @@ Put only a system partition and a data partition on emmc, if you want to install
     Successfully binded the driver, you can use the new partition table now!
     Everything done! Enjoy your fresh-new partition table!
 
-Wait, I think I don't want to install or format anything, I want to take a regret pill and get my old partition table back. Oh, I can just go back with the snapshot I've taken before!
-````
-CoreELEC:~ # ./ampart --clone /dev/mmcblk0 bootloader:0B:4M:0 reserved:36M:64M:0 cache:108M:512M:2 env:628M:8M:0 logo:644M:32M:1 recovery:684M:32M:1 rsv:724M:8M:1 tee:740M:8M:1 crypt:756M:32M:1 misc:796M:32M:1 boot:836M:32M:1 system:876M:2G:1 data:2932M:4524M:4
-````
 
 ## About
 The main reason I started to write this is that **CoreELEC**'s proprietary **ceemmc** can not be modified for intalling EmuELEC and HybridELEC to internal emmc, as its partition sizes are **hard-coded** 

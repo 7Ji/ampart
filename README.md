@@ -200,7 +200,7 @@ ampart --update /dev/mmcblk0 ^-1:::-512M: ^-1%:CE_STORAGE CE_FLASH:::
 ## Examples
 Print the table when an Android installation is on an 8G emmc:    
 
-    CoreELEC:~ # ./ampart /dev/mmcblk0
+    EmuELEC:~ # ampart /dev/mmcblk0
     Path '/dev/mmcblk0' seems a device file
     Path '/dev/mmcblk0' detected as whole emmc disk
     Path '/dev/mmcblk0' is a device, getting its size via ioctl
@@ -243,10 +243,11 @@ Print the table when an Android installation is on an 8G emmc:
     data              b7400000(   2.86G) 11ac00000(   4.42G)     4
     ==============================================================
     Disk size totalling 7818182656 (7.28G) according to partition table
+    DTB is stored in plain Amlogic multi-dtb format
 
 Take a snapshot of the partition table in case anything goes wrong:  
 
-    CoreELEC:~ # ./ampart --snapshot /dev/mmcblk0
+    EmuELEC:~ # ampart --snapshot /dev/mmcblk0
     Notice: running in snapshot mode, new partition table won't be parsed
     Path '/dev/mmcblk0' seems a device file
     Path '/dev/mmcblk0' detected as whole emmc disk
@@ -290,15 +291,59 @@ Take a snapshot of the partition table in case anything goes wrong:
     data              b7400000(   2.86G) 11ac00000(   4.42G)     4
     ==============================================================
     Disk size totalling 7818182656 (7.28G) according to partition table
+    DTB is stored in plain Amlogic multi-dtb format
     Give one of the following partition arguments with options --clone/-c to ampart to reset the partition table to what it looks like now:
     bootloader:0B:4M:0 reserved:36M:64M:0 cache:108M:512M:2 env:628M:8M:0 logo:644M:32M:1 recovery:684M:32M:1 rsv:724M:8M:1 tee:740M:8M:1 crypt:756M:32M:1 misc:796M:32M:1 boot:836M:32M:1 system:876M:2G:1 data:2932M:4524M:4
     bootloader:0:4194304:0 reserved:37748736:67108864:0 cache:113246208:536870912:2 env:658505728:8388608:0 logo:675282944:33554432:1 recovery:717225984:33554432:1 rsv:759169024:8388608:1 tee:775946240:8388608:1 crypt:792723456:33554432:1 misc:834666496:33554432:1 boot:876609536:33554432:1 system:918552576:2147483648:1 data:3074424832:4743757824:4
 (For actual users instead of scripts, you should record the last line as it's shorter and easier to write/remember)  
 
-If you want to go back to your stock layout after you've installed CE/EE/HE to emmc:
+Use the new aminstall script I've written for EmuELEC that utilizes ampart to re-partition the emmc to achive a new CE_FLASH + CE_STORAGE + EEROMS partition layout, in single-boot mode, and check the new partition table after installation using ampart:
 
-    CoreELEC:~ # ./ampart --clone /dev/mmcblk0 bootloader:0B:4M:0 reserved:36M:64M:0 cache:108M:512M:2 env:628M:8M:0 logo:644M:32M:1 recovery:684M:32M:1 rsv:724M:8M:1 tee:740M:8M:1 crypt:756M:32M:1 misc:796M:32M:1 boot:836M:32M:1 system:876M:2G:1 data:2932M:4524M:4
-    Notice: running in clone mode, partition arguments won't be filtered, reserved partitions can be set
+    EmuELEC:~ # aminstall --iknowwhatimdoing
+    /usr/bin/dtname: line 70: warning: command substitution: ignored null byte in input
+    Checking if mmcblk0 is properly driven
+    Warning: working in single boot mode
+    This script will erase the old partition table on your emmc
+    and create a new part table that ONLY contains CE_FLASH, CE_STORAGE and EEROMS (if emmc size big enough) partiitons
+    (reserved partitions like bootloader, reserved, env, logo and misc will be kept)
+    You Android installation will be COMPLETELY erased and can not be recovered
+    Unless you use Amlogic USB Burning Tool to flash a stock image
+    This script will install EmuELEC that you booted from SD card/USB drive.
+
+    WARNING: The script does not have any safeguards, you will not receive any
+    support for problems that you may encounter if you proceed!
+
+    Type "yes" if you know what you are doing or anything else to exit: yes
+    Oh sweet! You emmc is larger than 4G (8G), so you can create a dedicated EEROMS partition to save your ROMs, savestates, etc
+    Do you want to create a dedicated EEROMS partition? (if not, CE_STORAGE partition will fill the rest of the disk) [Y/n]
+    Warning: from this point onward, all of the changes are IRREVERSIBLE since new data will be written to emmc. Make sure you keep the power pluged in.
+    If anything breaks apart, you can revert your partition table with the following command, but changes to the data are IRREVERSIBLE
+
+    ampart --clone /dev/mmcblk0 bootloader:0B:4M:0 reserved:36M:64M:0 cache:108M:512M:2 env:628M:8M:0 logo:644M:32M:1 recovery:684M:32M:1 rsv:724M:8M:1 tee:740M:8M:1 crypt:756M:32M:1 misc:796M:32M:1 boot:836M:32M:1 system:876M:2G:1 data:2932M:4524M:4
+
+    Ready to actually populate internal EmuELEC installation in 10 seconds...
+    You can ctrl+c now to stop the installation if you regret
+    Populating internal CE_FLASH partition...
+    Formatting internal CE_FLASH partition...
+    Copying all system files (kernel, SYSTEM, dtb, etc) under /flash to internal CE_FLASH partition...
+    Populated internal CE_FLASH partition...
+    Populating internal CE_STORAGE partition...
+    Formatting internal CE_STORAGE partition...
+    Do you want to copy your user data under /storage to internal CE_STORAGE partition? (This will not include all of the stuffs under /storage/roms, they will be copied to EEROMS partition later) [Y/n]
+    Stopping EmulationStation so we can make sure configs are flushed onto disk... You can run 'systemctl start emustation.service' later to bring EmulationStation back up
+    Copying user data...
+    Populated internal CE_STORAGE partition...
+    Populating internal EEROMS partition...
+    Formatting internal EEROMS partition...
+    Note: EEROMS on the emmc will always be formatted as EXT4, Since you can not plug the emmc to a Windows PC just like you would for a SD card/USB drive
+    Do you want to copy all of your ROMs, savestates, etc under /storage/roms to internal EEROMS partition? [Y/n]
+    Copying Roms, savestates, etc...
+    Populated internal EEROMS partition...
+    All done!
+    EmuELEC has been installed to your internal emmc.
+
+    Would you like to reboot to the fresh-installed internal installation of EmuELEC? (y/N)
+    EmuELEC:~ # ampart /dev/mmcblk0
     Path '/dev/mmcblk0' seems a device file
     Path '/dev/mmcblk0' detected as whole emmc disk
     Path '/dev/mmcblk0' is a device, getting its size via ioctl
@@ -306,52 +351,74 @@ If you want to go back to your stock layout after you've installed CE/EE/HE to e
     Reading old partition table...
     Notice: Seeking 37748736 (36.00M) (offset of reserved partition) into disk
     Validating partition table...
-    Partitions count: 15, GOOD √
+    Partitions count: 8, GOOD √
     Magic: MPT, GOOD √
     Version: 01.00.00, GOOD √
-    Checksum: calculated b803c1fd, recorded b803c1fd, GOOD √
-    Warning: Misbehaviour found in partition name 'CE_STORAGE':
-    - Uppercase letter (A-Z) is used, this is not recommended as it may confuse some kernel and bootloader
-    - Underscore (_) is used, this is not recommended as it may confuse some kernel and bootloader
+    Checksum: calculated c88a8998, recorded c88a8998, GOOD √
     Warning: Misbehaviour found in partition name 'CE_FLASH':
     - Uppercase letter (A-Z) is used, this is not recommended as it may confuse some kernel and bootloader
     - Underscore (_) is used, this is not recommended as it may confuse some kernel and bootloader
+    Warning: Misbehaviour found in partition name 'CE_STORAGE':
+    - Uppercase letter (A-Z) is used, this is not recommended as it may confuse some kernel and bootloader
+    - Underscore (_) is used, this is not recommended as it may confuse some kernel and bootloader
+    Warning: Misbehaviour found in partition name 'EEROMS':
+    - Uppercase letter (A-Z) is used, this is not recommended as it may confuse some kernel and bootloader
     Partition table read from '/dev/mmcblk0':
     ==============================================================
     NAME                          OFFSET                SIZE  MARK
     ==============================================================
     bootloader               0(   0.00B)    400000(   4.00M)     0
-      (GAP)                                2000000(  32.00M)
+    logo                400000(   4.00M)   2000000(  32.00M)     1
     reserved           2400000(  36.00M)   4000000(  64.00M)     0
-      (GAP)                                 800000(   8.00M)
-    cache              6c00000( 108.00M)  20000000( 512.00M)     2
-      (GAP)                                 800000(   8.00M)
-    env               27400000( 628.00M)    800000(   8.00M)     0
-      (GAP)                                 800000(   8.00M)
-    logo              28400000( 644.00M)   2000000(  32.00M)     1
-      (GAP)                                 800000(   8.00M)
-    recovery          2ac00000( 684.00M)   2000000(  32.00M)     1
-      (GAP)                                 800000(   8.00M)
-    rsv               2d400000( 724.00M)    800000(   8.00M)     1
-      (GAP)                                 800000(   8.00M)
-    tee               2e400000( 740.00M)    800000(   8.00M)     1
-      (GAP)                                 800000(   8.00M)
-    crypt             2f400000( 756.00M)   2000000(  32.00M)     1
-      (GAP)                                 800000(   8.00M)
-    misc              31c00000( 796.00M)   2000000(  32.00M)     1
-      (GAP)                                 800000(   8.00M)
-    boot              34400000( 836.00M)   2000000(  32.00M)     1
-      (GAP)                                 800000(   8.00M)
-    system            36c00000( 876.00M)  80000000(   2.00G)     1
-      (GAP)                                 800000(   8.00M)
-    data              b7400000(   2.86G)  fac00000(   3.92G)     4
-      (OVERLAP)                           fac00000(   3.92G)
-    CE_STORAGE        b7400000(   2.86G)  fac00000(   3.92G)     4
-    CE_FLASH         1b2000000(   6.78G)  20000000( 512.00M)     4
+    env                6400000( 100.00M)    800000(   8.00M)     0
+    misc               6c00000( 108.00M)   2000000(  32.00M)     1
+    CE_FLASH           8c00000( 140.00M)  80000000(   2.00G)     2
+    CE_STORAGE        88c00000(   2.14G)  80000000(   2.00G)     4
+    EEROMS           108c00000(   4.14G)  c9400000(   3.14G)     4
     ==============================================================
-    Warning: Overlap found in partition table, this is extremely dangerous as your Android installation might already be broken.
-    - If your device bricks, do not blame on ampart as it's just the one helping you discovering it
     Disk size totalling 7818182656 (7.28G) according to partition table
+    DTB is stored in plain Amlogic multi-dtb format
+
+
+
+
+If you want to go back to your stock layout after you've installed CE/EE/HE to emmc:
+
+    EmuELEC:~ #  ampart --clone /dev/mmcblk0 bootloader:0B:4M:0 reserved:36M:64M:0 cache:108M:512M:2 env:628M:8M:0 logo:644M:32M:1 recovery:684M:32M:1 rsv:724M:8M:1 tee:740M:8M:1 crypt:756M:32M:1 misc:796M:32M:1 boot:836M:32M:1 system:876M:2G:1 data:2932M:4524M:4:8M:1 crypt:756M:32M:1 misc:796M:32M:1 boot:836M:32MNotice: running in clone mode, partition arguments won't be filtered, reserved partitions can be set
+    Path '/dev/mmcblk0' seems a device file
+    Path '/dev/mmcblk0' detected as whole emmc disk
+    Path '/dev/mmcblk0' is a device, getting its size via ioctl
+    Disk size is 7818182656 (7.28G)
+    Reading old partition table...
+    Notice: Seeking 37748736 (36.00M) (offset of reserved partition) into disk
+    Validating partition table...
+    Partitions count: 8, GOOD √
+    Magic: MPT, GOOD √
+    Version: 01.00.00, GOOD √
+    Checksum: calculated c88a8998, recorded c88a8998, GOOD √
+    Warning: Misbehaviour found in partition name 'CE_FLASH':
+    - Uppercase letter (A-Z) is used, this is not recommended as it may confuse some kernel and bootloader
+    - Underscore (_) is used, this is not recommended as it may confuse some kernel and bootloader
+    Warning: Misbehaviour found in partition name 'CE_STORAGE':
+    - Uppercase letter (A-Z) is used, this is not recommended as it may confuse some kernel and bootloader
+    - Underscore (_) is used, this is not recommended as it may confuse some kernel and bootloader
+    Warning: Misbehaviour found in partition name 'EEROMS':
+    - Uppercase letter (A-Z) is used, this is not recommended as it may confuse some kernel and bootloader
+    Partition table read from '/dev/mmcblk0':
+    ==============================================================
+    NAME                          OFFSET                SIZE  MARK
+    ==============================================================
+    bootloader               0(   0.00B)    400000(   4.00M)     0
+    logo                400000(   4.00M)   2000000(  32.00M)     1
+    reserved           2400000(  36.00M)   4000000(  64.00M)     0
+    env                6400000( 100.00M)    800000(   8.00M)     0
+    misc               6c00000( 108.00M)   2000000(  32.00M)     1
+    CE_FLASH           8c00000( 140.00M)  80000000(   2.00G)     2
+    CE_STORAGE        88c00000(   2.14G)  80000000(   2.00G)     4
+    EEROMS           108c00000(   4.14G)  c9400000(   3.14G)     4
+    ==============================================================
+    Disk size totalling 7818182656 (7.28G) according to partition table
+    DTB is stored in plain Amlogic multi-dtb format
     Warning: input is a device, check if any partitions under its corresponding emmc disk '/dev/mmcblk0' is mounted...
     Using 7818182656 (7.28G) as the disk size
     Parsing user input for partition (clone mode): bootloader:0B:4M:0
@@ -456,9 +523,16 @@ If you want to go back to your stock layout after you've installed CE/EE/HE to e
     ==============================================================
     Disk size totalling 7818182656 (7.28G) according to partition table
     Oopening '/dev/mmcblk0' as read/append to write new patition table...
+    Modifying Amlogic multi-dtb...
+    Warning: input is a whole emmc disk, checking if we should migrate env, logo and misc partitions as their position may be moved
+    Warning: offset of reserved partition env changed, it should be migrated
+    Warning: offset of reserved partition logo changed, it should be migrated
+    Warning: offset of reserved partition misc changed, it should be migrated
+    Old reserved partitions all read into memory
+    Writing reserved partition env to its new location...
+    Writing reserved partition logo to its new location...
+    Writing reserved partition misc to its new location...
     Notice: Seeking 37748736 (36.00M) (offset of reserved partition) into disk
-    Warning: input is a whole emmc disk, checking if we should copy the env partition as the env partition may be moved
-    Offset of env partition not changed, no need to copy it
     Notifying kernel about partition table change...
     We need to reload the driver for emmc as the meson-mmc driver does not like partition table being hot-updated
     Opening '/sys/bus/mmc/drivers/mmcblk/unbind' so we can unbind driver for 'emmc:0001'
@@ -467,9 +541,9 @@ If you want to go back to your stock layout after you've installed CE/EE/HE to e
     Successfully binded the driver, you can use the new partition table now!
     Everything done! Enjoy your fresh-new partition table!
 
-And I can just partition the emmc in any way I would like to! What about a single data partition and no Android BS? I would use the /dev/data as a storage partition and have no problem Android not working:
+Put a big single data parititon on emmc and use it as storage, if you don't care about Android:
 
-    CoreELEC:~ # ./ampart /dev/mmcblk0 data:::
+    EmuELEC:~ # ampart /dev/mmcblk0 data:::
     Path '/dev/mmcblk0' seems a device file
     Path '/dev/mmcblk0' detected as whole emmc disk
     Path '/dev/mmcblk0' is a device, getting its size via ioctl
@@ -512,41 +586,49 @@ And I can just partition the emmc in any way I would like to! What about a singl
     data              b7400000(   2.86G) 11ac00000(   4.42G)     4
     ==============================================================
     Disk size totalling 7818182656 (7.28G) according to partition table
+    DTB is stored in plain Amlogic multi-dtb format
     Warning: input is a device, check if any partitions under its corresponding emmc disk '/dev/mmcblk0' is mounted...
     Using 7818182656 (7.28G) as the disk size
-    Usable space of the disk is 7704936448 (7.18G)
-    - This is due to reserved partition ends at 104857600 (100.00M)
-    - And env partition takes 8388608 (8.00M)
-    Make sure you've backed up the env partition as its offset will mostly change
-    - This is because all user-defined partitions will be created after the env partition
-    - Yet most likely the old env partition was created after a cache partition
+    [Insertion optimizer] the following partitions will be inserted into the gap between bootloader and reserved: logo
+    Usable space of the disk is 7671382016 (7.14G)
+    Make sure you've backed up the env, logo and misc partitions as their offset will mostly change,
+    - even ampart will auto-migrate them for you
+    - This is because all user-defined partitions will be created after the reserved partition
+    - Yet most likely these old partitions have gap before them
     - Which wastes a ton of space if we start at there
     Parsing user input for partition: data:::
     - Name: data
-    - Offset: 113246208 (108.00M)
-    - Size: 7704936448 (7.18G)
+    - Offset: 146800640 (140.00M)
+    - Size: 7671382016 (7.14G)
     - Mask: 4
     New partition table is generated successfully in memory
     Validating partition table...
-    Partitions count: 4, GOOD √
+    Partitions count: 6, GOOD √
     Magic: MPT, GOOD √
     Version: 01.00.00, GOOD √
-    Checksum: calculated 644544cc, recorded 644544cc, GOOD √
+    Checksum: calculated 1667e732, recorded 1667e732, GOOD √
     ==============================================================
     NAME                          OFFSET                SIZE  MARK
     ==============================================================
     bootloader               0(   0.00B)    400000(   4.00M)     0
-      (GAP)                                2000000(  32.00M)
+    logo                400000(   4.00M)   2000000(  32.00M)     1
     reserved           2400000(  36.00M)   4000000(  64.00M)     0
     env                6400000( 100.00M)    800000(   8.00M)     0
-    data               6c00000( 108.00M) 1cb400000(   7.18G)     4
+    misc               6c00000( 108.00M)   2000000(  32.00M)     1
+    data               8c00000( 140.00M) 1c9400000(   7.14G)     4
     ==============================================================
     Disk size totalling 7818182656 (7.28G) according to partition table
     Oopening '/dev/mmcblk0' as read/append to write new patition table...
+    Modifying Amlogic multi-dtb...
+    Warning: input is a whole emmc disk, checking if we should migrate env, logo and misc partitions as their position may be moved
+    Warning: offset of reserved partition env changed, it should be migrated
+    Warning: offset of reserved partition logo changed, it should be migrated
+    Warning: offset of reserved partition misc changed, it should be migrated
+    Old reserved partitions all read into memory
+    Writing reserved partition env to its new location...
+    Writing reserved partition logo to its new location...
+    Writing reserved partition misc to its new location...
     Notice: Seeking 37748736 (36.00M) (offset of reserved partition) into disk
-    Warning: input is a whole emmc disk, checking if we should copy the env partition as the env partition may be moved
-    Offset of the env partition has changed, copying content of it...
-    Copied content env partiton
     Notifying kernel about partition table change...
     We need to reload the driver for emmc as the meson-mmc driver does not like partition table being hot-updated
     Opening '/sys/bus/mmc/drivers/mmcblk/unbind' so we can unbind driver for 'emmc:0001'
@@ -556,9 +638,9 @@ And I can just partition the emmc in any way I would like to! What about a singl
     Everything done! Enjoy your fresh-new partition table!
 Now I have a 7.18 G data partition **located immediately at /dev/data** and I can format/use it just in the way I like! There's no tricky loop mount or BS rebooting over and over again.
 
-What about formatting it to just a system partition and data partition? I would like to have a pure CoreELEC/EmuELEC installation and cares nothing about those Android BS:
+Put only a system partition and a data partition on emmc, if you want to install CoreELEC/EmuELEC in the good-old installtointernal way and don't want to waste any single byte on Andorid BS:
 
-    CoreELEC:~ # ./ampart /dev/mmcblk0 system::512M: data:::
+    EmuELEC:~ # ampart /dev/mmcblk0 system::2G: data:::
     Path '/dev/mmcblk0' seems a device file
     Path '/dev/mmcblk0' detected as whole emmc disk
     Path '/dev/mmcblk0' is a device, getting its size via ioctl
@@ -566,61 +648,64 @@ What about formatting it to just a system partition and data partition? I would 
     Reading old partition table...
     Notice: Seeking 37748736 (36.00M) (offset of reserved partition) into disk
     Validating partition table...
-    Partitions count: 4, GOOD √
+    Partitions count: 6, GOOD √
     Magic: MPT, GOOD √
     Version: 01.00.00, GOOD √
-    Checksum: calculated 644544cc, recorded 644544cc, GOOD √
+    Checksum: calculated 1667e732, recorded 1667e732, GOOD √
     Partition table read from '/dev/mmcblk0':
     ==============================================================
     NAME                          OFFSET                SIZE  MARK
     ==============================================================
     bootloader               0(   0.00B)    400000(   4.00M)     0
-      (GAP)                                2000000(  32.00M)
+    logo                400000(   4.00M)   2000000(  32.00M)     1
     reserved           2400000(  36.00M)   4000000(  64.00M)     0
     env                6400000( 100.00M)    800000(   8.00M)     0
-    data               6c00000( 108.00M) 1cb400000(   7.18G)     4
+    misc               6c00000( 108.00M)   2000000(  32.00M)     1
+    data               8c00000( 140.00M) 1c9400000(   7.14G)     4
     ==============================================================
     Disk size totalling 7818182656 (7.28G) according to partition table
+    DTB is stored in plain Amlogic multi-dtb format
     Warning: input is a device, check if any partitions under its corresponding emmc disk '/dev/mmcblk0' is mounted...
     Using 7818182656 (7.28G) as the disk size
-    Usable space of the disk is 7704936448 (7.18G)
-    - This is due to reserved partition ends at 104857600 (100.00M)
-    - And env partition takes 8388608 (8.00M)
-    Make sure you've backed up the env partition as its offset will mostly change
-    - This is because all user-defined partitions will be created after the env partition
-    - Yet most likely the old env partition was created after a cache partition
+    [Insertion optimizer] the following partitions will be inserted into the gap between bootloader and reserved: logo
+    Usable space of the disk is 7671382016 (7.14G)
+    Make sure you've backed up the env, logo and misc partitions as their offset will mostly change,
+    - even ampart will auto-migrate them for you
+    - This is because all user-defined partitions will be created after the reserved partition
+    - Yet most likely these old partitions have gap before them
     - Which wastes a ton of space if we start at there
-    Parsing user input for partition: system::512M:
+    Parsing user input for partition: system::2G:
     - Name: system
-    - Offset: 113246208 (108.00M)
-    - Size: 536870912 (512.00M)
+    - Offset: 146800640 (140.00M)
+    - Size: 2147483648 (2.00G)
     - Mask: 4
     Parsing user input for partition: data:::
     - Name: data
-    - Offset: 650117120 (620.00M)
-    - Size: 7168065536 (6.68G)
+    - Offset: 2294284288 (2.14G)
+    - Size: 5523898368 (5.14G)
     - Mask: 4
     New partition table is generated successfully in memory
     Validating partition table...
-    Partitions count: 5, GOOD √
+    Partitions count: 7, GOOD √
     Magic: MPT, GOOD √
     Version: 01.00.00, GOOD √
-    Checksum: calculated 3d5695ff, recorded 3d5695ff, GOOD √
+    Checksum: calculated ef793865, recorded ef793865, GOOD √
     ==============================================================
     NAME                          OFFSET                SIZE  MARK
     ==============================================================
     bootloader               0(   0.00B)    400000(   4.00M)     0
-      (GAP)                                2000000(  32.00M)
+    logo                400000(   4.00M)   2000000(  32.00M)     1
     reserved           2400000(  36.00M)   4000000(  64.00M)     0
     env                6400000( 100.00M)    800000(   8.00M)     0
-    system             6c00000( 108.00M)  20000000( 512.00M)     4
-    data              26c00000( 620.00M) 1ab400000(   6.68G)     4
+    misc               6c00000( 108.00M)   2000000(  32.00M)     1
+    system             8c00000( 140.00M)  80000000(   2.00G)     4
+    data              88c00000(   2.14G) 149400000(   5.14G)     4
     ==============================================================
     Disk size totalling 7818182656 (7.28G) according to partition table
     Oopening '/dev/mmcblk0' as read/append to write new patition table...
+    Modifying Amlogic multi-dtb...
+    Warning: input is a whole emmc disk, checking if we should migrate env, logo and misc partitions as their position may be moved
     Notice: Seeking 37748736 (36.00M) (offset of reserved partition) into disk
-    Warning: input is a whole emmc disk, checking if we should copy the env partition as the env partition may be moved
-    Offset of env partition not changed, no need to copy it
     Notifying kernel about partition table change...
     We need to reload the driver for emmc as the meson-mmc driver does not like partition table being hot-updated
     Opening '/sys/bus/mmc/drivers/mmcblk/unbind' so we can unbind driver for 'emmc:0001'

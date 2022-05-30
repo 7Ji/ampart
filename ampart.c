@@ -30,7 +30,7 @@
 #include <zlib.h>
 #include <time.h>
 
-//#define VERSION     "v0.1"           // This should ONLY be uncommented for actual releases, for snapshot builds it will be generated using git commit hash instead
+#define VERSION     "v0.1-development" // This should ONLY be uncommented for actual releases, for snapshot builds it will be generated using git commit hash instead
 #define PART_NUM                  0x20 // This should ALWAYS be 0x20=32, regardless of platform. Defining it here saves some precious time used on sizeof()
 #define SIZE_PART                 0x28 // This should ALWAYS be 0x28=40, regardless of platform. Defining it here saves some precious time used on sizeof()
 #define SIZE_TABLE               0x518 // This should ALWAYS be 0x518=1304, regardless of platform. Defining it here saves some precious time used on sizeof()

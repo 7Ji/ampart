@@ -28,6 +28,7 @@
 #include <linux/fs.h>
 #include <unistd.h>
 #include <zlib.h>
+#include <time.h>
 
 //#define VERSION     "v0.1"           // This should ONLY be uncommented for actual releases, for snapshot builds it will be generated using git commit hash instead
 #define PART_NUM                  0x20 // This should ALWAYS be 0x20=32, regardless of platform. Defining it here saves some precious time used on sizeof()
@@ -63,11 +64,12 @@
 #define TABLE_UPDATE_ACTION_DELETE    1
 #define TABLE_UPDATE_ACTION_CLONE     2
 
-const unsigned char dtb_partitions_start[]={0x70, 0x61, 0x72, 0x74, 0x69, 0x74, 0x69, 0x6F, 0x6E, 0x73};
-const unsigned char dtb_partitions_end[]= {0,0,0,2,0,0,0,2,0,0,0,1};
+const unsigned char dtb_partitions_start[]={0, 0, 0, 1, 0x70, 0x61, 0x72, 0x74, 0x69, 0x74, 0x69, 0x6F, 0x6E, 0x73};
+const unsigned char dtb_partitions_end[]= {0,0,0,2,0,0,0,2};
+const unsigned char dtb_magic[] = {0xD0, 0x0D, 0xFE, 0xED} ; 
 
-#define LEN_DTB_PARTITIONS_START 10
-#define LEN_DTB_PARTITIONS_END 12
+#define LEN_DTB_PARTITIONS_START 14
+#define LEN_DTB_PARTITIONS_END 8
 
 
 struct partition {
@@ -1425,7 +1427,7 @@ void get_dtb_type(FILE *fp) {
             fread(buffer, SIZE_DTB, 1, fp);
             fwrite(buffer, SIZE_DTB, 1, tmp);
             rewind(tmp);
-            gzFile *gp = gzdopen(fileno(tmp), "r"); 
+            gzFile gp = gzdopen(fileno(tmp), "r"); 
             uint32_t magic_sub;
             int rtr = gzread(gp, &magic_sub, 4);
             if (gzclose(gp) != Z_OK || rtr==-1) {
@@ -1470,21 +1472,25 @@ void get_dtb_type(FILE *fp) {
 }
 
 
-void remove_dtb_partitions(unsigned char *dtb) {
+bool remove_dtb_partitions(unsigned char *dtb) {
     struct dtb_header *header = malloc(SIZE_DTB_HEADER);
     memcpy(header, dtb, SIZE_DTB_HEADER);
     uint32_t dtb_size = swap_bytes_u32(header->totalsize);
     unsigned char * parts_start=pattern_finder(dtb+SIZE_DTB_HEADER, dtb_partitions_start, dtb_size-SIZE_DTB_HEADER, LEN_DTB_PARTITIONS_START);  // Where partitions node start
-    if (parts_start) {
-        puts("Notice: partitions node found in dtb, removing it");
-    }
-    else {
+    if (!parts_start) {
         free(header);
-        return;
+        return false;
     }
     unsigned char * parts_end=pattern_finder(parts_start, dtb_partitions_end, dtb_size-(parts_start-dtb), LEN_DTB_PARTITIONS_END);
-    uint32_t  dtb_size_diff = parts_end - parts_start + LEN_DTB_PARTITIONS_END;
+    uint32_t dtb_size_diff = parts_end - parts_start + LEN_DTB_PARTITIONS_END;
+    if (dtb_size_diff > 4000) { // (0x58+12+16) * 32 + 16 + 8 = 3736, 4000 for double insurance
+        free(header);
+        return false;
+    }
+    puts("Notice: partitions node found in dtb, removing it");
+    printf("Removing %"PRIu32" bytes from dtb\n", dtb_size_diff);
     unsigned char *ptr;
+    int i=0;
     for (ptr=parts_start; ptr<(dtb+dtb_size)-dtb_size_diff; ++ptr) {
         *ptr = *(ptr+dtb_size_diff);
     }
@@ -1493,7 +1499,7 @@ void remove_dtb_partitions(unsigned char *dtb) {
     header->size_dt_struct = swap_bytes_u32(swap_bytes_u32(header->size_dt_struct)-dtb_size_diff);
     memcpy(dtb, header, SIZE_DTB_HEADER);
     free(header);
-    return;
+    return true;
 }
 
 void remove_dtbs_partitions(FILE *fp) {
@@ -1505,9 +1511,11 @@ void remove_dtbs_partitions(FILE *fp) {
         offset_dtbs = options.offset + DTB_OFFSET;
     }
     fseek(fp, offset_dtbs, SEEK_SET);
-    unsigned char *dtbs = malloc(SIZE_DTB), *dtbs_gzipped;
+    unsigned char *dtbs = calloc(1, SIZE_DTB), *dtbs_gzipped;
     fread(dtbs, SIZE_DTB, 1, fp);
     int rtr;
+    off_t gz_raw_size;
+    bool modified = false;
     if (options.dtb_type == DTB_TYPE_GZIP) {
         puts("Decompressing gzipped dtb...");
         FILE* tmp = tmpfile();
@@ -1519,54 +1527,64 @@ void remove_dtbs_partitions(FILE *fp) {
         rewind(tmp);
         dtbs_gzipped = dtbs;
         dtbs = calloc(1, SIZE_DTB_UNCOMPRESS);
-        gzFile *gp = gzdopen(fileno(tmp), "r"); 
+        gzFile gp = gzdopen(fileno(tmp), "r"); 
         rtr = gzread(gp, dtbs, SIZE_DTB_UNCOMPRESS);
+        gz_raw_size = gztell(gp);
+        printf("Decompressed %li bytes from gzipped dtb\n", gz_raw_size);
         if (gzclose(gp) != Z_OK || rtr==-1) {
             die("Failed to uncompress gzipped dtb");
         }
     }
-    uint32_t dtb_magic_u32 = MAGIC_SINGLE_DTB;
-    unsigned char dtb_magic[4]; 
-    memcpy(dtb_magic, &dtb_magic_u32, 4);
+    // uint32_t dtb_magic_u32 = MAGIC_SINGLE_DTB;
+    // unsigned char dtb_magic[4]; 
+    // memcpy(dtb_magic, &dtb_magic_u32, 4);
     if (options.dtb_type == DTB_TYPE_MULTI || options.dtb_subtype == DTB_TYPE_MULTI ) {
-        puts("Modifying Amlogic multi-dtb...");
+        puts("Checking if Amlogic multi-dtb should be modified...");
         unsigned char *dtb = pattern_finder(dtbs, dtb_magic, SIZE_DTB, 4);
         while (dtb != NULL) {
-            remove_dtb_partitions(dtb);
+            modified |= remove_dtb_partitions(dtb);
             dtb = pattern_finder(dtb+PAGE_SIZE, dtb_magic, SIZE_DTB, 4); // 0x800 is page size
         }
     }
     else if (options.dtb_type == DTB_TYPE_SINGLE || options.dtb_subtype == DTB_TYPE_SINGLE ) {
-        puts("Modifying single dtb...");
-        remove_dtb_partitions(dtbs);
+        puts("Check if single dtb should be modified...");
+        modified |= remove_dtb_partitions(dtbs);
     }
     else {
         puts("What??? This should not happen. The dtb type is invalid when trying to modify dtb");
         exit(EXIT_FAILURE);
     }
-    if (options.dtb_type == DTB_TYPE_GZIP) {
-        puts("Compressing gzipped dtb...");
-        FILE* tmp = tmpfile();
-        if (!tmp) {
-            fclose(fp);
-            die("Failed to create temporary file to compress dtb to gzip");
+    if (modified) {
+        if (options.dtb_type == DTB_TYPE_GZIP) {
+            puts("Compressing gzipped dtb...");
+            FILE* tmp = tmpfile();
+            if (!tmp) {
+                fclose(fp);
+                die("Failed to create temporary file to compress dtb to gzip");
+            }
+            gzFile gp = gzdopen(fileno(tmp), "w");
+            if (!gzwrite(gp, dtbs, gz_raw_size+1)) {
+                die("Failed to compress dtb to gzip");
+            }
+            gzflush(gp, Z_FINISH);
+            long gz_zip_size = ftell(tmp);
+            if (gz_zip_size > SIZE_DTB) {
+                die("Compressed dtb too big! It can only be 256K at most");
+            }
+            printf("Gzipped dtb size is %li\n", gz_zip_size);
+            rewind(tmp);
+            memset(dtbs_gzipped, 0, SIZE_DTB);
+            fread(dtbs_gzipped, gz_zip_size, 1, tmp);
+            fclose(tmp);
+            time_t now = time(NULL);
+            memcpy(dtbs_gzipped+4, &now, 4);
+            free(dtbs);
+            dtbs=dtbs_gzipped;
         }
-        gzFile *gp = gzdopen(fileno(tmp), "w");
-        rtr = gzwrite(gp, dtbs, SIZE_DTB_UNCOMPRESS);
-        if (gzclose(gp) != Z_OK || !rtr) {
-            die("Failed to compress dtb to gzip");
-        }
-        if (ftell(tmp) > SIZE_DTB) {
-            die("Compressed dtb too big! It can only be 256K at most");
-        }
-        rewind(tmp);
-        fread(dtbs_gzipped, SIZE_DTB, 1, tmp);
-        free(dtbs);
-        dtbs=dtbs_gzipped;
+        fseek(fp, offset_dtbs, SEEK_SET);
+        fwrite(dtbs, SIZE_DTB, 1, fp); // A duplicate copy should be written
+        fwrite(dtbs, SIZE_DTB, 1, fp);
     }
-    fseek(fp, offset_dtbs, SEEK_SET);
-    fwrite(dtbs, SIZE_DTB, 1, fp); // A duplicate copy should be written
-    fwrite(dtbs, SIZE_DTB, 1, fp);
     free(dtbs);
     return;
 }

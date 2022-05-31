@@ -10,6 +10,9 @@
  * You should have received a copy of the GNU General Public License along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
+
+// Ampart is never intened to be included in other C/C++ programs, and that's the reason why I didn't write a header. It is an independent partition tool that should be used directly by users/scripts, and the interface to that use case is guaranteed to be the same, while due to the heavy development, the functions' definition and relationship are not guaranteed to not change. So, inclusion of ampart with your custom header will most likely ends up with broken calls when you pull a newer version of ampart. I would, in the future, abstract the core concepts into a header, but that's not something I would do before perfection of ampart the tool itself, let alone I need time to prepare for a big exam at the end of this year.
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -36,7 +39,7 @@
 #define SIZE_TABLE               0x518 // This should ALWAYS be 0x518=1304, regardless of platform. Defining it here saves some precious time used on sizeof()
 #define SIZE_DTB_HEADER           0x28 // This should ALWAYS be 0x28=40, regardless of platform. Defining it here saves some precious time used on sizeof()
 #define SIZE_MBR                 0x200 // Count of bytes that should be \0 for whole emmc disk, as stock Amlogic emmc should have no MBR. Things may become tricky if users have created a mbr partition table. In that case auto-recognization may not work for dumped image for whole emmc (for whole emmc disk DEVICE though, auto-recognization works without checking MBR)
-#define SIZE_DTB               0x40000  //256K
+#define SIZE_DTB               0x40000  //256K      
 #define SIZE_DTB_UNCOMPRESS   0xA00000  //10M, yeah I know it's a lot, but hey, just in case there is a 'Super Compressor' that can compress this much data into a tiny 256K gzip (wow, a 40:1 ratio)
 #define DTB_OFFSET            0x400000  //4M, relative to reserved part
 #define PAGE_SIZE                0x800  //Minimum emmc I/O size
@@ -46,6 +49,10 @@
 #define MAGIC_GZIPPED_DTB   0x00008B1F
 #define MAGIC_XIAOMI_DTB    0x000089EF  // The BS Xiaomi proprietary DTB format, found on a user's Xiaomi mibox3s (Chinese firmware, the global firmware does not have such a format)
 #define MAGIC_PHICOMM_DTB   0x000004DA  // The BS Phicomm proprietary DTB format, found on a user's Phicomm N1
+
+#define PART_DTB_VERSION             1  // In fact, all existing devices use this version
+#define PART_DTB_MAGIC      0x00447E41 
+// Timestamp should not be updated, and checksum should be calculated live
 
 // These are helper value used to parse around, to save extra process time after the first comparision using those magics listed above
 #define DTB_TYPE_ILLEGAL             0  // We consider the initialized value 0 as illegal
@@ -124,6 +131,14 @@ struct dtb_header {
     // The three bad-boys will be decreased on the same level
 };
 
+struct dtb_partition {
+    unsigned char data[SIZE_DTB-16];
+    unsigned int magic;
+    unsigned int version;
+	unsigned int timestamp;
+	unsigned int checksum;
+};
+
 struct options {
     bool input_reserved;
     bool input_device;
@@ -155,12 +170,26 @@ uint32_t table_checksum(struct partition *part, int part_num) {
 	uint32_t checksum = 0, *p;
 	for (i = 0; i < part_num; i++) {
 		p = (uint32_t *)part;
-		for (j = SIZE_PART/sizeof(checksum);
-				j > 0; j--) {
+		for (j = SIZE_PART/4;
+				j > 0; --j) {
 			checksum += *p;
 			p++;
 		}
 	}
+	return checksum;
+}
+
+unsigned int dtb_checksum(struct dtb_partition *dtb) {
+    // All content of the dtb partition (256K) except the last 4 byte (checksum) is sumed for checksum (thus summing 256K-4)
+    int i = 0;
+	int size = SIZE_DTB - 4;
+	unsigned int *buffer;
+	unsigned int checksum = 0;
+
+	size = size >> 2; // Integer divide by 4, shifting is faster
+	buffer = (unsigned int *) dtb;
+	while (i < size)
+		checksum += buffer[i++];
 	return checksum;
 }
 
@@ -1402,7 +1431,7 @@ void get_dtb_type(FILE *fp) {
     fseek(fp, offset_dtb, SEEK_SET);
     //unsigned char *dtb = malloc(SIZE_DTB);
     uint32_t magic;
-    fread(&magic, sizeof(magic), 1, fp);
+    fread(&magic, 4, 1, fp);
     printf("DTB is stored in ");
     if (magic == MAGIC_MULTI_DTB) {
         puts("plain Amlogic multi-dtb format");
@@ -1511,8 +1540,10 @@ void remove_dtbs_partitions(FILE *fp) {
         offset_dtbs = options.offset + DTB_OFFSET;
     }
     fseek(fp, offset_dtbs, SEEK_SET);
-    unsigned char *dtbs = calloc(1, SIZE_DTB), *dtbs_gzipped;
-    fread(dtbs, SIZE_DTB, 1, fp);
+    struct dtb_partition *dtb_partition = malloc(SIZE_DTB);
+    unsigned char *dtbs;
+    // unsigned char *dtbs = calloc(1, SIZE_DTB), *dtbs_gzipped;
+    fread(dtb_partition, SIZE_DTB, 1, fp);
     int rtr;
     off_t gz_raw_size;
     bool modified = false;
@@ -1521,19 +1552,21 @@ void remove_dtbs_partitions(FILE *fp) {
         FILE* tmp = tmpfile();
         if (!tmp) {
             fclose(fp);
-            die("Failed to create temporary file to modify gzipped dtb");
+            die("Failed to create temporary file to analyze gzipped dtb");
         }
-        fwrite(dtbs, SIZE_DTB, 1, tmp);
+        fwrite(dtb_partition->data, SIZE_DTB-16, 1, tmp);
         rewind(tmp);
-        dtbs_gzipped = dtbs;
         dtbs = calloc(1, SIZE_DTB_UNCOMPRESS);
         gzFile gp = gzdopen(fileno(tmp), "r"); 
         rtr = gzread(gp, dtbs, SIZE_DTB_UNCOMPRESS);
         gz_raw_size = gztell(gp);
         printf("Decompressed %li bytes from gzipped dtb\n", gz_raw_size);
         if (gzclose(gp) != Z_OK || rtr==-1) {
-            die("Failed to uncompress gzipped dtb");
+            die("Failed to decompress gzipped dtb");
         }
+    }
+    else {
+        dtbs = dtb_partition->data;
     }
     // uint32_t dtb_magic_u32 = MAGIC_SINGLE_DTB;
     // unsigned char dtb_magic[4]; 
@@ -1563,29 +1596,31 @@ void remove_dtbs_partitions(FILE *fp) {
                 die("Failed to create temporary file to compress dtb to gzip");
             }
             gzFile gp = gzdopen(fileno(tmp), "w");
-            if (!gzwrite(gp, dtbs, gz_raw_size+1)) {
+            if (!gzwrite(gp, dtbs, gz_raw_size)) {
                 die("Failed to compress dtb to gzip");
             }
             gzflush(gp, Z_FINISH);
             long gz_zip_size = ftell(tmp);
-            if (gz_zip_size > SIZE_DTB) {
+            if (gz_zip_size > SIZE_DTB-16) {
                 die("Compressed dtb too big! It can only be 256K at most");
             }
-            printf("Gzipped dtb size is %li\n", gz_zip_size);
+            printf("Gzipped dtb size is %li bytes\n", gz_zip_size);
             rewind(tmp);
-            memset(dtbs_gzipped, 0, SIZE_DTB);
-            fread(dtbs_gzipped, gz_zip_size, 1, tmp);
+            memset(dtb_partition->data, 0, SIZE_DTB-16);
+            fread(dtb_partition->data, gz_zip_size, 1, tmp);
             fclose(tmp);
             time_t now = time(NULL);
-            memcpy(dtbs_gzipped+4, &now, 4);
+            memcpy((dtb_partition->data)+4, &now, 4); // Actually dtb_partition+4 would also work, but for clarity I prefre dtb_partition->data
             free(dtbs);
-            dtbs=dtbs_gzipped;
         }
+        dtb_partition->version = PART_DTB_VERSION;
+        dtb_partition->magic = PART_DTB_MAGIC;
+        dtb_partition->checksum = dtb_checksum(dtb_partition);
         fseek(fp, offset_dtbs, SEEK_SET);
-        fwrite(dtbs, SIZE_DTB, 1, fp); // A duplicate copy should be written
-        fwrite(dtbs, SIZE_DTB, 1, fp);
+        fwrite(dtb_partition, SIZE_DTB, 1, fp); // A duplicate copy should be written
+        fwrite(dtb_partition, SIZE_DTB, 1, fp);
     }
-    free(dtbs);
+    free(dtb_partition);
     return;
 }
 

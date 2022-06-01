@@ -80,10 +80,10 @@ const unsigned char dtb_magic[] = {0xD0, 0x0D, 0xFE, 0xED} ;
 
 
 struct partition {
-	char name[16];
-	uint64_t size;
-	uint64_t offset;
-	unsigned mask_flags;
+    char name[16];
+    uint64_t size;
+    uint64_t offset;
+    unsigned mask_flags;
     // padding 4byte
 };
 
@@ -93,11 +93,11 @@ struct insertion_helper {
 };
 
 struct partition_table {
-	char magic[4];
-	unsigned char version[12];
-	int part_num;
-	int checksum;
-	struct partition partitions[32];
+    char magic[4];
+    unsigned char version[12];
+    int part_num;
+    int checksum;
+    struct partition partitions[32];
 };
 
 struct table_helper {
@@ -135,8 +135,8 @@ struct dtb_partition {
     unsigned char data[SIZE_DTB-16];
     unsigned int magic;
     unsigned int version;
-	unsigned int timestamp;
-	unsigned int checksum;
+    unsigned int timestamp;
+    unsigned int checksum;
 };
 
 struct options {
@@ -166,31 +166,30 @@ char s_buffer_2[9];
 char s_buffer_3[9];
 
 uint32_t table_checksum(struct partition *part, int part_num) {
-	int i, j;
-	uint32_t checksum = 0, *p;
-	for (i = 0; i < part_num; i++) {
-		p = (uint32_t *)part;
-		for (j = SIZE_PART/4;
-				j > 0; --j) {
-			checksum += *p;
-			p++;
-		}
-	}
-	return checksum;
+    int i, j;
+    uint32_t checksum = 0, *p;
+    for (i = 0; i < part_num; i++) {
+        p = (uint32_t *)part;
+        for (j = SIZE_PART/4; j > 0; --j) {
+            checksum += *p;
+            p++;
+        }
+    }
+    return checksum;
 }
 
 unsigned int dtb_checksum(struct dtb_partition *dtb) {
     // All content of the dtb partition (256K) except the last 4 byte (checksum) is sumed for checksum (thus summing 256K-4)
     int i = 0;
-	int size = SIZE_DTB - 4;
-	unsigned int *buffer;
-	unsigned int checksum = 0;
+    int size = SIZE_DTB - 4;
+    unsigned int *buffer;
+    unsigned int checksum = 0;
 
-	size = size >> 2; // Integer divide by 4, shifting is faster
-	buffer = (unsigned int *) dtb;
-	while (i < size)
-		checksum += buffer[i++];
-	return checksum;
+    size = size >> 2; // Integer divide by 4, shifting is faster
+    buffer = (unsigned int *) dtb;
+    while (i < size)
+        checksum += buffer[i++];
+    return checksum;
 }
 
 const char suffixes[]="BKMGTPEZY";  // static is not needed, when out of any function's scope
@@ -223,7 +222,7 @@ void size_byte_to_human_readable_print(uint64_t size) {
 
 // Only shrink to the lowest point where size is still an integer
 void size_byte_to_human_readable_int(char* buffer, uint64_t size) {
-     int i;
+    int i;
     for (i=0; i<9; ++i) {
         if (size <= 0x400 || size % 0x400) {
             break;

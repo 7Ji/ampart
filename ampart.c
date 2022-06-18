@@ -1245,31 +1245,6 @@ void snapshot(struct partition_table * table) {
     exit(EXIT_SUCCESS);
 }
 
-void no_coreelec() {
-    FILE * fp;
-    char * line = NULL;
-    size_t len = 0;
-    ssize_t read;
-    fp = fopen("/etc/os-release", "r");
-    if (fp == NULL) {
-        puts("Warning: can not open /etc/os-release to check for system, if you are running CoreELEC you should not use ampart as ceemmc is suggested by CoreELEC officially");
-        return;
-    }
-    while ((read = getline(&line, &len, fp)) != -1) {
-        if (!strcmp(line, "NAME=\"CoreELEC\"\n")) {
-            fclose(fp);
-            if (line) {
-                free(line);
-            }
-            die("Refused to run on CoreELEC, you should use ceemmc instead as it's the official installation tool approved by Team CoreELEC\n - Altering the source code to force ampart to run is strongly not recommended\n - Even ampart is a partition tool and ceemmc is an installtion tool, they are different\n - But its manipulating of the partition table is dangerous\n - Modifying the part table in an approved way by Team CoreELEC will be way much safer");
-        }
-    }
-    fclose(fp);
-    if (line) {
-        free(line);
-    }
-}
-
 struct table_helper * parse_table(struct disk_helper *disk, struct table_helper *table_h, int *argc, char **argv) {
     struct table_helper *table_h_new = calloc(1, sizeof(struct table_helper));
     struct partition_table *table_new = calloc(1, SIZE_TABLE);
@@ -1772,7 +1747,6 @@ void write_table(struct table_helper *table_h_new, struct table_helper *table_h_
 }
 
 int main(int argc, char **argv) {
-    no_coreelec();
     get_options(argc, argv);
     struct disk_helper disk = { 0, 0, get_disk_size()};
     struct partition_table *table = calloc(1, SIZE_TABLE);

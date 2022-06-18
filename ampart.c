@@ -1755,13 +1755,12 @@ void no_s905x4() {
         fread(dt, 10, 1, fp);
         fclose(fp);
         if (!strcmp(dt, "sc2_s905x4")) {
-            die("Refuse to run on s905x4");
+            die("Refuse to write partition table on s905x4");
         }
     }
 }
 
 int main(int argc, char **argv) {
-    no_s905x4();
     get_options(argc, argv);
     struct disk_helper disk = { 0, 0, get_disk_size()};
     struct partition_table *table = calloc(1, SIZE_TABLE);
@@ -1787,6 +1786,7 @@ int main(int argc, char **argv) {
         puts("Running in dry-run mode, no actual writting, exiting...");
         exit(EXIT_SUCCESS);
     }
+    no_s905x4();
     write_table(table_h_new, &table_h);
     exit(EXIT_SUCCESS);
 }

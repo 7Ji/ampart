@@ -996,9 +996,7 @@ void help(char *path) {
         "\t--no-node/-N\tdon't try to remove partitions node from dtb\n"
         "\t--dry-run/-D\tdo not actually update the part table\n"
         "\t--partprobe/-p\tforce a notification to the kernel about the partition layout change, early quit\n"
-        "\t--no-reload/-n\tdo not notify kernel about the partition layout changes, remember to end your session with a --partprobe call\n\t\t\tif you are calling ampart for multiple times in a script\n"
-        "\t--output/-o [path]\n"
-        "\t\t\twrite the updated part table to somewhere else, instead of the input itself\n";
+        "\t--no-reload/-n\tdo not notify kernel about the partition layout changes, remember to end your session with a --partprobe call\n\t\t\tif you are calling ampart for multiple times in a script\n";
     puts(help_message);
 }
 
@@ -1075,6 +1073,7 @@ void get_options(int argc, char **argv) {
             case 'o':
                 strcpy(options.output, optarg);
                 printf("Notice: output to will be written to %s\n", options.output);
+                puts("WARNING: THIS IS NOT IMPLEMENTED");
                 break;
             default:
                 version();

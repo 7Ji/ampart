@@ -67,6 +67,8 @@
 
 #define RESERVED_DEV_NAMES  "amaudio amaudio_ctl amaudio_utils amstream_abuf amstream_hevc amstream_mpps amstream_mpts amstream_rm amstream_sub amstream_vbuf amstream_vframe amsubtitle amvdac amvecm amvideo amvideo_poll aocec autofs block bus char console cpu_dma_latency cvbs ddr_parameter disk display dtb efuse esm fd firmware_vdec framerate_dev full fuse hwrng initctl input ion kmem kmsg log mali mapper media mem mqueue net network_latency null port ppmgr ppp psaux ptmx pts random rfkill rtc secmem shm snd stderr stdin stdout tsync tty ubi_ctrl uhid uinput unifykeys urandom vad vcs vcsa vfm vhci watchdog wifi_power zero"
 
+#define DT_ID_FILE          "/proc/device-tree/coreelec-dt-id"
+
 #define TABLE_UPDATE_ACTION_NORMAL    0
 #define TABLE_UPDATE_ACTION_DELETE    1
 #define TABLE_UPDATE_ACTION_CLONE     2
@@ -1745,7 +1747,21 @@ void write_table(struct table_helper *table_h_new, struct table_helper *table_h_
     puts("Everything done! Enjoy your fresh-new partition table!");
 }
 
+void no_s905x4() {
+    struct stat stat_dt;
+    if (!stat(DT_ID_FILE, &stat_dt)) {
+        FILE *fp = fopen(DT_ID_FILE, "r");
+        char dt[11] = "";
+        fread(dt, 10, 1, fp);
+        fclose(fp);
+        if (!strcmp(dt, "sc2_s905x4")) {
+            die("Refuse to run on s905x4");
+        }
+    }
+}
+
 int main(int argc, char **argv) {
+    no_s905x4();
     get_options(argc, argv);
     struct disk_helper disk = { 0, 0, get_disk_size()};
     struct partition_table *table = calloc(1, SIZE_TABLE);

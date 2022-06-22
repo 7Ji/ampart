@@ -715,20 +715,6 @@ Put only a system partition and a data partition on emmc, if you want to install
     Everything done! Enjoy your fresh-new partition table!
 
 
-## About
-The main reason I started to write this is that **CoreELEC**'s proprietary **ceemmc** can not be modified for intalling EmuELEC and HybridELEC to internal emmc, as its partition sizes are **hard-coded** 
-
-The partition tool is more or less a final step of the long journey of my past almost 2 months into achiving side-by-side dual-booting for CoreELEC+EmuELEC for all Amlogic devices, it is new, but the thoughts behind it is **mature** and **experienced**. You can expect an Amlogic-ng HybridELEC release utilizing ampart that can achive side-by-side dual-booting of CE+EE on the internal storage very soon. 
-
-In theory **ampart** should work perfectly fine for any Amlogic device, mainly those with linux-amlogic kernel, e.g. **CoreELEC**, **EmuELEC**, etc. But I only have 2 used non-mainstream Amlogic TVboxs lying around, one Xiaomi mibox3 (MDZ-16-AA, gxbb_p200) with a locked bootloader that forced me into developing [HybridELEC](https://github.com/7Ji/HybridELEC) (it starts as a USB Burning Tool burnable image for CoreELEC), and one BesTV R3300L (gxl_p212). I can only test on these two boxes and have no willing of buying other development boards/TV boxes, or free money to do so. 
-
-If you want me to bring official support to other devices, you can donate some funds/device to me for development. Note that devices violating EULA of CoreELEC or EmuELEC (especially those come with pre-installed image and Roms) are never supported. I'm living in China so devices shipped from China are more appreciated. Email me at pugokushin@gmail.com if you want to do so, and I'm considering opening Paypal/Patreon for public donation in the future.
-
-Even if you are using a system that does not run a linux-amlogic kernel (e.g. **Armbian**, **OpenWrt**), you can still use **ampart** to get the partition info of your emmc and partition it. You can then use the partitions by losetup or [blkdevparts=](https://www.kernel.org/doc/html/latest/block/cmdline-partition.html) kernel command line. In this way you won't mess up with the reserved partitions and utilize more space than the tricky 700M offset partitioning way.
-
-I'm into a big exam at the end of the year which I failed in the past two years and that's my last try, which would decide my fate greatly. A slang 'World War 3' is used for this in China. So every line I commit to ampart is precious and do me a favor, don't ask for much.
-
-
 ## License
 **ampart**(Amlogic emmc partition tool) is licensed under [**GPL3**](https://gnu.org/licenses/gpl.html)
  * Copyright (C) 2022 7Ji (pugokushin@gmail.com)

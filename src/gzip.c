@@ -1,0 +1,134 @@
+#include "gzip_p.h"
+
+static inline unsigned long gzip_unzip_no_header(unsigned char *in, unsigned long in_size, unsigned char **out) {
+    unsigned long allocated_size = util_nearest_upper_bound_ulong(in_size, 64, 4); // 4 times the size, nearest multiply of 64
+    fprintf(stderr, "unzip: Decompressing raw deflated data, in size %ld, allocated %ld\n", in_size, allocated_size);
+    *out = malloc(allocated_size);
+    if (!*out) {
+        fputs("unzip: Failed to allocate memory for decompression\n", stderr);
+        return 0;
+    }
+    z_stream s;
+    s.zalloc = Z_NULL;
+    s.zfree = Z_NULL;
+    s.opaque = Z_NULL;
+    if (inflateInit2(&s, -MAX_WBITS) != Z_OK) {
+        free(*out);
+        *out = NULL;
+        fputs("unzip: Failed to initialize Z stream for decompression\n", stderr);
+        return 0;
+    }
+    s.next_in = in;
+    s.avail_in = in_size;
+    s.next_out = *out;
+    s.avail_out = allocated_size;
+    unsigned char *temp_buffer;
+    int r;
+    while (true) {
+        r = inflate(&s, Z_FINISH);
+        switch (r) {
+            case Z_STREAM_END:
+                inflateEnd(&s);
+                return s.next_out - *out;
+            case Z_BUF_ERROR:
+                s.avail_out += allocated_size;
+                allocated_size *= 2;
+                temp_buffer = realloc(*out, allocated_size);
+                if (temp_buffer) {
+                    s.next_out = temp_buffer + (s.next_out - *out);
+                    *out = temp_buffer;
+                    fprintf(stderr, "unzip: Re-allocated memory, now %lu\n", allocated_size);
+                } else {
+                    free(*out);
+                    *out = NULL;
+                    inflateEnd(&s);
+                    fputs("unzip: Failed to reallocate memory for decompression\n", stderr);
+                    return 0;
+                }
+                break;
+            default:
+                free(*out);
+                *out = NULL;
+                inflateEnd(&s);
+                fprintf(stderr, "unzip: Unknown error when decompressing, errno: %d\n", r);
+                return 0;
+        }
+    }
+}
+
+static inline unsigned int gzip_valid_header(unsigned char *data) {
+    struct gzip_header *gh = (struct gzip_header *)data;
+    if (gh->magic != GZIP_MAGIC) {
+        fprintf(stderr, "GZIP header: Magic is wrong, record %"PRIx16" != expected %"PRIx16"\n", gh->magic, GZIP_MAGIC);
+        return 0;
+    }
+    if (gh->method != Z_DEFLATED) {
+        fprintf(stderr, "GZIP header: Compression method is wrong, record %"PRIu8" != expected %"PRIu8"\n", gh->method, Z_DEFLATED);
+        return 0;
+    }
+    if (gh->file_flags & GZIP_FILE_FLAG_RESERVED) {
+        fprintf(stderr, "GZIP header: Reserved flag is set, record %"PRIx8" contains %"PRIx8"\n", gh->file_flags, GZIP_FILE_FLAG_RESERVED);
+        return 0;
+    }
+    unsigned int offset = sizeof(struct gzip_header);
+    if (gh->file_flags & GZIP_FILE_FLAG_EXTRA) {
+        offset += 2 + *(uint16_t *)(data + sizeof(struct gzip_header));
+    }
+    if (gh->file_flags & GZIP_FILE_FLAG_NAME) {
+        while (data[offset++]);
+    }
+    if (gh->file_flags & GZIP_FILE_FLAG_COMMENT) {
+        while (data[offset++]);
+    }
+    if (gh->file_flags & GZIP_FILE_FLAG_HCRC) {
+        offset += 2;
+    }
+    return offset;
+}
+
+unsigned long gzip_unzip(unsigned char *in, unsigned long in_size, unsigned char **out) {
+    int offset = gzip_valid_header(in);
+    if (!offset) {
+        fputs("unzip: Gzip header invalid", stderr);
+        return 0;
+    }
+    return gzip_unzip_no_header(in+offset, in_size-offset, out);
+}
+
+unsigned long gzip_zip(unsigned char *in, unsigned long in_size, unsigned char **out) {
+    z_stream s;
+    s.zalloc = Z_NULL;
+    s.zfree = Z_NULL;
+    s.opaque = Z_NULL;
+    if (deflateInit2(&s, Z_DEFAULT_COMPRESSION, Z_DEFLATED, MAX_WBITS + GZIP_WRAPPER, GZIP_DEFAULT_MEM_LEVEL, Z_DEFAULT_STRATEGY) != Z_OK) {
+        free(*out);
+        *out = NULL;
+        fputs("zip: Failed to initialize deflation for compression\n", stderr);
+        return 0;
+    }
+    unsigned long allocated_size = deflateBound(&s, in_size);
+    fprintf(stderr, "zip: Compressing data to gzip, size %ld, allocated %ld\n", in_size, allocated_size);
+    *out = malloc(allocated_size);
+    if (!*out) {
+        free(*out);
+        *out = NULL;
+        deflateEnd(&s);
+        fputs("zip: Failed to allocate memory for compression\n", stderr);
+        return 0;
+    }
+    s.next_in = in;
+    s.avail_in = in_size;
+    s.next_out = *out;
+    s.avail_out = allocated_size;
+    int r = deflate(&s, Z_FINISH);
+    deflateEnd(&s);
+    if (r == Z_STREAM_END) {
+        *(uint32_t *)(*out + 4) = time(NULL);
+        return s.next_out - *out;
+    } else {
+        free(*out);
+        *out = NULL;
+        fprintf(stderr, "zip: Unexpected result of deflate: %d\n", r);
+        return 0;
+    }
+}

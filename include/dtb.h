@@ -7,6 +7,22 @@
 #define DTB_PARTITION_SIZE          256*1024  //256K
 #define DTB_PARTITION_DATA_SIZE     DTB_PARTITION_SIZE - 4*sizeof(unsigned int)
 
+/*
+  0x000000 - 0x003fff: partition table
+  0x004000 - 0x03ffff: storage key area	(16k offset & 256k size)
+  0x400000 - 0x47ffff: dtb area  (4M offset & 512k size)
+  0x480000 - 64MBytes: resv for other usage.
+
+*/
+
+// struct partitions emmc_partition_table[] = {
+// 	PARTITION_ELEMENT(MMC_BOOT_NAME, MMC_BOOT_DEVICE_SIZE, 0),
+// 	PARTITION_ELEMENT(MMC_RESERVED_NAME, MMC_RESERVED_SIZE, 0),
+// 	/* prior partitions, same partition name with dts*/
+// 	/* partition size will be overide by dts*/
+// 	PARTITION_ELEMENT(MMC_CACHE_NAME, 0, 0),
+// 	PARTITION_ELEMENT(MMC_ENV_NAME, MMC_ENV_SIZE, 0),
+// };
 
 struct dtb_header {
     uint32_t magic;
@@ -27,6 +43,19 @@ struct dtb_partition {
     unsigned int version;
     unsigned int timestamp;
     unsigned int checksum;
+};
+
+struct dtb_partition_node {
+    char pname[16];
+    uint64_t offset, size;
+    
+    uint32_t phandle;
+};
+
+struct dtb_partitions {
+    struct dtb_partition_node partitions[32];
+
+
 };
 
 

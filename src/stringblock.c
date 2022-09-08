@@ -1,20 +1,14 @@
 #include "stringblock_p.h"
 
-struct stringblock_helper {
-    off_t length, allocated_length;
-    char *stringblock;
-};
-
-off_t stringblock_find_string(struct stringblock_helper *shelper, char *string) {
-    char *sblock = shelper->stringblock;
+off_t stringblock_find_string_raw(const char *sblock, const off_t length, const char *string) {
     if (string[0]) {
-        for (off_t i=0; i<shelper->length; ++i) {
+        for (off_t i=0; i<length; ++i) {
             if (sblock[i] && !strcmp(sblock + i, string)) {
                 return i;
             }
         }
     } else {
-        for (off_t i=0; i<shelper->length; ++i) {
+        for (off_t i=0; i<length; ++i) {
             if (!sblock[i]) {
                 return i;
             }
@@ -22,6 +16,11 @@ off_t stringblock_find_string(struct stringblock_helper *shelper, char *string) 
     }
     return -1;
 }
+
+off_t stringblock_find_string(const struct stringblock_helper *shelper, const char *string) {
+    return stringblock_find_string_raw(shelper->stringblock, shelper->length, string);
+}
+
 
 off_t stringblock_append_string_force(struct stringblock_helper *shelper, char *string, size_t slength) {
     if (!slength && !(slength = strlen(string))) {

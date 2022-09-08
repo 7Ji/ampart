@@ -2,8 +2,11 @@
 #define HAVE_TABLE_H
 #include "common.h"
 
+#define TABLE_PARTITION_NAME_LENGTH 16
+#define TABLE_PARTITIONS_COUNT      32
+
 struct table_partition {
-    char name[16];
+    char name[TABLE_PARTITION_NAME_LENGTH];
     uint64_t size;
     uint64_t offset;
     uint32_t mask_flags;
@@ -40,8 +43,8 @@ struct table {
         };
     };
     union {
-        struct table_partition partitions[32]; // 40 * 32
-        char partition_names[32][40];
+        struct table_partition partitions[TABLE_PARTITIONS_COUNT]; // 40 * 32
+        char partition_names[TABLE_PARTITIONS_COUNT][40];
     };
 }; // 1304
 

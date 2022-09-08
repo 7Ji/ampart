@@ -30,7 +30,7 @@ struct table *table_read(const char *blockdev, const off_t offset) {
 uint32_t table_checksum(const struct table_partition *partitions, const int partitions_count) {
     int i, j;
     uint32_t checksum = 0, *p;
-    for (i = 0; i < partitions_count; i++) { // This is utterly wrong, but it's how ampart does. So we have to stick with the glitch algorithm that only calculates 1 partition if we want ampart to work
+    for (i = 0; i < partitions_count; i++) { // This is utterly wrong, but it's how amlogic does. So we have to stick with the glitch algorithm that only calculates 1 partition if we want ampart to work
         p = (uint32_t *)partitions;
         for (j = sizeof(struct table_partition)/4; j > 0; --j) {
             checksum += *p;

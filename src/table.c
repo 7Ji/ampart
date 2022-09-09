@@ -3,23 +3,23 @@
 struct table *table_read(const char *blockdev, const off_t offset) {
     struct table *table = malloc(sizeof(struct table));
     if (table == NULL) {
-        fputs("Failed to allocate memory for partition table", stderr);
+        fputs("table read: Failed to allocate memory for partition table", stderr);
         return NULL;
     }
     const int fd = open(blockdev, O_RDONLY);
     if (fd < 0) {
-        fputs("Failed to open underlying file/block device for partition table", stderr);
+        fputs("table read: Failed to open underlying file/block device for partition table", stderr);
         free(table);
         return NULL;
     }
     if (lseek(fd, offset, SEEK_SET) != offset) {
-        fputs("Failed to seek in underlying file/block device for partition table", stderr);
+        fputs("table read: Failed to seek in underlying file/block device for partition table", stderr);
         free(table);
         close(fd);
         return NULL;
     }
     if (read(fd, table, sizeof(struct table)) != sizeof(struct table)) {
-        fputs("Failed to read into buffer", stderr);
+        fputs("table read: Failed to read into buffer", stderr);
         free(table);
         close(fd);
         return NULL;
@@ -43,11 +43,11 @@ uint32_t table_checksum(const struct table_partition *partitions, const int part
 int table_valid_header(const struct table_header *header) {
     int ret = 0;
     if (header->partitions_count > 32 || header->partitions_count < 0) {
-        fprintf(stderr, "Partitions count invalid, only integer 0~32 is acceppted, actual: %d\n", header->partitions_count);
+        fprintf(stderr, "table valid header: Partitions count invalid, only integer 0~32 is acceppted, actual: %d\n", header->partitions_count);
         ++ret;
     }
     if (header->magic_uint32 != TABLE_HEADER_MAGIC_UINT32) {
-        fprintf(stderr, "Magic invalid, expect: %"PRIx32", actual: %"PRIx32"\n", header->magic_uint32, TABLE_HEADER_MAGIC_UINT32);
+        fprintf(stderr, "table valid header: Magic invalid, expect: %"PRIx32", actual: %"PRIx32"\n", header->magic_uint32, TABLE_HEADER_MAGIC_UINT32);
         ++ret;
     }
     bool version_invalid = false;
@@ -58,12 +58,12 @@ int table_valid_header(const struct table_header *header) {
         }
     }
     if (version_invalid) {
-        fprintf(stderr, "Version invalid, expect "TABLE_HEADER_VERSION_STRING", actual: %s\n", header->version_string);
+        fprintf(stderr, "table valid header: Version invalid, expect "TABLE_HEADER_VERSION_STRING", actual: %s\n", header->version_string);
         ret += 1;
     }
     uint32_t checksum = table_checksum(((struct table *)header)->partitions, header->partitions_count);
     if (header->checksum != checksum) {
-        fprintf(stderr, "Checksum mismatch, calculated: %"PRIx32", actual: %"PRIx32"\n", checksum, header->checksum);
+        fprintf(stderr, "table valid header: Checksum mismatch, calculated: %"PRIx32", actual: %"PRIx32"\n", checksum, header->checksum);
         ret += 1;
     }
     return ret;
@@ -71,34 +71,30 @@ int table_valid_header(const struct table_header *header) {
 
 unsigned int table_valid_partition_name(const char *name) {
     unsigned int ret = 0;
-    char c;
-    for (unsigned int i = 0; i < 16; ++i) {
-        c = name[i];
-        if (c >= '0') {
-            if (c >= 'A') {
-                if (c >= 'a' ) {
-                    if (c <= 'z') {
-                        //valid
-                    } else {
-                        ++ret;
-                    }
-                } else if (c <= 'Z' || c == '_') {
-                    //valid
-                } else {
-                    ++ret;
-                }
-            } else if (c <= '9') {
-                //valid
-            } else {
+    unsigned int null = 0;
+    unsigned int i;
+    for (i = 0; i < 16; ++i) {
+        switch (name[i]) {
+            case '\0':
+            case '-':
+            case '0'...'9':
+            case 'A'...'Z':
+            case '_':
+            case 'a'...'z':
+                break;
+            default:
                 ++ret;
-            }
-        // } else if (c == '-') {
-            
-        // }
+                break;
+        }
+        if (!name[i]) {
+            break;
         }
     }
+    if (i == 16 && name[15]) { // Does not properly end
+        ++ret;
+    }
     if (ret) {
-        fprintf(stderr, "%u illegal characters found in partition name '%s'\n", ret, name);
+        fprintf(stderr, "table valid partition name: %u illegal characters found in partition name '%s'\n", ret, name);
     }
     return ret;
 }
@@ -120,7 +116,7 @@ int table_valid(struct table *table) {
 }
 
 void table_report(struct table *table) {
-    fprintf(stderr, "%d partitions in the table:\n===================================================================================\nID| name            |          offset|(   human)|            size|(   human)| masks\n-----------------------------------------------------------------------------------\n", table->partitions_count);
+    fprintf(stderr, "table report: %d partitions in the table:\n===================================================================================\nID| name            |          offset|(   human)|            size|(   human)| masks\n-----------------------------------------------------------------------------------\n", table->partitions_count);
     struct table_partition *part;
     double num_offset, num_size;
     char suffix_offset, suffix_size;

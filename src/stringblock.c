@@ -55,23 +55,25 @@ off_t stringblock_append_string_safely(struct stringblock_helper *shelper, char 
     return stringblock_append_string_force(shelper, string, slength);
 }
 
-// int main() {
-//     struct stringblock_helper shelper;
-//     shelper.length = 24;
-//     shelper.allocated_length = util_nearest_upper_bound_ulong(24, 4096, 1);
-//     shelper.stringblock = malloc(shelper.allocated_length);
-//     if (shelper.stringblock) {
-//         memcpy(
-//             shelper.stringblock,
-//             "Whatever\0Goodbyte\0What?",
-//             24
-//         );
-//     } else {
-//         puts("Failed to alloc");
-//         return 1;
-//     }
-//     off_t offset = stringblock_append_string_safely(&shelper, "hat?", 0);
-//     printf("%ld, %ld, %ld\n", offset, shelper.length, shelper.allocated_length);
-//     puts(shelper.stringblock+offset);
-//     return 0;
-// }
+#if 0
+int main() {
+    struct stringblock_helper shelper;
+    shelper.length = 24;
+    shelper.allocated_length = util_nearest_upper_bound_ulong(24, 4096, 1);
+    shelper.stringblock = malloc(shelper.allocated_length);
+    if (shelper.stringblock) {
+        memcpy(
+            shelper.stringblock,
+            "Whatever\0Goodbyte\0What?",
+            24
+        );
+    } else {
+        puts("Failed to alloc");
+        return 1;
+    }
+    off_t offset = stringblock_append_string_safely(&shelper, "hat?", 0);
+    printf("%ld, %ld, %ld\n", offset, shelper.length, shelper.allocated_length);
+    puts(shelper.stringblock+offset);
+    return 0;
+}
+#endif

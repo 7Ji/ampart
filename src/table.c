@@ -42,7 +42,7 @@ uint32_t table_checksum(const struct table_partition *partitions, const int part
 
 int table_valid_header(const struct table_header *header) {
     int ret = 0;
-    if (header->partitions_count > 32 || header->partitions_count < 0) {
+    if (header->partitions_count > 32) {
         fprintf(stderr, "table valid header: Partitions count invalid, only integer 0~32 is acceppted, actual: %d\n", header->partitions_count);
         ++ret;
     }
@@ -71,8 +71,8 @@ int table_valid_header(const struct table_header *header) {
 
 unsigned int table_valid_partition_name(const char *name) {
     unsigned int ret = 0;
-    unsigned int null = 0;
     unsigned int i;
+    bool term = true;
     for (i = 0; i < 16; ++i) {
         switch (name[i]) {
             case '\0':
@@ -91,10 +91,15 @@ unsigned int table_valid_partition_name(const char *name) {
         }
     }
     if (i == 16 && name[15]) { // Does not properly end
-        ++ret;
+        term = false;
     }
     if (ret) {
-        fprintf(stderr, "table valid partition name: %u illegal characters found in partition name '%s'\n", ret, name);
+        fprintf(stderr, "table valid partition name: %u illegal characters found in partition name '%s'", ret, name);
+        if (term) {
+            fputc('\n', stderr);
+        } else {
+            fputs(", and it does not end properly\n", stderr);
+        }
     }
     return ret;
 }
@@ -109,7 +114,7 @@ int table_valid_partition(const struct table_partition *part) {
 
 int table_valid(struct table *table) {
     int ret = table_valid_header((struct table_header *)table);
-    for (int i=0; i<table->partitions_count; ++i) {
+    for (uint32_t i=0; i<table->partitions_count; ++i) {
         ret += table_valid_partition(table->partitions+i);
     }
     return ret;
@@ -121,7 +126,7 @@ void table_report(struct table *table) {
     double num_offset, num_size;
     char suffix_offset, suffix_size;
     uint64_t last_end = 0, diff;
-    for (int i=0; i<table->partitions_count; ++i) {
+    for (uint32_t i=0; i<table->partitions_count; ++i) {
         part = table->partitions + i;
         if (part->offset > last_end) {
             diff = part->offset - last_end;
@@ -141,6 +146,83 @@ void table_report(struct table *table) {
     return;
 }
 
+static inline int table_pedantic_offsets(struct table *table, size_t capacity) {
+    if (table->partitions_count < 4) {
+        fputs("table pedantic offsets: refuse to fill-in offsets for heavily modified table (at least 4 partitions should exist)\n", stderr);
+        return 1;
+    }
+    if (strncmp(table->partitions[0].name, TABLE_PARTITION_BOOTLOADER_NAME, MAX_PARTITION_NAME_LENGTH) || strncmp(table->partitions[1].name, TABLE_PARTITION_RESERVED_NAME, MAX_PARTITION_NAME_LENGTH) || strncmp(table->partitions[2].name, TABLE_PARTITION_CACHE_NAME, MAX_PARTITION_NAME_LENGTH) || strncmp(table->partitions[3].name, TABLE_PARTITION_ENV_NAME, MAX_PARTITION_NAME_LENGTH)) {
+        fprintf(stderr, "table pedantic offsets: refuse to fill-in offsets for a table where the first 4 partitions are not bootloader, reserved, cache, env (%s, %s, %s, %s instead)\n", table->partitions[0].name, table->partitions[1].name, table->partitions[2].name, table->partitions[3].name);
+        return 2;
+    }
+    table->partitions[0].offset = 0;
+    table->partitions[1].offset = table->partitions[0].size + TABLE_PARTITION_GAP_RESERVED;
+    struct table_partition *part_current;
+    struct table_partition *part_last = table->partitions + 1;
+    for (uint32_t i=2; i<table->partitions_count; ++i) {
+        part_current= table->partitions + i;
+        part_current->offset = part_last->offset + part_last->size + TABLE_PARTITION_GAP_GENERIC;
+        if (part_current->offset > capacity) {
+            fprintf(stderr, "table pedantic offsets: partition %"PRIu32" (%s) overflows, its offset (%"PRIu64") is larger than eMMC capacity (%zu)\n", i, part_current->name, part_current->offset, capacity);
+            return 3;
+        }
+        if (part_current->size == (uint64_t)-1 || part_current->offset + part_current->size > capacity) {
+            part_current->size = capacity - part_current->offset;
+        }
+        part_last = part_current;
+    }
+    fputs("table pedantic offsets: layout now compatible with Amlogic's u-boot\n", stderr);
+    return 0;
+}
+
+struct table *table_complete_dtb(struct dts_partitions_helper *dhelper, size_t capacity) {
+    if (!dhelper) {
+        return NULL;
+    }
+    struct table *table = malloc(sizeof(struct table));
+    if (!table) {
+        return NULL;
+    }
+    memcpy(table, &table_empty, sizeof(struct table));
+    struct dts_partition_entry *part_dtb;
+    struct table_partition *part_table;
+    bool replace;
+    for (uint32_t i=0; i<dhelper->partitions_count; ++i) {
+        part_dtb = dhelper->partitions + i;
+        replace = false;
+        for (uint32_t j=0; j<table->partitions_count; ++j) {
+            part_table = table->partitions + j;
+            if (!strncmp(part_dtb->name, part_table->name, MAX_PARTITION_NAME_LENGTH)) {
+                part_table->size = part_dtb->size;
+                part_table->mask_flags = part_dtb->mask;
+                replace = true;
+                break;
+            }
+        }
+        if (!replace) {
+            part_table = table->partitions + table->partitions_count++;
+            strncpy(part_table->name, part_dtb->name, MAX_PARTITION_NAME_LENGTH);
+            part_table->size = part_dtb->size;
+            part_table->mask_flags = part_dtb->mask;
+        }
+    }
+    if (table_pedantic_offsets(table, capacity)) {
+        free(table);
+        return NULL;
+    }
+    return table;
+}
+
+
+
+// struct table *table_from_dtb(unsigned char dtb) {
+//     struct table *table = malloc(sizeof(struct table));
+
+
+//     return table;
+// }
+
+#if 0
 int main(int argc, char **argv) {
     if (argc <= 1) {
         return 1;
@@ -154,5 +236,7 @@ int main(int argc, char **argv) {
         }
         free(table);
     }
+    table_report(&table_empty);
     return 0;
 }
+#endif

@@ -30,7 +30,7 @@ void cli_parse_partition(const char *arg, bool require_name, bool require_offset
         fprintf(stderr, "Argument does not contain offset but it's required");
         return;
     }
-    if (seperators[0] == arg) {
+    if (seperators[0] == arg && require_name) {
         fprintf(stderr, "Argument does not contain name but it's required");
         return;
     }

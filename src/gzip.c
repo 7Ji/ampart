@@ -1,6 +1,6 @@
 #include "gzip_p.h"
 
-static inline unsigned long gzip_unzip_no_header(unsigned char *in, unsigned long in_size, unsigned char **out) {
+static inline unsigned long gzip_unzip_no_header(uint8_t *in, unsigned long in_size, uint8_t **out) {
     unsigned long allocated_size = util_nearest_upper_bound_ulong(in_size, 64, 4); // 4 times the size, nearest multiply of 64
     fprintf(stderr, "unzip: Decompressing raw deflated data, in size %ld, allocated %ld\n", in_size, allocated_size);
     *out = malloc(allocated_size);
@@ -22,7 +22,7 @@ static inline unsigned long gzip_unzip_no_header(unsigned char *in, unsigned lon
     s.avail_in = in_size;
     s.next_out = *out;
     s.avail_out = allocated_size;
-    unsigned char *temp_buffer;
+    uint8_t *temp_buffer;
     int r;
     while (true) {
         r = inflate(&s, Z_FINISH);
@@ -56,7 +56,7 @@ static inline unsigned long gzip_unzip_no_header(unsigned char *in, unsigned lon
     }
 }
 
-static inline unsigned int gzip_valid_header(unsigned char *data) {
+static inline unsigned int gzip_valid_header(uint8_t *data) {
     struct gzip_header *gh = (struct gzip_header *)data;
     if (gh->magic != GZIP_MAGIC) {
         fprintf(stderr, "GZIP header: Magic is wrong, record %"PRIx16" != expected %"PRIx16"\n", gh->magic, GZIP_MAGIC);
@@ -86,7 +86,7 @@ static inline unsigned int gzip_valid_header(unsigned char *data) {
     return offset;
 }
 
-unsigned long gzip_unzip(unsigned char *in, unsigned long in_size, unsigned char **out) {
+unsigned long gzip_unzip(uint8_t *in, unsigned long in_size, uint8_t **out) {
     int offset = gzip_valid_header(in);
     if (!offset) {
         fputs("unzip: Gzip header invalid", stderr);
@@ -95,7 +95,7 @@ unsigned long gzip_unzip(unsigned char *in, unsigned long in_size, unsigned char
     return gzip_unzip_no_header(in+offset, in_size-offset, out);
 }
 
-unsigned long gzip_zip(unsigned char *in, unsigned long in_size, unsigned char **out) {
+unsigned long gzip_zip(uint8_t *in, unsigned long in_size, uint8_t **out) {
     z_stream s;
     s.zalloc = Z_NULL;
     s.zfree = Z_NULL;

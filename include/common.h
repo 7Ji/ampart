@@ -8,4 +8,9 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <inttypes.h>
+
+
+#define MAX_PARTITION_NAME_LENGTH 16
+#define MAX_PARTITIONS_COUNT      32
+
 #endif

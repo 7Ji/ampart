@@ -4,8 +4,8 @@
 
 #define DTB_HEADER_HOT(x)   union { uint32_t x, hot_##x; }
 
-#define DTB_PARTITION_SIZE          256*1024  //256K
-#define DTB_PARTITION_DATA_SIZE     DTB_PARTITION_SIZE - 4*sizeof(unsigned int)
+#define DTB_PARTITION_SIZE          0x40000U  //256K
+#define DTB_PARTITION_DATA_SIZE     DTB_PARTITION_SIZE - 4*sizeof(uint32_t)
 
 /*
   0x000000 - 0x003fff: partition table
@@ -39,24 +39,29 @@ struct dtb_header {
 
 struct dtb_partition {
     unsigned char data[DTB_PARTITION_DATA_SIZE];
-    unsigned int magic;
-    unsigned int version;
-    unsigned int timestamp;
-    unsigned int checksum;
+    uint32_t magic;
+    uint32_t version;
+    uint32_t timestamp;
+    uint32_t checksum;
 };
 
-struct dtb_partition_node {
-    char pname[16];
-    uint64_t offset, size;
-    
+struct dts_partition_entry {
+    char name[MAX_PARTITION_NAME_LENGTH];
+    uint64_t size;
+    uint32_t mask;
     uint32_t phandle;
 };
 
-struct dtb_partitions {
-    struct dtb_partition_node partitions[32];
-
-
+struct dts_partitions_helper {
+    struct dts_partition_entry partitions[MAX_PARTITIONS_COUNT];
+    uint32_t phandle_root;
+    uint32_t phandles[MAX_PARTITIONS_COUNT];
+    uint32_t partitions_count;
+    uint32_t record_count;
 };
 
-
+uint32_t dtb_checksum(struct dtb_partition *dtb);
+// unsigned char *dtb_get_node_with_path_from_dts(const unsigned char *dts, const uint32_t max_offset, const char *path, const size_t len_path);
+struct dts_partitions_helper *dtb_get_partitions(uint8_t *dtb, size_t len);
+void dtb_report_partitions(struct dts_partitions_helper *phelper);
 #endif

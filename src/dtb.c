@@ -351,6 +351,7 @@ static inline uint8_t *dtb_get_partitions_node_from_dts(const uint8_t *dts, cons
 static inline off_t dtb_stringblock_essential_offset_get(const struct stringblock_helper *shelper, const char *name, uint32_t *invalids) {
     off_t offset = stringblock_find_string(shelper, name);
     if (offset < 0) {
+        // offset = 0;
         ++(*invalids);
         fprintf(stderr, "DTB stringblock essential offset: can not find %s in stringblock\n", name);
     }
@@ -491,6 +492,8 @@ struct dts_partitions_helper *dtb_get_partitions_from_node(const uint8_t *node, 
                             phelper->record_count = bswap_32(*(current+3));
                         } else if (name_off == offsets.phandle) {
                             phelper->phandle_root = bswap_32(*(current+3));
+                        } else if (name_off == offsets.linux_phandle) {
+                            phelper->linux_phandle_root = bswap_32(*(current+3));
                         } else {
                             if (strncmp(shelper->stringblock + name_off, "part-", 5)) {
                                 fprintf(stderr, "DTB get partitions: invalid propertey '%s' in partitions node\n", shelper->stringblock + name_off);

@@ -91,6 +91,7 @@ struct dts_partition_entry {
 struct dts_partitions_helper {
     struct dts_partition_entry partitions[MAX_PARTITIONS_COUNT];
     uint32_t phandle_root;
+    uint32_t linux_phandle_root;
     uint32_t phandles[MAX_PARTITIONS_COUNT];
     uint32_t partitions_count;
     uint32_t record_count;

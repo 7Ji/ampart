@@ -235,6 +235,7 @@ struct cli_partition_updater *cli_parse_partition_update_mode(const char *arg) {
             case ':':
             case '%':
             case '?':
+            case '@':
                 fprintf(stderr, "CLI parse partition update mode: no selector given in arg: %s\n", arg);
                 free(updater);
                 return NULL;
@@ -265,6 +266,15 @@ struct cli_partition_updater *cli_parse_partition_update_mode(const char *arg) {
                 case '?':
                     select_end = c;
                     updater->modifier.modify_part = CLI_PARTITION_MODIFY_PART_DELETE;
+                    break;
+                case '@': // ^-1@:-7  ^bootloader@+7 ^bootloader@-1
+                    if (!*(c + 1)) {
+                        fprintf(stderr, "CLI parse partition update mode: no placer after selector is set: %s\n", arg);
+                        free(updater);
+                        return NULL;
+                    }
+                    select_end = c;
+                    updater->modifier.modify_part = CLI_PARTITION_MODIFY_PART_PLACE;
                     break;
                 case ':':
                     if (!*(c + 1)) {
@@ -362,6 +372,31 @@ struct cli_partition_updater *cli_parse_partition_update_mode(const char *arg) {
                 strncpy(updater->modifier.name, select_end + 1, len_new_name);
                 updater->modifier.name[len_new_name] = '\0'; // No need, but write it anyway
                 break;
+            case CLI_PARTITION_MODIFY_PART_PLACE:
+                const char *placer_start;
+                switch(*(select_end + 1)) {
+                    case '\0':
+                        free(updater);
+                        return NULL;
+                    case '=': // :-1 (last), :5 (5th), :+3 (3rd)
+                        placer_start = select_end + 2;
+                        updater->modifier.modify_place = CLI_PARTITION_MODIFY_PLACE_ABSOLUTE;
+                        break;
+                    case '+': // -1 (minus 1), +3 (add 3)
+                    case '-':
+                        placer_start = select_end + 1;
+                        updater->modifier.modify_place = CLI_PARTITION_MODIFY_PLACE_RELATIVE;
+                        break;
+                    default:  // 5 (5th)
+                        placer_start = select_end + 1;
+                        updater->modifier.modify_place = CLI_PARTITION_MODIFY_PLACE_ABSOLUTE;
+                        break;
+                }
+                updater->modifier.place = strtol(placer_start, NULL, 0);
+                if (updater->modifier.modify_place == CLI_PARTITION_MODIFY_PLACE_RELATIVE && !updater->modifier.place) {
+                    updater->modifier.modify_place = CLI_PARTITION_MODIFY_PLACE_PRESERVE;
+                }
+                break;
             default:
                 fputs("CLI parse partition update mode: illegal part modification method\n", stderr);
                 free(updater);
@@ -378,3 +413,11 @@ struct cli_partition_updater *cli_parse_partition_update_mode(const char *arg) {
     }
     return updater;
 }
+
+// struct cli_partition_updater *cli_parse_partition_yolo_update_mode(const char *arg) {
+//     return cli_parse_partition_update_raw(arg, false);
+// }
+
+// struct cli_partition_updater *cli_parse_partition_safe_update_mode(const char *arg) {
+//     return cli_parse_partition_update_raw(arg, true);
+// }

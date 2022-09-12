@@ -11,7 +11,14 @@ enum cli_partition_select_method {
 enum cli_partition_modify_part_method {
     CLI_PARTITION_MODIFY_PART_ADJUST,
     CLI_PARTITION_MODIFY_PART_DELETE,
-    CLI_PARTITION_MODIFY_PART_CLONE
+    CLI_PARTITION_MODIFY_PART_CLONE,
+    CLI_PARTITION_MODIFY_PART_PLACE
+};
+
+enum cli_partition_modify_place_method {
+    CLI_PARTITION_MODIFY_PLACE_PRESERVE,
+    CLI_PARTITION_MODIFY_PLACE_ABSOLUTE,
+    CLI_PARTITION_MODIFY_PLACE_RELATIVE
 };
 
 enum cli_partition_modify_detail_method {
@@ -20,7 +27,6 @@ enum cli_partition_modify_detail_method {
     CLI_PARTITION_MODIFY_DETAIL_ADD,
     CLI_PARTITION_MODIFY_DETAIL_SUBSTRACT,
 };
-
 
 #define CLI_ARGUMENT_ANY                0b00000000
 #define CLI_ARGUMENT_DISALLOW           0b10000000
@@ -38,9 +44,11 @@ struct cli_partition_definer {
 struct cli_partition_modifier {
     enum cli_partition_select_method select;
     enum cli_partition_modify_part_method modify_part;
+    enum cli_partition_modify_place_method modify_place;
     enum cli_partition_modify_detail_method modify_name, modify_offset, modify_size, modify_masks;
     char select_name[16];
     int select_relative;
+    int place;
     char name[16];
     uint64_t offset, size;
     uint32_t masks;

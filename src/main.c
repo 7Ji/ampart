@@ -65,6 +65,21 @@ int main(int argc, char **argv) {
                 case CLI_PARTITION_MODIFY_PART_DELETE:
                     puts("Delete mode");
                     break;
+                case CLI_PARTITION_MODIFY_PART_PLACE:
+                    puts("Place mode");
+                    switch (updater->modifier.modify_place) {
+                        case CLI_PARTITION_MODIFY_PLACE_PRESERVE:
+                            puts("Preserve");
+                            break;
+                        case CLI_PARTITION_MODIFY_PLACE_ABSOLUTE:
+                            puts("Absolute");
+                            break;
+                        case CLI_PARTITION_MODIFY_PLACE_RELATIVE:
+                            puts("Relative");
+                            break;
+                    }
+                    printf("Placer: %d\n", updater->modifier.place);
+                    break;
             }
             
             

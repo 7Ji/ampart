@@ -159,12 +159,12 @@ static inline int table_pedantic_offsets(struct table *table, uint64_t capacity)
         return 2;
     }
     table->partitions[0].offset = 0;
-    table->partitions[1].offset = table->partitions[0].size + TABLE_PARTITION_GAP_RESERVED;
+    table->partitions[1].offset = table->partitions[0].size + cli_options.gap_reserved;
     struct table_partition *part_current;
     struct table_partition *part_last = table->partitions + 1;
     for (uint32_t i=2; i<table->partitions_count; ++i) {
         part_current= table->partitions + i;
-        part_current->offset = part_last->offset + part_last->size + TABLE_PARTITION_GAP_GENERIC;
+        part_current->offset = part_last->offset + part_last->size + cli_options.gap_partition;
         if (part_current->offset > capacity) {
             fprintf(stderr, "table pedantic offsets: partition %"PRIu32" (%s) overflows, its offset (%"PRIu64") is larger than eMMC capacity (%zu)\n", i, part_current->name, part_current->offset, capacity);
             return 3;

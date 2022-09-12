@@ -4,6 +4,7 @@
 #include <fcntl.h>
 #include <string.h>
 
+#include "cli.h"
 #include "util.h"
 
 #define TABLE_PART_MAXIMUM  32
@@ -24,18 +25,6 @@ static const uint32_t table_header_version_uint32[] = {
     TABLE_HEADER_VERSION_UINT32_1,
     TABLE_HEADER_VERSION_UINT32_2
 };
-
-#define TABLE_PARTITION_BOOTLOADER_NAME "bootloader"
-#define TABLE_PARTITION_BOOTLOADER_SIZE 0x400000U    // 4M
-#define TABLE_PARTITION_RESERVED_NAME   "reserved"
-#define TABLE_PARTITION_RESERVED_SIZE   0x4000000U   // 64M
-#define TABLE_PARTITION_CACHE_NAME      "cache"
-#define TABLE_PARTITION_CACHE_SIZE      0U
-#define TABLE_PARTITION_ENV_NAME        "env"
-#define TABLE_PARTITION_ENV_SIZE        0x800000U    // 8M
-
-#define TABLE_PARTITION_GAP_GENERIC     0x800000U    // 8M
-#define TABLE_PARTITION_GAP_RESERVED    0x2000000U   // 32M
 
 static struct table table_empty = {
     {

@@ -5,6 +5,8 @@
 #include "gzip.h"
 #include "util.h"
 #include "cli.h"
+
+#include <getopt.h>
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -21,17 +23,17 @@ void teller(enum cli_partition_modify_detail_method method) {
             break;
         case CLI_PARTITION_MODIFY_DETAIL_SET:
             puts("Should be set");
-            break;
-        
+            break;        
     }
-
 }
-int main(int argc, char **argv) {
+int main(const int argc, char * const argv[]) {
+    return cli_interface(argc, argv);
     // struct cli_partition_definer *part_d = cli_parse_partition_raw("bootloader::32G:", CLI_ARGUMENT_REQUIRED, CLI_ARGUMENT_ALLOW_ABSOLUTE | CLI_ARGUMENT_ALLOW_RELATIVE | CLI_ARGUMENT_DISALLOW, CLI_ARGUMENT_ALLOW_ABSOLUTE | CLI_ARGUMENT_ALLOW_RELATIVE, CLI_ARGUMENT_ANY, 13);
     // if (part_d) {
     //     puts("parsed");
     //     printf("Name: %s, Offset: %lu, %lx (rel: %d), Size: %lu, %lx (rel: %d), Masks: %d\n", part_d->name, part_d->offset, part_d->offset, part_d->relative_offset, part_d->size, part_d->size, part_d->relative_size, part_d->masks);
     // }
+#if 0
     if (argc <= 1) {
         return 1;
     }
@@ -205,4 +207,5 @@ int main(int argc, char **argv) {
     // }
     
     return 0;
+#endif
 }

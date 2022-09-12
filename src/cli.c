@@ -172,17 +172,6 @@ struct cli_partition_definer *cli_parse_partition_raw(const char *arg, uint8_t r
     return part;
 }
 
-struct cli_partition_definer *cli_parse_partition_safe_mode(const char *arg) {
-    return cli_parse_partition_raw(
-        arg,
-        CLI_ARGUMENT_REQUIRED,
-        CLI_ARGUMENT_DISALLOW,
-        CLI_ARGUMENT_REQUIRED | CLI_ARGUMENT_ALLOW_ABSOLUTE,
-        CLI_ARGUMENT_REQUIRED,
-        4
-    );
-}
-
 struct cli_partition_definer *cli_parse_partition_yolo_mode(const char *arg) {
     return cli_parse_partition_raw(
         arg,
@@ -202,6 +191,17 @@ struct cli_partition_definer *cli_parse_partition_clone_mode(const char *arg) {
         CLI_ARGUMENT_REQUIRED | CLI_ARGUMENT_ALLOW_ABSOLUTE,
         CLI_ARGUMENT_REQUIRED,
         0
+    );
+}
+
+struct cli_partition_definer *cli_parse_partition_safe_mode(const char *arg) {
+    return cli_parse_partition_raw(
+        arg,
+        CLI_ARGUMENT_REQUIRED,
+        CLI_ARGUMENT_DISALLOW,
+        CLI_ARGUMENT_REQUIRED | CLI_ARGUMENT_ALLOW_ABSOLUTE,
+        CLI_ARGUMENT_REQUIRED,
+        4
     );
 }
 
@@ -309,7 +309,7 @@ struct cli_partition_updater *cli_parse_partition_update_mode(const char *arg) {
             free(str_buffer);
         }
         switch (updater->modifier.modify_part) {
-            case CLI_PARTITION_MODIFY_PART_ADJUST:
+            case CLI_PARTITION_MODIFY_PART_ADJUST: {
                 unsigned int seperator_id = 0;
                 const char *seperators[3];
                 for (const char *c = select_end + 1; *c; ++c) {
@@ -360,9 +360,10 @@ struct cli_partition_updater *cli_parse_partition_update_mode(const char *arg) {
                     updater->modifier.modify_masks = CLI_PARTITION_MODIFY_DETAIL_PRESERVE;
                 }
                 break;
+            } 
             case CLI_PARTITION_MODIFY_PART_DELETE:
                 break;
-            case CLI_PARTITION_MODIFY_PART_CLONE:
+            case CLI_PARTITION_MODIFY_PART_CLONE: {
                 size_t len_new_name = strlen(select_end + 1);
                 if (len_new_name > MAX_PARTITION_NAME_LENGTH - 1) {
                     fprintf(stderr, "CLI parse partition update mode: New name to clone to is too long: %s\n", arg);
@@ -372,7 +373,8 @@ struct cli_partition_updater *cli_parse_partition_update_mode(const char *arg) {
                 strncpy(updater->modifier.name, select_end + 1, len_new_name);
                 updater->modifier.name[len_new_name] = '\0'; // No need, but write it anyway
                 break;
-            case CLI_PARTITION_MODIFY_PART_PLACE:
+            }
+            case CLI_PARTITION_MODIFY_PART_PLACE: {
                 const char *placer_start;
                 switch(*(select_end + 1)) {
                     case '\0':
@@ -397,6 +399,7 @@ struct cli_partition_updater *cli_parse_partition_update_mode(const char *arg) {
                     updater->modifier.modify_place = CLI_PARTITION_MODIFY_PLACE_PRESERVE;
                 }
                 break;
+            }
             default:
                 fputs("CLI parse partition update mode: illegal part modification method\n", stderr);
                 free(updater);
@@ -414,6 +417,81 @@ struct cli_partition_updater *cli_parse_partition_update_mode(const char *arg) {
     return updater;
 }
 
+void cli_initialize() {
+    cli_options.gap_partition = TABLE_PARTITION_GAP_GENERIC;
+    cli_options.gap_reserved = TABLE_PARTITION_GAP_RESERVED;
+    cli_options.offset_reserved = TABLE_PARTITION_GAP_RESERVED + TABLE_PARTITION_BOOTLOADER_SIZE;
+    cli_options.offset_dtb = DTB_PARTITION_OFFSET;
+    cli_options.write = CLI_WRITE_DTB | CLI_WRITE_TABLE | CLI_WRITE_MIGRATES;
+}
+
+int cli_interface(const int argc, char * const argv[]) {
+    cli_initialize();
+    int c, option_index = 0;
+    static struct option long_options[] = {
+        {"version",         no_argument,        NULL,   'v'},
+        {"help",            no_argument,        NULL,   'h'},
+        {"mode",            required_argument,  NULL,   'm'},   // The mode: yolo, clone, safe, update. Default: yolo
+        {"type",            required_argument,  NULL,   't'},   // The type of input file: auto, dtb, reserved, disk. Default: auto
+        {"dry-run",         no_argument,        NULL,   'd'},
+        {"offset-reserved", required_argument,  NULL,   'R'},
+        {"offset-dtb",      required_argument,  NULL,   'D'},
+        {"gap-partition",   required_argument,  NULL,   'p'},
+        {"gap-reserved",    required_argument,  NULL,   'r'},
+    };
+    while ((c = getopt_long(argc, argv, "vhm:t:dR:D:p:r:", long_options, &option_index)) != -1) {
+        switch (c) {
+            case 'v':   // version
+                puts("version");
+                return 0;
+            case 'h':   // help
+                puts("help");
+                return 0;
+            case 'm':   // mode:
+                for (enum cli_modes mode = CLI_MODE_YOLO; mode < CLI_MODE_SNAPSHOT; ++mode) {
+                    if (!strcmp(cli_mode_strings[mode], optarg)) {
+                        cli_options.mode = mode;
+                        break;
+                    }
+                }
+                break;
+            case 't':   // type:
+                for (enum cli_types type = CLI_TYPE_AUTO; type < CLI_TYPE_DISK; ++type) {
+                    if (!strcmp(cli_type_strings[type], optarg)) {
+                        cli_options.type = type;
+                        break;
+                    }
+                }
+                break;
+                break;
+            case 'd':   // dry-run
+                puts("Dry-run");
+                cli_options.write = CLI_WRITE_NOTHING;
+                break;
+            case 'R':   // offset-reserved:
+                cli_options.offset_reserved = util_human_readable_to_size(optarg);
+                break;
+            case 'D':   // offset-dtb:
+                cli_options.offset_dtb = util_human_readable_to_size(optarg);
+                break;
+            case 'p':   // gap-partition:
+                cli_options.gap_partition = util_human_readable_to_size(optarg);
+                break;
+            case 'r':   // gap-reserved:
+                cli_options.gap_reserved = util_human_readable_to_size(optarg);
+                break;
+        }
+    }
+    if (optind < argc) {
+        printf("non-option ARGV-elements: ");
+        while (optind < argc)
+            printf("%s ", argv[optind++]);
+        printf("\n");
+    }
+    return 0;
+}
+
+// }
 // struct cli_partition_updater *cli_parse_partition_yolo_update_mode(const char *arg) {
 //     return cli_parse_partition_update_raw(arg, false);
 // }

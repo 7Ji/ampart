@@ -4,6 +4,18 @@
 
 #include "dtb.h"
 
+#define TABLE_PARTITION_GAP_GENERIC     0x800000U    // 8M
+#define TABLE_PARTITION_GAP_RESERVED    0x2000000U   // 32M
+
+#define TABLE_PARTITION_BOOTLOADER_SIZE 0x400000U    // 4M
+#define TABLE_PARTITION_BOOTLOADER_NAME "bootloader"
+#define TABLE_PARTITION_RESERVED_NAME   "reserved"
+#define TABLE_PARTITION_RESERVED_SIZE   0x4000000U   // 64M
+#define TABLE_PARTITION_CACHE_NAME      "cache"
+#define TABLE_PARTITION_CACHE_SIZE      0U
+#define TABLE_PARTITION_ENV_NAME        "env"
+#define TABLE_PARTITION_ENV_SIZE        0x800000U    // 8M
+
 struct table_partition {
     char name[MAX_PARTITION_NAME_LENGTH];
     uint64_t size;

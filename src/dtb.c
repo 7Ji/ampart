@@ -64,7 +64,7 @@ void report_dtb_header_no_swap(struct dtb_header *dh) {
 }
 #endif
 
-uint32_t dtb_travel_node(const uint8_t *node, const uint32_t max_offset) {
+static uint32_t dtb_skip_node(const uint8_t *node, const uint32_t max_offset) {
     uint32_t count = max_offset / 4;
     if (!count) {
         return 0;
@@ -78,7 +78,7 @@ uint32_t dtb_travel_node(const uint8_t *node, const uint32_t max_offset) {
         current = start + i;
         switch (*current) {
             case DTB_FDT_BEGIN_NODE_ACTUAL:
-                offset_child = dtb_travel_node((uint8_t *)(current + 1), max_offset - 4*i);
+                offset_child = dtb_skip_node((uint8_t *)(current + 1), max_offset - 4*i);
                 if (offset_child) {
                     i += offset_child + 1;
                 } else {
@@ -112,11 +112,11 @@ uint32_t dtb_get_node(const uint8_t *node, const uint32_t max_offset, const char
         return 0;
     }
     if (strcmp((const char *)node, name)) {
-        return dtb_travel_node(node, max_offset);
+        return dtb_skip_node(node, max_offset);
     }
     if (!layers) {
         *target = node;
-        return dtb_travel_node(node, max_offset);
+        return dtb_skip_node(node, max_offset);
     }
     size_t len_name = strlen((const char *)node) + 1;
     uint32_t *start = (uint32_t *)node + len_name / 4 + (bool)(len_name % 4);
@@ -153,6 +153,120 @@ uint32_t dtb_get_node(const uint8_t *node, const uint32_t max_offset, const char
     }
     fputs("DTB get node: Node not properly ended\n", stderr);
     return 0;
+}
+
+static int dtb_get_property_actual(const uint8_t *node, const uint32_t property_offset) {
+    size_t len_name = strlen((const char *)node) + 1;
+    uint32_t *start = (uint32_t *)node + len_name / 4 + (bool)(len_name % 4);
+    uint32_t *current;
+    // struct dts_property *dp = malloc(sizeof(struct dts_property));
+    // if (!dp) {
+    //     fputs("DTB get property actual: can't allocate memory for property\n", stderr);
+    //     return NULL;
+    // }
+    // dp->len = 0;
+    // dp->value = NULL;
+    uint32_t len_prop, name_off;
+    for (uint32_t i = 0; ; ++i) {
+        current = start + i;
+        switch (*current) {
+            case DTB_FDT_BEGIN_NODE_ACTUAL:
+                fputs("DTB get property actual: child node starts, property not found, give up\n", stderr);
+                return 1;
+            case DTB_FDT_END_NODE_ACTUAL:
+                fputs("DTB get property actual: node ends, give up\n", stderr);
+                return 1;
+            case DTB_FDT_PROP_ACTUAL:
+                len_prop = bswap_32(*(current+1));
+                name_off = bswap_32(*(current+2));
+                if (name_off == property_offset) {
+                    dts_property.len = len_prop;
+                    dts_property.value = (uint8_t *)(current + 3);
+                    return 0;
+                }
+                // if (name_off == property_offset) {
+                //     dp->len = len_prop;
+                //     dp->value = (uint8_t *)(current + 3);
+                //     return dp;
+                // }
+                i += 2 + len_prop / 4;
+                if (len_prop % 4) {
+                    ++i;
+                }
+                break;
+            case DTB_FDT_NOP_ACTUAL:
+                break;
+            default:
+                fprintf(stderr, "DTB get property: Invalid token %"PRIu32"\n", bswap_32(*current));
+                return 1;
+        }
+    }
+}
+
+int dtb_get_property(const uint8_t *node, const struct stringblock_helper *shelper, const char *property) {
+    const off_t property_offset = stringblock_find_string(shelper, property);
+    if (property_offset < 0) {
+        return 1;
+    }
+    return dtb_get_property_actual(node, property_offset);
+}
+
+struct dtb_multi_entries_helper *dtb_parse_multi_entries(const uint8_t *dtb) {
+    struct dtb_multi_header *header = (struct dtb_multi_header *)dtb;
+    if (header->magic != DTB_MAGIC_MULTI) {
+        fputs("DTB parse multi entries: given dtb's magic is not correct\n", stderr);
+        return NULL;
+    }
+    uint32_t len_property;
+    switch(header->version) {
+        case 1:
+            len_property = 4;
+            break;
+        case 2:
+            len_property = 16;
+            break;
+        default:
+            fprintf(stderr, "DTB parse multi entries: version not supported, only v1 and v2 supported yet the version is %"PRIu32"\n", header->version);
+            return NULL;
+    }
+    struct dtb_multi_entries_helper *mhelper = malloc(sizeof(struct dtb_multi_entries_helper));
+    if (!mhelper) {
+        fputs("DTB parse multi entries: failed to allocate memory for entries helper\n", stderr);
+        return NULL;
+    }
+    mhelper->entry_count = header->entry_count;
+    mhelper->entries = malloc(sizeof(struct dtb_multi_entry) * mhelper->entry_count);
+    if (!mhelper->entries) {
+        fputs("DTB parse multi entries: failed to allocate memory for entries\n", stderr);
+        free(mhelper);
+        return NULL;
+    }
+    uint32_t prop_offset;
+    for (uint32_t i = 0; i<mhelper->entry_count; ++i) {
+        prop_offset = 12 + (len_property * 3 + 8) * i + len_property * 3;
+        mhelper->entries[i].offset = *(uint32_t *)(dtb + prop_offset);
+        mhelper->entries[i].size = *(uint32_t *)(dtb + prop_offset + 4);
+        mhelper->entries[i].dtb = (uint8_t *)dtb + mhelper->entries[i].offset;
+    }
+    return mhelper;
+#if 0
+    char soc_v1[4];
+    char platform_v1[4];
+    char variant_v1[4];
+    char soc_v2[12];
+    char platform_v2[12];
+    char variant_v2[12];
+    char *soc, *platform, *variant;
+    if (header->version == 1) {
+        soc = soc_v1;
+        platform = platform_v1;
+        variant = variant_v1;
+    } else {
+        soc = soc_v2;
+        platform = platform_v2;
+        variant = variant_v2;
+    }
+#endif
 }
 
 uint8_t *dtb_get_node_with_path_from_dts(const uint8_t *dts, const uint32_t max_offset, const char *path, const size_t len_path) {
@@ -238,7 +352,7 @@ static inline off_t dtb_stringblock_essential_offset_get(const struct stringbloc
     off_t offset = stringblock_find_string(shelper, name);
     if (offset < 0) {
         ++(*invalids);
-        fprintf(stderr, "DTB stringblock essential offset: can not find %s in stringblock", name);
+        fprintf(stderr, "DTB stringblock essential offset: can not find %s in stringblock\n", name);
     }
     return offset;
 }
@@ -249,12 +363,14 @@ struct dts_partitions_helper *dtb_get_partitions_from_node(const uint8_t *node, 
         return NULL;
     }
     uint32_t offset_invalids = 0;
+    uint32_t optional_invalids = 0;
     struct dtb_stringblock_essential_offsets offsets = {
         dtb_stringblock_essential_offset_get(shelper, "parts", &offset_invalids),
         dtb_stringblock_essential_offset_get(shelper, "pname", &offset_invalids),
         dtb_stringblock_essential_offset_get(shelper, "size", &offset_invalids),
         dtb_stringblock_essential_offset_get(shelper, "mask", &offset_invalids),
-        dtb_stringblock_essential_offset_get(shelper, "phandle", &offset_invalids)
+        dtb_stringblock_essential_offset_get(shelper, "phandle", &offset_invalids),
+        dtb_stringblock_essential_offset_get(shelper, "linux,phandle", &optional_invalids)
     };
     if (offset_invalids) {
         return NULL;
@@ -303,6 +419,11 @@ struct dts_partitions_helper *dtb_get_partitions_from_node(const uint8_t *node, 
                 break;
             case DTB_FDT_END_NODE_ACTUAL:
                 if (in_partition) {
+                    if (partition && partition->phandle && partition->linux_phandle && partition->phandle != partition->linux_phandle) {
+                        fprintf(stderr, "DTB get partitions: partition '%s' has different phandle (%"PRIu32") and linux,phandle (%"PRIu32")\n", partition->name, partition->phandle, partition->linux_phandle);
+                        free(phelper);
+                        return NULL;
+                    }
                     in_partition = false;
                 } else {
                     return phelper;
@@ -351,8 +472,16 @@ struct dts_partitions_helper *dtb_get_partitions_from_node(const uint8_t *node, 
                             free(phelper);
                             return NULL;
                         }
+                    } else if (name_off == offsets.linux_phandle) {
+                        if (len_prop == 4) {
+                            partition->linux_phandle = bswap_32(*(current+3));
+                        } else {
+                            fputs("DTB get partitions: partition phandle is not of length 4\n", stderr);
+                            free(phelper);
+                            return NULL;
+                        }
                     } else {
-                        fprintf(stderr, "DTB get partitions: invalid property for partition: %s\n", shelper->stringblock+name_off);
+                        fprintf(stderr, "DTB get partitions: invalid property for partition, ignored: %s\n", shelper->stringblock+name_off);
                         free(phelper);
                         return NULL;
                     }
@@ -420,16 +549,21 @@ int dtb_sort_partitions(struct dts_partitions_helper *phelper) {
     return 0;
 }
 
-struct dts_partitions_helper *dtb_get_partitions(uint8_t *dtb, size_t len) {
+struct dts_partitions_helper *dtb_get_partitions(uint8_t *dtb, size_t size) {
     struct dtb_header dh = dtb_header_swapbytes((struct dtb_header *)dtb);
+    if (dh.off_dt_strings + dh.size_dt_strings > size) {
+        fputs("DTB get partitions: dtb end point overflows\n", stderr);
+        printf("End: %u, Size: %zu\n", dh.off_dt_strings + dh.size_dt_strings, size);
+        return NULL;
+    }
     uint8_t *node = dtb_get_partitions_node_from_dts(dtb + dh.off_dt_struct, dh.size_dt_struct);
     if (!node) {
         fputs("DTB get partitions: partitions node does not exist in dtb\n", stderr);
         return NULL;
     }
     struct stringblock_helper shelper;
-    shelper.length = len;
-    shelper.allocated_length = len;
+    shelper.length = dh.size_dt_strings;
+    shelper.allocated_length = dh.size_dt_strings;
     shelper.stringblock = (char *)(dtb + dh.off_dt_strings);
     struct dts_partitions_helper *phelper = dtb_get_partitions_from_node(node, &shelper);
     if (!phelper) {
@@ -456,6 +590,21 @@ void dtb_report_partitions(struct dts_partitions_helper *phelper) {
     }
     fputs("=======================================================\n", stderr);
     return;
+}
+
+enum dtb_type dtb_identify_type(uint8_t *dtb) {
+    switch (*(uint32_t *)dtb) {
+        case DTB_MAGIC_PLAIN:
+            return DTB_TYPE_PLAIN;
+        case DTB_MAGIC_MULTI:
+            return DTB_TYPE_MULTI;
+        default:
+            if (*(uint16_t *)dtb == GZIP_MAGIC) {
+                return DTB_TYPE_GZIPPED;
+            }
+            fputs("DTB identify type: DTB type invalid\n", stderr);
+            return DTB_TYPE_INVALID;
+    }
 }
 
 // uint32_t enter_node(uint32_t layer, uint32_t offset_phandle, uint8_t *dtb, uint32_t offset, uint32_t end_offset, struct dtb_header *dh) {
@@ -576,7 +725,7 @@ int main(int argc, char **argv) {
     //     puts("Failed to allocate memory for stringblock");
     //     return 7;
     // }
-    dtb_travel_node(buffer + dh.off_dt_struct + 4, dh.size_dt_struct - 4);
+    dtb_skip_node(buffer + dh.off_dt_struct + 4, dh.size_dt_struct - 4);
     uint8_t * r = dtb_get_node_from_path(buffer + dh.off_dt_struct, dh.size_dt_struct, "/partitions", 0);
     if (r){
         puts((const char *)r);

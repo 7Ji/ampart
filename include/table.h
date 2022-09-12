@@ -47,7 +47,10 @@ struct table {
     };
 }; // 1304
 
+int table_valid(struct table *table);
 void table_report(struct table *table);
-struct table *table_complete_dtb(struct dts_partitions_helper *dhelper, size_t capacity);
-
+struct table *table_complete_dtb(struct dts_partitions_helper *dhelper, uint64_t capacity);
+struct table *table_from_dtb(uint8_t *dtb, size_t dtb_size, uint64_t capacity);
+int table_compare(struct table *table_a, struct table *table_b);
+uint64_t table_get_capacity(struct table *table);
 #endif 

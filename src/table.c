@@ -1,31 +1,31 @@
 #include "table_p.h"
 
-struct table *table_read(const char *blockdev, const off_t offset) {
-    struct table *table = malloc(sizeof(struct table));
-    if (table == NULL) {
-        fputs("table read: Failed to allocate memory for partition table", stderr);
-        return NULL;
-    }
-    const int fd = open(blockdev, O_RDONLY);
-    if (fd < 0) {
-        fputs("table read: Failed to open underlying file/block device for partition table", stderr);
-        free(table);
-        return NULL;
-    }
-    if (lseek(fd, offset, SEEK_SET) != offset) {
-        fputs("table read: Failed to seek in underlying file/block device for partition table", stderr);
-        free(table);
-        close(fd);
-        return NULL;
-    }
-    if (read(fd, table, sizeof(struct table)) != sizeof(struct table)) {
-        fputs("table read: Failed to read into buffer", stderr);
-        free(table);
-        close(fd);
-        return NULL;
-    }
-    return table;
-}
+// struct table *table_read(const char *blockdev, const off_t offset) {
+//     struct table *table = malloc(sizeof(struct table));
+//     if (table == NULL) {
+//         fputs("table read: Failed to allocate memory for partition table", stderr);
+//         return NULL;
+//     }
+//     const int fd = open(blockdev, O_RDONLY);
+//     if (fd < 0) {
+//         fputs("table read: Failed to open underlying file/block device for partition table", stderr);
+//         free(table);
+//         return NULL;
+//     }
+//     if (lseek(fd, offset, SEEK_SET) != offset) {
+//         fputs("table read: Failed to seek in underlying file/block device for partition table", stderr);
+//         free(table);
+//         close(fd);
+//         return NULL;
+//     }
+//     if (read(fd, table, sizeof(struct table)) != sizeof(struct table)) {
+//         fputs("table read: Failed to read into buffer", stderr);
+//         free(table);
+//         close(fd);
+//         return NULL;
+//     }
+//     return table;
+// }
 
 uint32_t table_checksum(const struct table_partition *partitions, const int partitions_count) {
     int i, j;
@@ -58,13 +58,15 @@ int table_valid_header(const struct table_header *header) {
         }
     }
     if (version_invalid) {
-        fprintf(stderr, "table valid header: Version invalid, expect "TABLE_HEADER_VERSION_STRING", actual: %s\n", header->version_string);
+        fprintf(stderr, "table valid header: Version invalid, expect (little endian) 0x%08x%08x%08x ("TABLE_HEADER_VERSION_STRING"), actual: 0x%08"PRIx32"%08"PRIx32"%08"PRIx32"\n", TABLE_HEADER_VERSION_UINT32_2, TABLE_HEADER_VERSION_UINT32_1, TABLE_HEADER_VERSION_UINT32_0, header->version_uint32[2], header->version_uint32[1], header->version_uint32[0]);
         ret += 1;
     }
-    uint32_t checksum = table_checksum(((struct table *)header)->partitions, header->partitions_count);
-    if (header->checksum != checksum) {
-        fprintf(stderr, "table valid header: Checksum mismatch, calculated: %"PRIx32", actual: %"PRIx32"\n", checksum, header->checksum);
-        ret += 1;
+    if (header->partitions_count < 32) { // If it's corrupted it may be too large
+        uint32_t checksum = table_checksum(((struct table *)header)->partitions, header->partitions_count);
+        if (header->checksum != checksum) {
+            fprintf(stderr, "table valid header: Checksum mismatch, calculated: %"PRIx32", actual: %"PRIx32"\n", checksum, header->checksum);
+            ret += 1;
+        }
     }
     return ret;
 }
@@ -114,7 +116,8 @@ int table_valid_partition(const struct table_partition *part) {
 
 int table_valid(struct table *table) {
     int ret = table_valid_header((struct table_header *)table);
-    for (uint32_t i=0; i<table->partitions_count; ++i) {
+    uint32_t valid_count = table->partitions_count < 32 ? table->partitions_count : 32;
+    for (uint32_t i=0; i<valid_count; ++i) {
         ret += table_valid_partition(table->partitions+i);
     }
     return ret;
@@ -146,7 +149,7 @@ void table_report(struct table *table) {
     return;
 }
 
-static inline int table_pedantic_offsets(struct table *table, size_t capacity) {
+static inline int table_pedantic_offsets(struct table *table, uint64_t capacity) {
     if (table->partitions_count < 4) {
         fputs("table pedantic offsets: refuse to fill-in offsets for heavily modified table (at least 4 partitions should exist)\n", stderr);
         return 1;
@@ -175,7 +178,7 @@ static inline int table_pedantic_offsets(struct table *table, size_t capacity) {
     return 0;
 }
 
-struct table *table_complete_dtb(struct dts_partitions_helper *dhelper, size_t capacity) {
+struct table *table_complete_dtb(struct dts_partitions_helper *dhelper, uint64_t capacity) {
     if (!dhelper) {
         return NULL;
     }
@@ -213,14 +216,47 @@ struct table *table_complete_dtb(struct dts_partitions_helper *dhelper, size_t c
     return table;
 }
 
+struct table *table_from_dtb(uint8_t *dtb, size_t dtb_size, uint64_t capacity) {
+    struct dts_partitions_helper *dhelper = dtb_get_partitions(dtb, dtb_size);
+    if (!dhelper) {
+        return NULL;
+    }
+    // dtb_report_partitions(dhelper);
+    struct table *table = table_complete_dtb(dhelper, capacity);
+    free(dhelper);
+    if (!table) {
+        return NULL;
+    }
+    table->checksum = table_checksum(table->partitions, table->partitions_count);
+    // table_report(table);
+    // printf("%d\n", table_valid(table));
+    return table;
+}
 
+int table_compare(struct table *table_a, struct table *table_b) {
+    if (!(table_a && table_b)) {
+        fputs("table compare: not both tables are valid\n", stderr);
+        return -1;
+    }
+    return (memcmp(table_a, table_b, sizeof(struct table)));
+}
 
-// struct table *table_from_dtb(unsigned char dtb) {
-//     struct table *table = malloc(sizeof(struct table));
-
-
-//     return table;
-// }
+uint64_t table_get_capacity(struct table *table) {
+    if (!table || !table->partitions_count) {
+        return 0;
+    }
+    uint64_t capacity = 0;
+    uint64_t end;
+    struct table_partition *part;
+    for (uint32_t i = 0; i < table->partitions_count; ++i) {
+        part = table->partitions + i;
+        end = part->offset + part->size;
+        if (end > capacity) {
+            capacity = end;
+        }
+    }
+    return capacity;
+}
 
 #if 0
 int main(int argc, char **argv) {

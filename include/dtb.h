@@ -4,6 +4,7 @@
 
 #define DTB_HEADER_HOT(x)   union { uint32_t x, hot_##x; }
 
+#define DTB_PARTITION_OFFSET        0x400000U //4M
 #define DTB_PARTITION_SIZE          0x40000U  //256K
 #define DTB_PARTITION_DATA_SIZE     DTB_PARTITION_SIZE - 4*sizeof(uint32_t)
 
@@ -37,8 +38,42 @@ struct dtb_header {
     DTB_HEADER_HOT(size_dt_struct);
 };
 
+struct dtb_multi_header {
+    uint32_t magic;
+    uint32_t version;
+    uint32_t entry_count;
+};
+
+struct dtb_multi_entry {
+    uint8_t *dtb;
+    uint32_t offset;
+    uint32_t size;
+};
+
+struct dtb_multi_entries_helper {
+    uint32_t entry_count;
+    struct dtb_multi_entry *entries;
+    // uint8_t **entries;
+};
+
+#define DTB_MULTI_HEADER_LENGTH_V1  4U
+#define DTB_MULTI_HEADER_LENGTH_V2  16U
+struct dtb_multi_header_entry_v1 {
+    char soc[DTB_MULTI_HEADER_LENGTH_V1];
+    char platform[DTB_MULTI_HEADER_LENGTH_V1];
+    char variant[DTB_MULTI_HEADER_LENGTH_V1];
+    uint32_t offset;
+};
+
+struct dtb_multi_header_entry_v2 {
+    char soc[DTB_MULTI_HEADER_LENGTH_V2];
+    char platform[DTB_MULTI_HEADER_LENGTH_V2];
+    char variant[DTB_MULTI_HEADER_LENGTH_V2];
+    uint32_t offset;
+};
+
 struct dtb_partition {
-    unsigned char data[DTB_PARTITION_DATA_SIZE];
+    uint8_t data[DTB_PARTITION_DATA_SIZE];
     uint32_t magic;
     uint32_t version;
     uint32_t timestamp;
@@ -50,6 +85,7 @@ struct dts_partition_entry {
     uint64_t size;
     uint32_t mask;
     uint32_t phandle;
+    uint32_t linux_phandle;
 };
 
 struct dts_partitions_helper {
@@ -60,8 +96,17 @@ struct dts_partitions_helper {
     uint32_t record_count;
 };
 
+enum dtb_type {
+    DTB_TYPE_INVALID,
+    DTB_TYPE_PLAIN,
+    DTB_TYPE_MULTI,
+    DTB_TYPE_GZIPPED=4
+};
+
 uint32_t dtb_checksum(struct dtb_partition *dtb);
 // unsigned char *dtb_get_node_with_path_from_dts(const unsigned char *dts, const uint32_t max_offset, const char *path, const size_t len_path);
-struct dts_partitions_helper *dtb_get_partitions(uint8_t *dtb, size_t len);
+struct dts_partitions_helper *dtb_get_partitions(uint8_t *dtb, size_t size);
 void dtb_report_partitions(struct dts_partitions_helper *phelper);
+enum dtb_type dtb_identify_type(uint8_t *dtb);
+struct dtb_multi_entries_helper *dtb_parse_multi_entries(const uint8_t *dtb);
 #endif

@@ -1,7 +1,7 @@
 #include "gzip_p.h"
 
-static inline unsigned long gzip_unzip_no_header(uint8_t *in, unsigned long in_size, uint8_t **out) {
-    unsigned long allocated_size = util_nearest_upper_bound_ulong(in_size, 64, 4); // 4 times the size, nearest multiply of 64
+static inline size_t gzip_unzip_no_header(uint8_t *in, size_t in_size, uint8_t **out) {
+    size_t allocated_size = util_nearest_upper_bound_ulong(in_size, 64, 4); // 4 times the size, nearest multiply of 64
     fprintf(stderr, "unzip: Decompressing raw deflated data, in size %ld, allocated %ld\n", in_size, allocated_size);
     *out = malloc(allocated_size);
     if (!*out) {
@@ -86,7 +86,7 @@ static inline unsigned int gzip_valid_header(uint8_t *data) {
     return offset;
 }
 
-unsigned long gzip_unzip(uint8_t *in, unsigned long in_size, uint8_t **out) {
+size_t gzip_unzip(uint8_t *in, size_t in_size, uint8_t **out) {
     int offset = gzip_valid_header(in);
     if (!offset) {
         fputs("unzip: Gzip header invalid", stderr);
@@ -95,7 +95,7 @@ unsigned long gzip_unzip(uint8_t *in, unsigned long in_size, uint8_t **out) {
     return gzip_unzip_no_header(in+offset, in_size-offset, out);
 }
 
-unsigned long gzip_zip(uint8_t *in, unsigned long in_size, uint8_t **out) {
+size_t gzip_zip(uint8_t *in, size_t in_size, uint8_t **out) {
     z_stream s;
     s.zalloc = Z_NULL;
     s.zfree = Z_NULL;
@@ -106,7 +106,7 @@ unsigned long gzip_zip(uint8_t *in, unsigned long in_size, uint8_t **out) {
         fputs("zip: Failed to initialize deflation for compression\n", stderr);
         return 0;
     }
-    unsigned long allocated_size = deflateBound(&s, in_size);
+    size_t allocated_size = deflateBound(&s, in_size);
     fprintf(stderr, "zip: Compressing data to gzip, size %ld, allocated %ld\n", in_size, allocated_size);
     *out = malloc(allocated_size);
     if (!*out) {

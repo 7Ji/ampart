@@ -3,19 +3,56 @@
 #include "common.h"
 #include "table.h"
 
-enum cli_partition_modify_method {
-    CLI_PARTITION_MODIFY_PRESERVE,
-    CLI_PARTITION_MODIFY_REPLACE,
-    CLI_PARTITION_MODIFY_ADD,
-    CLI_PARTITION_MODIFY_SUBSTRACT
+enum cli_partition_select_method {
+    CLI_PARTITION_SELECT_NAME,
+    CLI_PARTITION_SELECT_RELATIVE
+};
+
+enum cli_partition_modify_part_method {
+    CLI_PARTITION_MODIFY_PART_ADJUST,
+    CLI_PARTITION_MODIFY_PART_DELETE,
+    CLI_PARTITION_MODIFY_PART_CLONE
+};
+
+enum cli_partition_modify_detail_method {
+    CLI_PARTITION_MODIFY_DETAIL_PRESERVE,
+    CLI_PARTITION_MODIFY_DETAIL_SET,
+    CLI_PARTITION_MODIFY_DETAIL_ADD,
+    CLI_PARTITION_MODIFY_DETAIL_SUBSTRACT,
+};
+
+
+#define CLI_ARGUMENT_ANY                0b00000000
+#define CLI_ARGUMENT_DISALLOW           0b10000000
+#define CLI_ARGUMENT_REQUIRED           0b00000001
+#define CLI_ARGUMENT_ALLOW_ABSOLUTE     0b00000010
+#define CLI_ARGUMENT_ALLOW_RELATIVE     0b00000100
+
+struct cli_partition_definer {
+    char name[MAX_PARTITION_NAME_LENGTH];
+    bool relative_offset, relative_size;
+    uint64_t offset, size;
+    uint32_t masks;
 };
 
 struct cli_partition_modifier {
-    struct table_partition *part;
-    enum cli_partition_modify_method update_name, update_offset, update_size, update_masks;
+    enum cli_partition_select_method select;
+    enum cli_partition_modify_part_method modify_part;
+    enum cli_partition_modify_detail_method modify_name, modify_offset, modify_size, modify_masks;
+    char select_name[16];
+    int select_relative;
     char name[16];
     uint64_t offset, size;
     uint32_t masks;
 };
 
+struct cli_partition_updater {
+    bool modify;
+    union {
+        struct cli_partition_definer definer;
+        struct cli_partition_modifier modifier;
+    };
+};
+struct cli_partition_definer *cli_parse_partition_raw(const char *arg, uint8_t require_name, uint8_t require_offset, uint8_t require_size, uint8_t require_masks, uint32_t default_masks);
+struct cli_partition_updater *cli_parse_partition_update_mode(const char *arg);
 #endif

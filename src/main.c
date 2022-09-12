@@ -3,10 +3,80 @@
 #include "dtb.h"
 #include "io.h"
 #include "gzip.h"
+#include "util.h"
+#include "cli.h"
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <unistd.h>
+void teller(enum cli_partition_modify_detail_method method) {
+    switch (method) {
+        case CLI_PARTITION_MODIFY_DETAIL_PRESERVE:
+            puts("Should be preserved");
+            break;
+        case CLI_PARTITION_MODIFY_DETAIL_ADD:
+            puts("Should be add");
+            break;
+        case CLI_PARTITION_MODIFY_DETAIL_SUBSTRACT:
+            puts("Should be substarct");
+            break;
+        case CLI_PARTITION_MODIFY_DETAIL_SET:
+            puts("Should be set");
+            break;
+        
+    }
+
+}
 int main(int argc, char **argv) {
+    // struct cli_partition_definer *part_d = cli_parse_partition_raw("bootloader::32G:", CLI_ARGUMENT_REQUIRED, CLI_ARGUMENT_ALLOW_ABSOLUTE | CLI_ARGUMENT_ALLOW_RELATIVE | CLI_ARGUMENT_DISALLOW, CLI_ARGUMENT_ALLOW_ABSOLUTE | CLI_ARGUMENT_ALLOW_RELATIVE, CLI_ARGUMENT_ANY, 13);
+    // if (part_d) {
+    //     puts("parsed");
+    //     printf("Name: %s, Offset: %lu, %lx (rel: %d), Size: %lu, %lx (rel: %d), Masks: %d\n", part_d->name, part_d->offset, part_d->offset, part_d->relative_offset, part_d->size, part_d->size, part_d->relative_size, part_d->masks);
+    // }
+    if (argc <= 1) {
+        return 1;
+    }
+    struct cli_partition_updater *updater = cli_parse_partition_update_mode(argv[1]);
+    if (updater) {
+        if (updater->modify) {
+            puts("modify mode");
+            if (updater->modifier.select == CLI_PARTITION_SELECT_RELATIVE) {
+                puts("Relative select");
+                printf("%d\n", updater->modifier.select_relative);
+            } else {
+                puts("name select");
+                printf("%s\n", updater->modifier.select_name);
+            }
+            switch (updater->modifier.modify_part) {
+                case CLI_PARTITION_MODIFY_PART_ADJUST:
+                    puts("Adjust mode");
+                    printf("Name: ");
+                    teller(updater->modifier.modify_name);
+                    printf("Offset: ");
+                    teller(updater->modifier.modify_offset);
+                    printf("Size: ");
+                    teller(updater->modifier.modify_size);
+                    printf("Masks: ");
+                    teller(updater->modifier.modify_masks);
+                    printf("%s, %lu, %lu, %u\n", updater->modifier.name, updater->modifier.offset, updater->modifier.size, updater->modifier.masks);
+                    break;
+                case CLI_PARTITION_MODIFY_PART_CLONE:
+                    printf("Clone mode, target: %s\n", updater->modifier.name);
+                    break;
+                case CLI_PARTITION_MODIFY_PART_DELETE:
+                    puts("Delete mode");
+                    break;
+            }
+            
+            
+        } else {
+            puts("plain mode");
+            struct cli_partition_definer *part_d = &updater->definer;
+            printf("Name: %s, Offset: %lu, %lx (rel: %d), Size: %lu, %lx (rel: %d), Masks: %d\n", part_d->name, part_d->offset, part_d->offset, part_d->relative_offset, part_d->size, part_d->size, part_d->relative_size, part_d->masks);
+        }
+        puts("Parsed");
+    }
+    
+    return 0;
     if (argc <= 1) {
         return 1;
     }
@@ -35,7 +105,19 @@ int main(int argc, char **argv) {
     }
     table_report(table_emmc);
     uint64_t capacity = table_get_capacity(table_emmc);
-    uint8_t *dtb = inbuffer + DTB_PARTITION_OFFSET;
+    struct dtb_partition *dtb_a = (struct dtb_partition *)(inbuffer + DTB_PARTITION_OFFSET);
+    struct dtb_partition *dtb_b = dtb_a + 1;
+    uint8_t *dtb = NULL;
+    if (dtb_checksum(dtb_a) == dtb_a->checksum) {
+        puts("Using first copy");
+        dtb = (uint8_t *)dtb_a;
+    } else if (dtb_checksum(dtb_b) == dtb_b->checksum) {
+        puts("Using second copy");
+        dtb = (uint8_t *)dtb_b;
+    } else {
+        puts("Both invalid, defaulting to first");
+        dtb = (uint8_t *)dtb_a;
+    }
     enum dtb_type dtb_type = dtb_identify_type(dtb);
     struct table *table_dtb;
     if (dtb_type == DTB_TYPE_PLAIN) {
@@ -71,13 +153,19 @@ int main(int argc, char **argv) {
                     puts("r: plain");
                     break;
                 case DTB_TYPE_MULTI:
-                    // struct dtb_multi_entries_helper *mhelper = dtb_parse_multi_entries(dtb_raw);
-                    // if (mhelper) {
-                    //     for (uint32_t i = 0; i<mhelper->entry_count; ++i) {
-                    //         printf("%x\n", *(uint32_t *)(mhelper->entries[i]));
-                    //         table_dtb = table_from_dtb(mhelper->entries[i], DTB_PARTITION_SIZE, capacity);
-                    //     }
-                    // }
+                    struct dtb_multi_entries_helper *mhelper = dtb_parse_multi_entries(dtb_raw);
+                    if (mhelper) {
+                        for (uint32_t i = 0; i<mhelper->entry_count; ++i) {
+                            table_dtb = table_from_dtb(mhelper->entries[i].dtb, mhelper->entries[i].size, capacity);
+                            table_report(table_dtb);
+                            if (table_compare(table_emmc, table_dtb)) {
+                                puts("Different");
+                            } else {
+                                puts("same");
+                            }
+                            free(table_dtb);
+                        }
+                    }
                     puts("r: multi");
                     break;
                 default:

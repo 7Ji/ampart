@@ -1,6 +1,6 @@
 #include "cli_p.h"
 
-static inline int cli_parse_u64(uint64_t *value, bool *relative, uint8_t requirement, const char *start, const char *end) {
+static inline int cli_parse_u64(uint64_t *const value, bool *const relative, const uint8_t requirement, const char *start, const char *const end) {
     if (*start == '+') {
         if (requirement & CLI_ARGUMENT_ALLOW_RELATIVE) {
             *relative = true;
@@ -23,7 +23,7 @@ static inline int cli_parse_u64(uint64_t *value, bool *relative, uint8_t require
     }
     const size_t len = end - start;
     if (len) {
-        char *str = malloc(sizeof(char) * (len + 1));
+        char *const str = malloc(sizeof(char) * (len + 1));
         if (!str) {
             fputs("CLI parse u64: Failed to create temp buffer to parse number\n", stderr);
             return 4;
@@ -104,41 +104,45 @@ struct cli_partition_definer *cli_parse_partition_raw(const char *arg, uint8_t r
         return NULL;
     }
     bool have_name = seperators[0] != arg;
-    if (have_name && require_name & CLI_ARGUMENT_DISALLOW) {
-        fprintf(stderr, "CLI parse partition: Argument contains name but it's not allowed: %s\n", arg);
-        return NULL;
-    }
-    if (!have_name && require_name & CLI_ARGUMENT_REQUIRED) {
-        fprintf(stderr, "CLI parse partition: Argument does not contains name but it must be set: %s\n", arg);
-        return NULL;
-    }
+    CLI_PARSE_PARTITION_RAW_ALLOWANCE_CHECK(name)
+    // if (have_name && require_name & CLI_ARGUMENT_DISALLOW) {
+    //     fprintf(stderr, "CLI parse partition: Argument contains name but it's not allowed: %s\n", arg);
+    //     return NULL;
+    // }
+    // if (!have_name && require_name & CLI_ARGUMENT_REQUIRED) {
+    //     fprintf(stderr, "CLI parse partition: Argument does not contains name but it must be set: %s\n", arg);
+    //     return NULL;
+    // }
     bool have_offset = seperators[1] - seperators[0] > 1;
-    if (have_offset && require_offset & CLI_ARGUMENT_DISALLOW) {
-        fprintf(stderr, "CLI parse partition: Argument contains offset but it's not allowed: %s\n", arg);
-        return NULL;
-    }
-    if (!have_offset && require_offset & CLI_ARGUMENT_REQUIRED) {
-        fprintf(stderr, "CLI parse partition: Argument does not contain offset but it must be set: %s\n", arg);
-        return NULL;
-    }
+    CLI_PARSE_PARTITION_RAW_ALLOWANCE_CHECK(offset)
+    // if (have_offset && require_offset & CLI_ARGUMENT_DISALLOW) {
+    //     fprintf(stderr, "CLI parse partition: Argument contains offset but it's not allowed: %s\n", arg);
+    //     return NULL;
+    // }
+    // if (!have_offset && require_offset & CLI_ARGUMENT_REQUIRED) {
+    //     fprintf(stderr, "CLI parse partition: Argument does not contain offset but it must be set: %s\n", arg);
+    //     return NULL;
+    // }
     bool have_size = seperators[2] - seperators[1] > 1;
-    if (have_size && require_size & CLI_ARGUMENT_DISALLOW) {
-        fprintf(stderr, "CLI parse partition: Argument contains size but it's not allowed: %s\n", arg);
-        return NULL;
-    }
-    if (!have_size && require_size & CLI_ARGUMENT_REQUIRED) {
-        fprintf(stderr, "CLI parse partition: Argument does not contain size but it must be set: %s\n", arg);
-        return NULL;
-    }
+    CLI_PARSE_PARTITION_RAW_ALLOWANCE_CHECK(size)
+    // if (have_size && require_size & CLI_ARGUMENT_DISALLOW) {
+    //     fprintf(stderr, "CLI parse partition: Argument contains size but it's not allowed: %s\n", arg);
+    //     return NULL;
+    // }
+    // if (!have_size && require_size & CLI_ARGUMENT_REQUIRED) {
+    //     fprintf(stderr, "CLI parse partition: Argument does not contain size but it must be set: %s\n", arg);
+    //     return NULL;
+    // }
     bool have_masks = *(seperators[2] + 1);
-    if (have_masks && require_masks & CLI_ARGUMENT_DISALLOW) {
-        fprintf(stderr, "CLI parse partition: Argument contains masks but it's not allowed: %s\n", arg);
-        return NULL;
-    }
-    if (!have_masks && require_masks & CLI_ARGUMENT_REQUIRED) {
-        fprintf(stderr, "CLI parse partition: Argument does not contains mask but it must be set: %s\n", arg);
-        return NULL;
-    }
+    CLI_PARSE_PARTITION_RAW_ALLOWANCE_CHECK(masks)
+    // if (have_masks && require_masks & CLI_ARGUMENT_DISALLOW) {
+    //     fprintf(stderr, "CLI parse partition: Argument contains masks but it's not allowed: %s\n", arg);
+    //     return NULL;
+    // }
+    // if (!have_masks && require_masks & CLI_ARGUMENT_REQUIRED) {
+    //     fprintf(stderr, "CLI parse partition: Argument does not contains mask but it must be set: %s\n", arg);
+    //     return NULL;
+    // }
     struct cli_partition_definer *part = malloc(sizeof(struct cli_partition_definer));
     if (!part) {
         fprintf(stderr, "CLI parse partition: Failed to allocate memory for arg: %s\n", arg);
@@ -172,37 +176,43 @@ struct cli_partition_definer *cli_parse_partition_raw(const char *arg, uint8_t r
     return part;
 }
 
-struct cli_partition_definer *cli_parse_partition_yolo_mode(const char *arg) {
-    return cli_parse_partition_raw(
-        arg,
-        CLI_ARGUMENT_REQUIRED,
-        CLI_ARGUMENT_ALLOW_ABSOLUTE | CLI_ARGUMENT_ALLOW_RELATIVE,
-        CLI_ARGUMENT_ALLOW_ABSOLUTE,
-        CLI_ARGUMENT_ANY,
-        4
-    );
-}
+// struct cli_partition_definer *cli_parse_partition_yolo_mode(const char *arg) {
+//     return cli_parse_partition_raw(
+//         arg,
+//         CLI_ARGUMENT_REQUIRED,
+//         CLI_ARGUMENT_ALLOW_ABSOLUTE | CLI_ARGUMENT_ALLOW_RELATIVE,
+//         CLI_ARGUMENT_ALLOW_ABSOLUTE,
+//         CLI_ARGUMENT_ANY,
+//         4
+//     );
+// }
 
-struct cli_partition_definer *cli_parse_partition_clone_mode(const char *arg) {
-    return cli_parse_partition_raw(
-        arg,
-        CLI_ARGUMENT_REQUIRED,
-        CLI_ARGUMENT_REQUIRED | CLI_ARGUMENT_ALLOW_ABSOLUTE,
-        CLI_ARGUMENT_REQUIRED | CLI_ARGUMENT_ALLOW_ABSOLUTE,
-        CLI_ARGUMENT_REQUIRED,
-        0
-    );
-}
+// struct cli_partition_definer *cli_parse_partition_clone_mode(const char *arg) {
+//     return cli_parse_partition_raw(
+//         arg,
+//         CLI_ARGUMENT_REQUIRED,
+//         CLI_ARGUMENT_REQUIRED | CLI_ARGUMENT_ALLOW_ABSOLUTE,
+//         CLI_ARGUMENT_REQUIRED | CLI_ARGUMENT_ALLOW_ABSOLUTE,
+//         CLI_ARGUMENT_REQUIRED,
+//         0
+//     );
+// }
 
-struct cli_partition_definer *cli_parse_partition_safe_mode(const char *arg) {
-    return cli_parse_partition_raw(
-        arg,
-        CLI_ARGUMENT_REQUIRED,
-        CLI_ARGUMENT_DISALLOW,
-        CLI_ARGUMENT_REQUIRED | CLI_ARGUMENT_ALLOW_ABSOLUTE,
-        CLI_ARGUMENT_REQUIRED,
-        4
-    );
+// struct cli_partition_definer *cli_parse_partition_safe_mode(const char *arg) {
+//     return cli_parse_partition_raw(
+//         arg,
+//         CLI_ARGUMENT_REQUIRED,
+//         CLI_ARGUMENT_DISALLOW,
+//         CLI_ARGUMENT_REQUIRED | CLI_ARGUMENT_ALLOW_ABSOLUTE,
+//         CLI_ARGUMENT_REQUIRED,
+//         4
+//     );
+// }
+int cli_entry_point(int argc, char *argv[]) {
+    for (int i =0; i<argc; ++i) {
+        printf("%d: %s\n", i, argv[i]);
+    }
+    return 0;
 }
 
 struct cli_partition_updater *cli_parse_partition_update_mode(const char *arg) {
@@ -417,85 +427,202 @@ struct cli_partition_updater *cli_parse_partition_update_mode(const char *arg) {
     return updater;
 }
 
-void cli_initialize() {
-    cli_options.gap_partition = TABLE_PARTITION_GAP_GENERIC;
-    cli_options.gap_reserved = TABLE_PARTITION_GAP_RESERVED;
-    cli_options.offset_reserved = TABLE_PARTITION_GAP_RESERVED + TABLE_PARTITION_BOOTLOADER_SIZE;
-    cli_options.offset_dtb = DTB_PARTITION_OFFSET;
-    cli_options.write = CLI_WRITE_DTB | CLI_WRITE_TABLE | CLI_WRITE_MIGRATES;
+// void cli_initialize() {
+//     cli_options.gap_partition = TABLE_PARTITION_GAP_GENERIC;
+//     cli_options.gap_reserved = TABLE_PARTITION_GAP_RESERVED;
+//     cli_options.offset_reserved = TABLE_PARTITION_GAP_RESERVED + TABLE_PARTITION_BOOTLOADER_SIZE;
+//     cli_options.offset_dtb = DTB_PARTITION_OFFSET;
+//     cli_options.write = CLI_WRITE_DTB | CLI_WRITE_TABLE | CLI_WRITE_MIGRATES;
+// }
+
+void cli_version() {
+    fputs("ampart-ng (Amlogic eMMC partition tool) by 7Ji, development version, debug usage only\n", stderr);
 }
 
-int cli_interface(const int argc, char * const argv[]) {
-    cli_initialize();
+size_t cli_human_readable_to_size_and_report(const char *const literal, const char *const name) {
+    const size_t size = util_human_readable_to_size(literal);
+    char suffix;
+    const double size_d = util_size_to_human_readable(size, &suffix);
+    fprintf(stderr, "CLI interface: Setting %s to %zu / 0x%lx (%lf%c)\n", name, size, size, size_d, suffix);
+    return size;
+}
+
+// enum cli_types cli_identify_type() {
+//     if (!cli_options.target) {
+//         return CLI_TYPE_AUTO;
+//     }
+//     enum cli_types type;
+//     uint32_t magic = 0;
+//     switch (magic) {
+//         case 0:
+//             return CLI_TYPE_DISK;
+//         case TABLE_HEADER_MAGIC_UINT32:
+//             return CLI_TYPE_RESERVED;
+//         case DTB_MAGIC_MULTI:
+//         case DTB_MAGIC_PLAIN:
+//             return CLI_TYPE_DTB;
+//         default:
+//             if ((magic & 0xFFFF) == GZIP_MAGIC) {
+//                 return CLI_TYPE_DTB;
+//             }
+//             return CLI_TYPE_AUTO;
+//     }
+
+//     return type;
+// }
+
+int cli_interface(const int argc, char *argv[]) {
     int c, option_index = 0;
     static struct option long_options[] = {
         {"version",         no_argument,        NULL,   'v'},
         {"help",            no_argument,        NULL,   'h'},
         {"mode",            required_argument,  NULL,   'm'},   // The mode: yolo, clone, safe, update. Default: yolo
         {"type",            required_argument,  NULL,   't'},   // The type of input file: auto, dtb, reserved, disk. Default: auto
+        {"strict-device",   no_argument,        NULL,   's'},
         {"dry-run",         no_argument,        NULL,   'd'},
         {"offset-reserved", required_argument,  NULL,   'R'},
         {"offset-dtb",      required_argument,  NULL,   'D'},
         {"gap-partition",   required_argument,  NULL,   'p'},
         {"gap-reserved",    required_argument,  NULL,   'r'},
+        {NULL}
     };
     while ((c = getopt_long(argc, argv, "vhm:t:dR:D:p:r:", long_options, &option_index)) != -1) {
         switch (c) {
             case 'v':   // version
-                puts("version");
+                cli_version();
                 return 0;
             case 'h':   // help
-                puts("help");
+                cli_version();
+                fputs("\nampart does not provide command-line help message due to its complex syntax, please refer to the project Wiki for documentation:\nhttps://github.com/7Ji/ampart/wiki\n\n", stderr);
                 return 0;
-            case 'm':   // mode:
-                for (enum cli_modes mode = CLI_MODE_YOLO; mode < CLI_MODE_SNAPSHOT; ++mode) {
+            case 'm': {   // mode:
+                bool mode_valid = false;
+                for (enum cli_modes mode = CLI_MODE_YOLO; mode <= CLI_MODE_SNAPSHOT; ++mode) {
                     if (!strcmp(cli_mode_strings[mode], optarg)) {
+                        fprintf(stderr, "CLI interface: Mode is set to %s\n", optarg);
+                        mode_valid = true;
                         cli_options.mode = mode;
                         break;
                     }
                 }
-                break;
-            case 't':   // type:
-                for (enum cli_types type = CLI_TYPE_AUTO; type < CLI_TYPE_DISK; ++type) {
+                if (mode_valid) {
+                    break;
+                } else {
+                    fprintf(stderr, "CLI interface: Invalid mode %s\n", optarg);
+                    return 1;
+                }
+            }
+            case 't': {   // type:
+                bool type_valid = false;
+                for (enum cli_types type = CLI_TYPE_AUTO; type <= CLI_TYPE_DISK; ++type) {
                     if (!strcmp(cli_type_strings[type], optarg)) {
+                        fprintf(stderr, "CLI interface: Type is set to %s\n", optarg);
+                        type_valid = true;
                         cli_options.type = type;
                         break;
                     }
                 }
-                break;
+                if (type_valid) {
+                    break;
+                } else {
+                    fprintf(stderr, "CLI interface: Invalid type %s\n", optarg);
+                    return 2;
+                }
+            }    
+            case 's':   // strict-device
+                fputs("CLI interface: Enabled strict-device, ampart won't try to find the corresponding disk when target is a block device and is not a full eMMC drive\n", stderr);
+                cli_options.strict_device = true;
                 break;
             case 'd':   // dry-run
-                puts("Dry-run");
-                cli_options.write = CLI_WRITE_NOTHING;
+                fputs("CLI interface: Enabled dry-run, no write will be made to the underlying files/devices\n", stderr);
+                cli_options.dry_run = true;
                 break;
             case 'R':   // offset-reserved:
-                cli_options.offset_reserved = util_human_readable_to_size(optarg);
+                cli_options.offset_reserved = cli_human_readable_to_size_and_report(optarg, "offset of reserved partition relative to the whole eMMC drive");
                 break;
             case 'D':   // offset-dtb:
-                cli_options.offset_dtb = util_human_readable_to_size(optarg);
+                cli_options.offset_dtb = cli_human_readable_to_size_and_report(optarg, "offset of dtb partition relative to the reserved partition");
                 break;
             case 'p':   // gap-partition:
-                cli_options.gap_partition = util_human_readable_to_size(optarg);
+                cli_options.gap_partition = cli_human_readable_to_size_and_report(optarg, "gap between partitions (except between bootloader and reserved)");
                 break;
             case 'r':   // gap-reserved:
-                cli_options.gap_reserved = util_human_readable_to_size(optarg);
+                cli_options.gap_reserved = cli_human_readable_to_size_and_report(optarg, "gap between bootloader and reserved partitions");
                 break;
+            default:
+                return 3;
         }
     }
-    if (optind < argc) {
-        printf("non-option ARGV-elements: ");
-        while (optind < argc)
-            printf("%s ", argv[optind++]);
-        printf("\n");
+    if (cli_options.dry_run) {
+        cli_options.write = CLI_WRITE_NOTHING;
     }
+    if (optind < argc) {
+        cli_options.target = strdup(argv[optind++]);
+        if (!cli_options.target) {
+            fprintf(stderr, "CLI interface: Failed to duplicate target string '%s'\n", argv[optind-1]);
+            return 4;
+        }
+        fprintf(stderr, "CLI interface: Operating on target file/block device '%s'\n", cli_options.target);
+        bool find_disk = false;
+        struct io_target_type *target_type = io_identify_target_type(cli_options.target);
+        if (!target_type) {
+            fprintf(stderr, "CLI interface: failed to identify the type of target '%s'\n", cli_options.target);
+            return 5;
+        }
+        io_describe_target_type(target_type, NULL);
+        if (cli_options.type == CLI_TYPE_AUTO) {
+            fputs("CLI interface: Start auto type identification, specify target type if you don't want this\n", stderr);
+            switch (target_type->content) {
+                case IO_TARGET_TYPE_CONTENT_DISK:
+                    fputs("CLI interface: Auto identified as whole disk\n", stderr);
+                    cli_options.type = CLI_TYPE_DISK;
+                    break;
+                case IO_TARGET_TYPE_CONTENT_RESERVED:
+                    fputs("CLI interface: Auto identified as reserved partition\n", stderr);
+                    cli_options.type = CLI_TYPE_RESERVED;
+                    break;
+                case IO_TARGET_TYPE_CONTENT_DTB:
+                    fputs("CLI interface: Auto identified as DTB partition\n", stderr);
+                    cli_options.type = CLI_TYPE_DTB;
+                    break;
+                case IO_TARGET_TYPE_CONTENT_UNSUPPORTED:
+                    fprintf(stderr, "CLI interface: failed to identify the type of target '%s', please set its type manually\n", cli_options.target);
+                    return 6;
+            }
+            if (target_type->file == IO_TARGET_TYPE_FILE_BLOCKDEVICE && target_type->content != IO_TARGET_TYPE_CONTENT_DISK) {
+                find_disk = true;
+            }
+        } else if (target_type->file == IO_TARGET_TYPE_FILE_BLOCKDEVICE && cli_options.type != CLI_TYPE_DISK) {
+            find_disk = true;
+        }
+        free(target_type);
+        if (!cli_options.strict_device && find_disk) {
+            char *path_disk = io_find_disk(cli_options.target);
+            if (!path_disk) {
+                fprintf(stderr, "CLI interface: Failed to get the corresponding disk of %s, try to force the target type or enable strict-device mode to disable auto-identification\n", cli_options.target);
+                return 7;
+            }
+            fprintf(stderr, "CLI interface: Operating on '%s' instead\n", path_disk);
+            free(cli_options.target);
+            cli_options.target = path_disk;
+            cli_options.type = CLI_TYPE_DISK;
+        }
+    } else {
+        fputs("CLI interface: Too few arguments, target file/block device must be set as the first non-positional argument\n", stderr);
+        return 8;
+    }
+    if (cli_options.type == CLI_TYPE_AUTO) {
+        fputs("CLI interface: Target type not identified, give up, try setting it manually\n", stderr);
+        return 9;
+    }
+    cli_entry_point(argc-optind, argv+optind);
+    // switch (cli_options.mode) {
+
+    // }
+    // if (optind < argc) {
+    //     printf("non-option ARGV-elements: \n");
+    //     while (optind < argc)
+    //         printf("%s\n", argv[optind++]);
+    // }
     return 0;
 }
-
-// }
-// struct cli_partition_updater *cli_parse_partition_yolo_update_mode(const char *arg) {
-//     return cli_parse_partition_update_raw(arg, false);
-// }
-
-// struct cli_partition_updater *cli_parse_partition_safe_update_mode(const char *arg) {
-//     return cli_parse_partition_update_raw(arg, true);
-// }

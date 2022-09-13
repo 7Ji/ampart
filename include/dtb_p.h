@@ -9,8 +9,6 @@
 #include "stringblock.h"
 #include "gzip.h"
 
-#define DTB_MAGIC_MULTI     0x5F4C4D41U
-#define DTB_MAGIC_PLAIN     0xEDFE0DD0U
 // #define DTB_MAGIC_GZIP      0x00008B1FU
 // #define DTB_MAGIC_XIAOMI    0x000089EFU
 // #define DTB_MAGIC_PHICOMM   0x000004DAU
@@ -41,5 +39,7 @@ struct dtb_stringblock_essential_offsets {
 
 struct dts_property {
     uint32_t len;
-    uint8_t *value;
+    const uint8_t *value;
 } dts_property;
+
+// uint8_t *dtb_buffer = NULL;

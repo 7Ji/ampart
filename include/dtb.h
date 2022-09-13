@@ -2,6 +2,9 @@
 #define HAVE_DTB_H
 #include "common.h"
 
+#define DTB_MAGIC_MULTI     0x5F4C4D41U
+#define DTB_MAGIC_PLAIN     0xEDFE0DD0U
+
 #define DTB_HEADER_HOT(x)   union { uint32_t x, hot_##x; }
 
 #define DTB_PARTITION_OFFSET        0x400000U //4M
@@ -97,6 +100,15 @@ struct dts_partitions_helper {
     uint32_t record_count;
 };
 
+struct dts_phandle_list {
+    uint32_t *phandles;
+    uint32_t *min_phandle;
+    uint32_t *max_phandle;
+    uint32_t allocated_count;
+    bool have_linux_phandle;
+    bool have_duplicate_phandle;
+};
+
 enum dtb_type {
     DTB_TYPE_INVALID,
     DTB_TYPE_PLAIN,
@@ -104,10 +116,13 @@ enum dtb_type {
     DTB_TYPE_GZIPPED=4
 };
 
-uint32_t dtb_checksum(struct dtb_partition *dtb);
+// extern uint8_t *dtb_buffer;
+
+
+uint32_t dtb_checksum(const struct dtb_partition *dtb);
 // unsigned char *dtb_get_node_with_path_from_dts(const unsigned char *dts, const uint32_t max_offset, const char *path, const size_t len_path);
-struct dts_partitions_helper *dtb_get_partitions(uint8_t *dtb, size_t size);
-void dtb_report_partitions(struct dts_partitions_helper *phelper);
-enum dtb_type dtb_identify_type(uint8_t *dtb);
+struct dts_partitions_helper *dtb_get_partitions(const uint8_t *dtb, const size_t size);
+void dtb_report_partitions(const struct dts_partitions_helper *phelper);
+enum dtb_type dtb_identify_type(const uint8_t *dtb);
 struct dtb_multi_entries_helper *dtb_parse_multi_entries(const uint8_t *dtb);
 #endif

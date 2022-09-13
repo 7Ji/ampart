@@ -26,7 +26,19 @@ void teller(enum cli_partition_modify_detail_method method) {
             break;        
     }
 }
-int main(const int argc, char * const argv[]) {
+int main(int argc, char *argv[]) {
+    // if (argc<=1) {
+    //     return 1;
+    // }
+    // char * path = io_find_disk(argv[1]);
+    // if (path) {
+    //     puts(path);
+    // }
+    // struct io_target_type *type = io_identify_target_type(argv[1]);
+    // if (type) {
+    //     io_describe_target_type(type, NULL);
+    // }
+    // return 0;
     return cli_interface(argc, argv);
     // struct cli_partition_definer *part_d = cli_parse_partition_raw("bootloader::32G:", CLI_ARGUMENT_REQUIRED, CLI_ARGUMENT_ALLOW_ABSOLUTE | CLI_ARGUMENT_ALLOW_RELATIVE | CLI_ARGUMENT_DISALLOW, CLI_ARGUMENT_ALLOW_ABSOLUTE | CLI_ARGUMENT_ALLOW_RELATIVE, CLI_ARGUMENT_ANY, 13);
     // if (part_d) {

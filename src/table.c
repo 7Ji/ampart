@@ -27,7 +27,7 @@
 //     return table;
 // }
 
-uint32_t table_checksum(const struct table_partition *partitions, const int partitions_count) {
+uint32_t table_checksum(const struct table_partition *const partitions, const int partitions_count) {
     int i, j;
     uint32_t checksum = 0, *p;
     for (i = 0; i < partitions_count; i++) { // This is utterly wrong, but it's how amlogic does. So we have to stick with the glitch algorithm that only calculates 1 partition if we want ampart to work
@@ -40,7 +40,7 @@ uint32_t table_checksum(const struct table_partition *partitions, const int part
     return checksum;
 }
 
-int table_valid_header(const struct table_header *header) {
+int table_valid_header(const struct table_header *const header) {
     int ret = 0;
     if (header->partitions_count > 32) {
         fprintf(stderr, "table valid header: Partitions count invalid, only integer 0~32 is acceppted, actual: %d\n", header->partitions_count);
@@ -62,7 +62,7 @@ int table_valid_header(const struct table_header *header) {
         ret += 1;
     }
     if (header->partitions_count < 32) { // If it's corrupted it may be too large
-        uint32_t checksum = table_checksum(((struct table *)header)->partitions, header->partitions_count);
+        const uint32_t checksum = table_checksum(((const struct table *)header)->partitions, header->partitions_count);
         if (header->checksum != checksum) {
             fprintf(stderr, "table valid header: Checksum mismatch, calculated: %"PRIx32", actual: %"PRIx32"\n", checksum, header->checksum);
             ret += 1;
@@ -71,7 +71,7 @@ int table_valid_header(const struct table_header *header) {
     return ret;
 }
 
-unsigned int table_valid_partition_name(const char *name) {
+unsigned int table_valid_partition_name(const char *const name) {
     unsigned int ret = 0;
     unsigned int i;
     bool term = true;
@@ -107,25 +107,25 @@ unsigned int table_valid_partition_name(const char *name) {
 }
 
 
-int table_valid_partition(const struct table_partition *part) {
+int table_valid_partition(const struct table_partition *const part) {
     if (table_valid_partition_name(part->name)) {
         return 1;
     }
     return 0;
 }
 
-int table_valid(struct table *table) {
-    int ret = table_valid_header((struct table_header *)table);
-    uint32_t valid_count = table->partitions_count < 32 ? table->partitions_count : 32;
+int table_valid(const struct table *const table) {
+    int ret = table_valid_header((const struct table_header *)table);
+    const uint32_t valid_count = table->partitions_count < 32 ? table->partitions_count : 32;
     for (uint32_t i=0; i<valid_count; ++i) {
         ret += table_valid_partition(table->partitions+i);
     }
     return ret;
 }
 
-void table_report(struct table *table) {
+void table_report(const struct table *const table) {
     fprintf(stderr, "table report: %d partitions in the table:\n===================================================================================\nID| name            |          offset|(   human)|            size|(   human)| masks\n-----------------------------------------------------------------------------------\n", table->partitions_count);
-    struct table_partition *part;
+    const struct table_partition *part;
     double num_offset, num_size;
     char suffix_offset, suffix_size;
     uint64_t last_end = 0, diff;
@@ -149,7 +149,7 @@ void table_report(struct table *table) {
     return;
 }
 
-static inline int table_pedantic_offsets(struct table *table, uint64_t capacity) {
+static inline int table_pedantic_offsets(struct table *const table, const uint64_t capacity) {
     if (table->partitions_count < 4) {
         fputs("table pedantic offsets: refuse to fill-in offsets for heavily modified table (at least 4 partitions should exist)\n", stderr);
         return 1;
@@ -178,16 +178,16 @@ static inline int table_pedantic_offsets(struct table *table, uint64_t capacity)
     return 0;
 }
 
-struct table *table_complete_dtb(struct dts_partitions_helper *dhelper, uint64_t capacity) {
+struct table *table_complete_dtb(const struct dts_partitions_helper *const dhelper, const uint64_t capacity) {
     if (!dhelper) {
         return NULL;
     }
-    struct table *table = malloc(sizeof(struct table));
+    struct table *const table = malloc(sizeof(struct table));
     if (!table) {
         return NULL;
     }
     memcpy(table, &table_empty, sizeof(struct table));
-    struct dts_partition_entry *part_dtb;
+    const struct dts_partition_entry *part_dtb;
     struct table_partition *part_table;
     bool replace;
     for (uint32_t i=0; i<dhelper->partitions_count; ++i) {
@@ -216,13 +216,13 @@ struct table *table_complete_dtb(struct dts_partitions_helper *dhelper, uint64_t
     return table;
 }
 
-struct table *table_from_dtb(uint8_t *dtb, size_t dtb_size, uint64_t capacity) {
-    struct dts_partitions_helper *dhelper = dtb_get_partitions(dtb, dtb_size);
+struct table *table_from_dtb(const uint8_t *const dtb, const size_t dtb_size, const uint64_t capacity) {
+    struct dts_partitions_helper *const dhelper = dtb_get_partitions(dtb, dtb_size);
     if (!dhelper) {
         return NULL;
     }
     // dtb_report_partitions(dhelper);
-    struct table *table = table_complete_dtb(dhelper, capacity);
+    struct table *const table = table_complete_dtb(dhelper, capacity);
     free(dhelper);
     if (!table) {
         return NULL;
@@ -233,7 +233,7 @@ struct table *table_from_dtb(uint8_t *dtb, size_t dtb_size, uint64_t capacity) {
     return table;
 }
 
-int table_compare(struct table *table_a, struct table *table_b) {
+int table_compare(const struct table *const table_a, const struct table *const table_b) {
     if (!(table_a && table_b)) {
         fputs("table compare: not both tables are valid\n", stderr);
         return -1;
@@ -241,13 +241,13 @@ int table_compare(struct table *table_a, struct table *table_b) {
     return (memcmp(table_a, table_b, sizeof(struct table)));
 }
 
-uint64_t table_get_capacity(struct table *table) {
+uint64_t table_get_capacity(const struct table *const table) {
     if (!table || !table->partitions_count) {
         return 0;
     }
     uint64_t capacity = 0;
     uint64_t end;
-    struct table_partition *part;
+    const struct table_partition *part;
     for (uint32_t i = 0; i < table->partitions_count; ++i) {
         part = table->partitions + i;
         end = part->offset + part->size;

@@ -16,6 +16,8 @@
 #define TABLE_PARTITION_ENV_NAME        "env"
 #define TABLE_PARTITION_ENV_SIZE        0x800000U    // 8M
 
+#define TABLE_HEADER_MAGIC_UINT32 (uint32_t)0x0054504DU
+
 struct table_partition {
     char name[MAX_PARTITION_NAME_LENGTH];
     uint64_t size;
@@ -59,10 +61,10 @@ struct table {
     };
 }; // 1304
 
-int table_valid(struct table *table);
-void table_report(struct table *table);
-struct table *table_complete_dtb(struct dts_partitions_helper *dhelper, uint64_t capacity);
-struct table *table_from_dtb(uint8_t *dtb, size_t dtb_size, uint64_t capacity);
-int table_compare(struct table *table_a, struct table *table_b);
-uint64_t table_get_capacity(struct table *table);
+int table_valid(const struct table *table);
+void table_report(const struct table *table);
+struct table *table_complete_dtb(const struct dts_partitions_helper *dhelper, uint64_t capacity);
+struct table *table_from_dtb(const uint8_t *dtb, size_t dtb_size, uint64_t capacity);
+int table_compare(const struct table *table_a, const struct table *table_b);
+uint64_t table_get_capacity(const struct table *table);
 #endif 

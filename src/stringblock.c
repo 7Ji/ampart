@@ -1,6 +1,6 @@
 #include "stringblock_p.h"
 
-off_t stringblock_find_string_raw(const char *sblock, const off_t length, const char *string) {
+off_t stringblock_find_string_raw(const char *const sblock, const off_t length, const char *const string) {
     if (string[0]) {
         for (off_t i=0; i<length; ++i) {
             if (sblock[i] && !strcmp(sblock + i, string)) {
@@ -17,12 +17,11 @@ off_t stringblock_find_string_raw(const char *sblock, const off_t length, const 
     return -1;
 }
 
-off_t stringblock_find_string(const struct stringblock_helper *shelper, const char *string) {
+off_t stringblock_find_string(const struct stringblock_helper *const shelper, const char *const string) {
     return stringblock_find_string_raw(shelper->stringblock, shelper->length, string);
 }
 
-
-off_t stringblock_append_string_force(struct stringblock_helper *shelper, char *string, size_t slength) {
+off_t stringblock_append_string_force(struct stringblock_helper *const shelper, const char *const string, size_t slength) {
     if (!slength && !(slength = strlen(string))) {
         for (off_t i=0; i<shelper->length; ++i) {
             if (!shelper->stringblock[i]) {
@@ -41,14 +40,14 @@ off_t stringblock_append_string_force(struct stringblock_helper *shelper, char *
             return -1;
         }
     }
-    off_t offset = shelper->length;
+    const off_t offset = shelper->length;
     strcpy(shelper->stringblock+shelper->length, string);
     shelper->length += slength + 1;
     return offset;
 }
 
-off_t stringblock_append_string_safely(struct stringblock_helper *shelper, char *string, size_t slength) {
-    off_t offset = stringblock_find_string(shelper, string);
+off_t stringblock_append_string_safely(struct stringblock_helper *const shelper, const char *const string, const size_t slength) {
+    const off_t offset = stringblock_find_string(shelper, string);
     if (offset>=0) {
         return offset;
     }

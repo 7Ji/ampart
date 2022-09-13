@@ -1,14 +1,14 @@
 #include "util_p.h"
 
-unsigned long util_nearest_upper_bound_ulong(unsigned long value, unsigned long bound, unsigned long multiply) {
+unsigned long util_nearest_upper_bound_ulong(const unsigned long value, const unsigned long bound, const unsigned long multiply) {
     return (value % bound) ? (value / bound * bound * multiply + bound) : (value * multiply);
 }
 
-long util_nearest_upper_bound_long(long value, long bound, long multiply) {
+long util_nearest_upper_bound_long(const long value, const long bound, const long multiply) {
     return (value % bound) ? (value / bound * bound * multiply + bound) : (value * multiply);
 }
 
-double util_size_to_human_readable(uint64_t size, char *suffix) {
+double util_size_to_human_readable(const uint64_t size, char *const suffix) {
     unsigned int i;
     double size_human = size;
     for (i=0; i<util_human_readable_suffixes_length; ++i) {
@@ -21,7 +21,7 @@ double util_size_to_human_readable(uint64_t size, char *suffix) {
     return size_human;
 }
 
-int util_get_base_of_integer_literal(const char *literal) {
+int util_get_base_of_integer_literal(const char *const literal) {
     switch (literal[0]) {
         case '0':
             switch (literal[1]) {
@@ -40,7 +40,7 @@ int util_get_base_of_integer_literal(const char *literal) {
     }
 }
 
-size_t util_human_readable_to_size(const char *literal) {
+size_t util_human_readable_to_size(const char *const literal) {
     char *suffix = NULL;
     size_t size = strtoul(literal, &suffix, 0);
     switch (suffix[0]) {

@@ -1,6 +1,6 @@
 #include "gzip_p.h"
 
-static inline size_t gzip_unzip_no_header(uint8_t *in, size_t in_size, uint8_t **out) {
+static inline size_t gzip_unzip_no_header(uint8_t *const in, const size_t in_size, uint8_t **const out) {
     size_t allocated_size = util_nearest_upper_bound_ulong(in_size, 64, 4); // 4 times the size, nearest multiply of 64
     fprintf(stderr, "unzip: Decompressing raw deflated data, in size %ld, allocated %ld\n", in_size, allocated_size);
     *out = malloc(allocated_size);
@@ -57,7 +57,7 @@ static inline size_t gzip_unzip_no_header(uint8_t *in, size_t in_size, uint8_t *
 }
 
 static inline unsigned int gzip_valid_header(uint8_t *data) {
-    struct gzip_header *gh = (struct gzip_header *)data;
+    const struct gzip_header *const gh = (const struct gzip_header *)data;
     if (gh->magic != GZIP_MAGIC) {
         fprintf(stderr, "GZIP header: Magic is wrong, record %"PRIx16" != expected %"PRIx16"\n", gh->magic, GZIP_MAGIC);
         return 0;
@@ -86,8 +86,8 @@ static inline unsigned int gzip_valid_header(uint8_t *data) {
     return offset;
 }
 
-size_t gzip_unzip(uint8_t *in, size_t in_size, uint8_t **out) {
-    int offset = gzip_valid_header(in);
+size_t gzip_unzip(uint8_t *const in, const size_t in_size, uint8_t **const out) {
+    const int offset = gzip_valid_header(in);
     if (!offset) {
         fputs("unzip: Gzip header invalid", stderr);
         return 0;
@@ -95,7 +95,7 @@ size_t gzip_unzip(uint8_t *in, size_t in_size, uint8_t **out) {
     return gzip_unzip_no_header(in+offset, in_size-offset, out);
 }
 
-size_t gzip_zip(uint8_t *in, size_t in_size, uint8_t **out) {
+size_t gzip_zip(uint8_t *const in, const size_t in_size, uint8_t **const out) {
     z_stream s;
     s.zalloc = Z_NULL;
     s.zfree = Z_NULL;

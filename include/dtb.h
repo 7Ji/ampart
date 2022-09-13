@@ -85,11 +85,11 @@ struct dts_partitions_helper {
 
 struct dts_phandle_list {
     uint8_t *phandles;
-    // uint32_t min_phandle;
-    // uint32_t max_phandle;
+    uint32_t min_phandle;
+    uint32_t max_phandle;
     uint32_t allocated_count;
     bool have_linux_phandle;
-    bool have_duplicate_phandle;
+    // bool have_duplicate_phandle;
 };
 
 enum dtb_type {
@@ -108,4 +108,5 @@ struct dts_partitions_helper *dtb_get_partitions(const uint8_t *dtb, const size_
 void dtb_report_partitions(const struct dts_partitions_helper *phelper);
 enum dtb_type dtb_identify_type(const uint8_t *dtb);
 struct dtb_multi_entries_helper *dtb_parse_multi_entries(const uint8_t *dtb);
+struct dts_phandle_list *dtb_get_phandles(const uint8_t *dtb, size_t size);
 #endif

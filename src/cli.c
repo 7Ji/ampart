@@ -388,7 +388,7 @@ int cli_interface(const int argc, char *argv[]) {
         {"offset-dtb",      required_argument,  NULL,   'D'},
         {"gap-partition",   required_argument,  NULL,   'p'},
         {"gap-reserved",    required_argument,  NULL,   'r'},
-        {NULL}
+        {NULL,              0,                  NULL,  '\0'}
     };
     while ((c = getopt_long(argc, argv, "vhm:t:dR:D:p:r:", long_options, &option_index)) != -1) {
         switch (c) {

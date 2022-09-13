@@ -557,7 +557,7 @@ enum dtb_type dtb_identify_type(const uint8_t *const dtb) {
 uint32_t dts_get_phandles_recursive(const uint8_t *const node, const uint32_t max_offset, const uint32_t offset_phandle, const uint32_t offset_linux_phandle, struct dts_phandle_list *plist) {
     const uint32_t count = max_offset / 4;
     if (!count) {
-        return 1;
+        return 0;
     }
     const size_t len_name = strlen((const char *)node) + 1;
     const uint32_t *const start = (uint32_t *)node + len_name / 4 + (bool)(len_name % 4);
@@ -590,18 +590,20 @@ uint32_t dts_get_phandles_recursive(const uint8_t *const node, const uint32_t ma
                 if (name_off == offset_phandle || name_off == offset_linux_phandle) {
                     if (len_prop == 4) {
                         phandle = bswap_32(*(current+3));
-                        if (phandle >= plist->allocated_count) {
+                        while (phandle >= plist->allocated_count) {
                             buffer = realloc(plist->phandles, sizeof(uint8_t)*plist->allocated_count*2);
                             if (buffer) {
-                                memset(plist->phandles + plist->allocated_count, 0, sizeof(uint8_t)*plist->allocated_count);
+                                memset(buffer + plist->allocated_count, 0, sizeof(uint8_t)*plist->allocated_count);
                                 plist->phandles = buffer;
                             } else {
+                                fputs("DTS get phandles recursive: Failed to re-allocate memory\n", stderr);
                                 return 0;
                             }
                             plist->allocated_count *= 2;
                         }
                         ++(plist->phandles[phandle]);
                     } else {
+                        fputs("DTS get phandles recursive: phandle not of length 4\n", stderr);
                         return 0;
                     }
                 }
@@ -616,6 +618,60 @@ uint32_t dts_get_phandles_recursive(const uint8_t *const node, const uint32_t ma
     fputs("DTS get phandles recursive: Node not properly ended\n", stderr);
     return 0;
 
+}
+
+int dts_phandle_list_finish(struct dts_phandle_list *const plist) {
+    bool init = false;
+    bool have_1 = false;
+    bool have_2 = false;
+    for (uint32_t i = 0; i < plist->allocated_count; ++i) {
+        if (plist->phandles[i]) {
+            switch (plist->phandles[i]) {
+                case 1:
+                    have_1 = true;
+                    break;
+                case 2:
+                    have_2 = true;
+                    break;
+                default:
+                    fprintf(stderr, "DTS phandle list finish: phandle %u/%x appears %u times, which is illegal\n", i, i, plist->phandles[i]);
+                    return 1;
+            }
+            if (init)  {
+                if (i<plist->min_phandle) {
+                    plist->min_phandle = i;
+                }
+                if (i>plist->max_phandle) {
+                    plist->max_phandle = i;
+                }
+            } else {
+                init = true;
+                plist->min_phandle = i;
+                plist->max_phandle = i;
+            }
+        }
+    }
+    if (!init) {
+        fputs("DTS phandle list finish: Not yet initialized\n", stderr);
+        return 2;
+    }
+    if (have_1) {
+        if (have_2) {
+            fputs("DTS phandle list finish: Both 1 and 2 apperance counts for phandle, which is illegal\n", stderr);
+            return 3;
+        }
+        // if (plist->have_linux_phandle) {
+        //     fputs("DTS phandle list finish: All phandles appears once yet there is 'linux,phandle', which is illegal\n", stderr);
+        //     return 4;
+        // }
+    } else if (have_2) {
+        plist->have_linux_phandle = true;
+        // if (!plist->have_linux_phandle) {
+        //     fputs("DTS phandle list finish: All phandles appears more than once yet there is no 'linux,phandle', which is illegal\n", stderr);
+        //     return 5;
+        // }
+    }
+    return 0;
 }
 
 struct dts_phandle_list *dtb_get_phandles(const uint8_t *const dtb, const size_t size) {
@@ -633,11 +689,11 @@ struct dts_phandle_list *dtb_get_phandles(const uint8_t *const dtb, const size_t
         fputs("DTS get phandles: Root node does not start properly", stderr);
         return NULL;
     }
-    off_t offset_phandle = stringblock_find_string_raw((const char*)dtb + dh.off_dt_strings, dh.size_dt_strings, "phandle");
+    const off_t offset_phandle = stringblock_find_string_raw((const char*)dtb + dh.off_dt_strings, dh.size_dt_strings, "phandle");
     if (offset_phandle < 0) {
         return NULL;
     }
-    off_t offset_linux_phanle = stringblock_find_string_raw((const char*)dtb + dh.off_dt_strings, dh.size_dt_strings, "linux,phandle");
+    const off_t offset_linux_phandle = stringblock_find_string_raw((const char*)dtb + dh.off_dt_strings, dh.size_dt_strings, "linux,phandle");
     struct dts_phandle_list *plist = malloc(sizeof(struct dts_phandle_list));
     if (!plist) {
         return NULL;
@@ -649,9 +705,15 @@ struct dts_phandle_list *dtb_get_phandles(const uint8_t *const dtb, const size_t
     }
     memset(plist->phandles, 0, sizeof(uint8_t) * 16);
     plist->allocated_count = 16;
-    plist->have_duplicate_phandle = false;
+    // plist->have_duplicate_phandle = false;
     plist->have_linux_phandle = false;
-    if (!dts_get_phandles_recursive((const uint8_t *)current, max_offset, (uint32_t) offset_phandle, (uint32_t) offset_linux_phanle, plist)) {
+    if (!dts_get_phandles_recursive(
+        (const uint8_t *)(current + 1), 
+        max_offset, 
+        (offset_phandle <= INT32_MAX) ? (uint32_t) offset_phandle : UINT32_MAX, // It's impossible to be smaller than 0
+        (offset_linux_phandle >= 0 && offset_linux_phandle <= INT32_MAX) ? (uint32_t) offset_linux_phandle : UINT32_MAX,
+        plist
+    ) || dts_phandle_list_finish(plist)) {
         free(plist->phandles);
         free(plist);
         return NULL;

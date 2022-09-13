@@ -26,8 +26,60 @@
 //             break;        
 //     }
 // }
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <unistd.h>
 int main(int argc, char *argv[]) {
-    return cli_interface(argc, argv);
+    if (argc <= 1) {
+        return 1;
+    }
+    int fd = open(argv[1], O_RDONLY);
+    if (fd < 0) {
+        return 2;
+    }
+    struct stat st;
+    if (fstat(fd, &st)) {
+        return 3;
+    }
+    uint8_t *buffer = malloc(st.st_size);
+    if (!buffer) {
+        return 4;
+    }
+    read(fd, buffer, st.st_size);
+    close(fd);
+    
+    // printf("%x\n", *(uint32_t *)buffer);
+    struct dts_phandle_list *plist = dtb_get_phandles(buffer, st.st_size);
+    if (!plist) {
+        return 5;
+    }
+    // uint32_t min = 0, max = 0;
+    // bool init = false;
+    // for (uint32_t i = 0; i < plist->allocated_count; ++i) {
+    //     if (plist->phandles[i]) {
+    //         if (init)  {
+    //             if (i<min) {
+    //                 min = i;
+    //             }
+    //             if (i>max) {
+    //                 max = i;
+    //             }
+    //         } else {
+    //             init = true;
+    //             min = i;
+    //             max = i;
+    //         }
+    //     }
+    //     printf("Handle: %u, %x; Count: %u\n", i, i, plist->phandles[i]);
+    // }
+    // if (!init) {
+    //     return 6;
+    // }
+    for (uint32_t i = plist->min_phandle; i <= plist->max_phandle; ++i) {
+         printf("San Handle: %u, %x; Count: %u\n", i, i, plist->phandles[i]);
+    }
+    printf("Min: %u, Max: %u\n", plist->min_phandle, plist->max_phandle);
+    // return cli_interface(argc, argv);
     // struct cli_partition_definer *part_d = cli_parse_partition_raw("bootloader::32G:", CLI_ARGUMENT_REQUIRED, CLI_ARGUMENT_ALLOW_ABSOLUTE | CLI_ARGUMENT_ALLOW_RELATIVE | CLI_ARGUMENT_DISALLOW, CLI_ARGUMENT_ALLOW_ABSOLUTE | CLI_ARGUMENT_ALLOW_RELATIVE, CLI_ARGUMENT_ANY, 13);
     // if (part_d) {
     //     puts("parsed");

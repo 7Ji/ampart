@@ -3,9 +3,9 @@
 #include <string.h>
 #include <getopt.h>
 
-#include "table.h"
 #include "gzip.h"
 #include "io.h"
+#include "table.h"
 
 #define CLI_WRITE_NOTHING   0b00000000
 #define CLI_WRITE_DTB       0b00000001
@@ -22,7 +22,7 @@
         return NULL; \
     }
 
-#define cli_parse_partition_yolo_mode(arg) \
+#define CLI_PARSE_PARTITION_YOLO_MODE(arg) \
     cli_parse_partition_raw( \
         arg, \
         CLI_ARGUMENT_REQUIRED, \
@@ -32,7 +32,7 @@
         4 \
     )
 
-#define cli_parse_partition_clone_mode(arg) \
+#define CLI_PARSE_PARTITION_CLONE_MODE(arg) \
     cli_parse_partition_raw( \
         arg, \
         CLI_ARGUMENT_REQUIRED, \
@@ -42,7 +42,7 @@
         0 \
     )
 
-#define cli_parse_partition_safe_mode(arg) \
+#define CLI_PARSE_PARTITION_SAFE_MODE(arg) \
     cli_parse_partition_raw( \
         arg, \
         CLI_ARGUMENT_REQUIRED, \

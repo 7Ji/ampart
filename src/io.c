@@ -1,4 +1,5 @@
 #include "io_p.h"
+
 static inline bool io_can_retry(const int id) {
     switch (id) {
         case EAGAIN:

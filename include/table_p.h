@@ -1,8 +1,8 @@
 #include "table.h"
 
-#include <unistd.h>
 #include <fcntl.h>
 #include <string.h>
+#include <unistd.h>
 
 #include "cli.h"
 #include "util.h"
@@ -44,6 +44,12 @@ static struct table table_empty = {
                 0U,
                 0U
             },
+            /*
+            0x000000 - 0x003fff: partition table
+            0x004000 - 0x03ffff: storage key area	(16k offset & 256k size)
+            0x400000 - 0x47ffff: dtb area  (4M offset & 512k size)
+            0x480000 - 64MBytes: resv for other usage.
+            */
             {
                 TABLE_PARTITION_RESERVED_NAME,
                 TABLE_PARTITION_RESERVED_SIZE,

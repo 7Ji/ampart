@@ -257,22 +257,3 @@ uint64_t table_get_capacity(const struct table *const table) {
     }
     return capacity;
 }
-
-#if 0
-int main(int argc, char **argv) {
-    if (argc <= 1) {
-        return 1;
-    }
-    struct table *table = table_read(argv[1], 0);
-    if (table) {
-        puts("read");
-        if (!table_valid(table)) {
-            table_report(table);
-            puts("All pass");
-        }
-        free(table);
-    }
-    table_report(&table_empty);
-    return 0;
-}
-#endif

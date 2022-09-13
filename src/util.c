@@ -68,7 +68,7 @@ size_t util_human_readable_to_size(const char *const literal) {
         case 'E':
             size *= 0x1000000000000000UL;
             break;
-#if 0
+#if 0 /* These numbers are too big */
         case 'z':
         case 'Z':
             size *= 0x400000000000000000;
@@ -77,7 +77,7 @@ size_t util_human_readable_to_size(const char *const literal) {
         case 'Y':
             size *= 0x100000000000000000000;
             break;
-#endif
+#endif /* if 0 */
         default:
             break;
     }

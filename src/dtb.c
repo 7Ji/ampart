@@ -1,11 +1,6 @@
 #include "dtb_p.h"
-#include <string.h>
-#include "util.h"
-#include <sys/stat.h>
-#include "stringblock.h"
-#include "table.h"
+
 uint32_t dtb_checksum(const struct dtb_partition * const dtb) {
-    // All content of the dtb partition (256K) except the last 4 byte (checksum) is sumed for checksum (thus summing 256K-4)
     uint32_t checksum = 0;
     const uint32_t *const dtb_as_uint = (const uint32_t *)dtb;
     for (uint32_t i=0; i<DTB_PARTITION_CHECKSUM_COUNT; ++i) {
@@ -13,30 +8,6 @@ uint32_t dtb_checksum(const struct dtb_partition * const dtb) {
     }
     return checksum;
 }
-#if 0
-off_t dtb_search_node_dumb(const uint8_t *dtb, const char *name, size_t namelen) {
-    if (!namelen) {
-        namelen = strlen(name);
-    }
-    size_t namelen_actual = util_nearest_upper_bound_ulong(namelen + 1, 4, 1); // Suppose a name is "partitions", there's 10 ascii characters in there, and it needs to be padded to nearest multiply of 4: 12, it's actually stored as "partitions\0\0"
-    char name_actual[namelen_actual];
-    strcpy(name_actual, name);
-    for (size_t i = namelen+1; i<namelen_actual; ++i) {
-        name_actual[i] = '\0'; // Padded 0, [namelen] can be skipped since it's automatically added by strcpy
-    }
-    struct dtb_header *dh = (struct dtb_header *)dtb;
-    uint32_t count = bswap_32(dh->size_dt_struct)/4;
-    uint32_t *start = (uint32_t *)(dtb + bswap_32(dh->off_dt_struct));
-    for (uint32_t i=0; i<count; ++i) {
-        if (start[i] == DTB_FDT_BEGIN_NODE_ACTUAL) {
-            if (!memcmp(start + i + 1, name_actual, namelen_actual)) {
-                return 4*i;
-            }
-        }
-    }
-    return -1;
-}
-#endif
 
 static inline struct dtb_header dtb_header_swapbytes(const struct dtb_header *const dh) {
     struct dtb_header dh_new = {
@@ -53,16 +24,6 @@ static inline struct dtb_header dtb_header_swapbytes(const struct dtb_header *co
     };
     return dh_new;
 }
-
-#if 0
-void report_dtb_header(struct dtb_header *dh) {
-    fprintf(stderr, "Magic: %"PRIx32"\nTotal size: %"PRIu32"\nOffset of dt struct: %"PRIu32"\nOffset of dt string: %"PRIu32"\nOffset of memory reserve map: %"PRIu32"\nVersion: %"PRIu32"\nLast Compatible version: %"PRIu32"\nBoot CPUID PHYs: %"PRIu32"\nSize of DT strings: %"PRIu32"\nSize of DT struct: %"PRIu32"\n", bswap_32(dh->magic), bswap_32(dh->totalsize), bswap_32(dh->off_dt_struct), bswap_32(dh->off_dt_strings), bswap_32(dh->off_mem_rsvmap), bswap_32(dh->version), bswap_32(dh->last_comp_version), bswap_32(dh->boot_cpuid_phys), bswap_32(dh->size_dt_struct), bswap_32(dh->size_dt_struct));
-}
-
-void report_dtb_header_no_swap(struct dtb_header *dh) {
-    fprintf(stderr, "Magic: %"PRIx32"\nTotal size: %"PRIu32"\nOffset of dt struct: %"PRIu32"\nOffset of dt string: %"PRIu32"\nOffset of memory reserve map: %"PRIu32"\nVersion: %"PRIu32"\nLast Compatible version: %"PRIu32"\nBoot CPUID PHYs: %"PRIu32"\nSize of DT strings: %"PRIu32"\nSize of DT struct: %"PRIu32"\n", dh->magic, dh->totalsize, dh->off_dt_struct, dh->off_dt_strings, dh->off_mem_rsvmap, dh->version, dh->last_comp_version, dh->boot_cpuid_phys, dh->size_dt_struct, dh->size_dt_struct);
-}
-#endif
 
 static uint32_t dtb_skip_node(const uint8_t *const node, const uint32_t max_offset) {
     const uint32_t count = max_offset / 4;
@@ -82,7 +43,7 @@ static uint32_t dtb_skip_node(const uint8_t *const node, const uint32_t max_offs
                 if (offset_child) {
                     i += offset_child + 1;
                 } else {
-                    fputs("DTB travel node: Failed to travel through child node\n", stderr);
+                    fputs("DTB skip node: Failed to recursively skip child node\n", stderr);
                     return 0;
                 }
                 break;
@@ -98,11 +59,11 @@ static uint32_t dtb_skip_node(const uint8_t *const node, const uint32_t max_offs
             case DTB_FDT_NOP_ACTUAL:
                 break;
             default:
-                fprintf(stderr, "DTB travel node: Invalid token %"PRIu32"\n", bswap_32(*current));
+                fprintf(stderr, "DTB skip node: Invalid token %"PRIu32"\n", bswap_32(*current));
                 return 0;
         }
     }
-    fputs("DTB travel node: Node not properly ended\n", stderr);
+    fputs("DTB skip node: Node not properly ended\n", stderr);
     return 0;
 }
 
@@ -159,13 +120,6 @@ static int dtb_get_property_actual(const uint8_t *const node, const uint32_t pro
     const size_t len_name = strlen((const char *)node) + 1;
     const uint32_t *const start = (uint32_t *)node + len_name / 4 + (bool)(len_name % 4);
     const uint32_t *current;
-    // struct dts_property *dp = malloc(sizeof(struct dts_property));
-    // if (!dp) {
-    //     fputs("DTB get property actual: can't allocate memory for property\n", stderr);
-    //     return NULL;
-    // }
-    // dp->len = 0;
-    // dp->value = NULL;
     uint32_t len_prop, name_off;
     for (uint32_t i = 0; ; ++i) {
         current = start + i;
@@ -184,11 +138,6 @@ static int dtb_get_property_actual(const uint8_t *const node, const uint32_t pro
                     dts_property.value = (const uint8_t *)(current + 3);
                     return 0;
                 }
-                // if (name_off == property_offset) {
-                //     dp->len = len_prop;
-                //     dp->value = (uint8_t *)(current + 3);
-                //     return dp;
-                // }
                 i += 2 + len_prop / 4;
                 if (len_prop % 4) {
                     ++i;
@@ -344,14 +293,9 @@ uint8_t *dtb_get_node_with_path_from_dts(const uint8_t *const dts, const uint32_
     }
 }
 
-static inline uint8_t *dtb_get_partitions_node_from_dts(const uint8_t *const dts, const uint32_t max_offset) {
-    return dtb_get_node_with_path_from_dts(dts, max_offset, "/partitions", 11);
-}
-
 static inline off_t dtb_stringblock_essential_offset_get(const struct stringblock_helper *const shelper, const char *const name, uint32_t *const invalids) {
     const off_t offset = stringblock_find_string(shelper, name);
     if (offset < 0) {
-        // offset = 0;
         ++(*invalids);
         fprintf(stderr, "DTB stringblock essential offset: can not find %s in stringblock\n", name);
     }
@@ -559,7 +503,7 @@ struct dts_partitions_helper *dtb_get_partitions(const uint8_t *const dtb, const
         printf("End: %u, Size: %zu\n", dh.off_dt_strings + dh.size_dt_strings, size);
         return NULL;
     }
-    const uint8_t *const node = dtb_get_partitions_node_from_dts(dtb + dh.off_dt_struct, dh.size_dt_struct);
+    const uint8_t *const node = DTB_GET_PARTITIONS_NODE_FROM_DTS(dtb + dh.off_dt_struct, dh.size_dt_struct);
     if (!node) {
         fputs("DTB get partitions: partitions node does not exist in dtb\n", stderr);
         return NULL;
@@ -610,10 +554,111 @@ enum dtb_type dtb_identify_type(const uint8_t *const dtb) {
     }
 }
 
-struct dts_phandle_list *dts_get_phandles(const uint8_t *const dts) {
-    puts((char *)dts);
-    return NULL;
+uint32_t dts_get_phandles_recursive(const uint8_t *const node, const uint32_t max_offset, const uint32_t offset_phandle, const uint32_t offset_linux_phandle, struct dts_phandle_list *plist) {
+    const uint32_t count = max_offset / 4;
+    if (!count) {
+        return 1;
+    }
+    const size_t len_name = strlen((const char *)node) + 1;
+    const uint32_t *const start = (uint32_t *)node + len_name / 4 + (bool)(len_name % 4);
+    const uint32_t *current;
+    uint32_t len_prop, name_off;
+    uint32_t offset_child;
+    uint32_t phandle;
+    uint8_t *buffer;
+    for (uint32_t i = 0; i < count; ++i) {
+        current = start + i;
+        switch (*current) {
+            case DTB_FDT_BEGIN_NODE_ACTUAL:
+                offset_child = dts_get_phandles_recursive((const uint8_t *)(current + 1), max_offset - 4*i, offset_phandle, offset_linux_phandle, plist);
+                if (offset_child) {
+                    i += offset_child + 1;
+                } else {
+                    fputs("DTS get phandles recursive: Failed to recursively get phandles from child node\n", stderr);
+                    return 0;
+                }
+                break;
+            case DTB_FDT_END_NODE_ACTUAL:
+                return i + start - (const uint32_t *)node;
+            case DTB_FDT_PROP_ACTUAL:
+                len_prop = bswap_32(*(current+1));
+                name_off = bswap_32(*(current+2));
+                i += 2 + len_prop / 4;
+                if (len_prop % 4) {
+                    ++i;
+                }
+                if (name_off == offset_phandle || name_off == offset_linux_phandle) {
+                    if (len_prop == 4) {
+                        phandle = bswap_32(*(current+3));
+                        if (phandle >= plist->allocated_count) {
+                            buffer = realloc(plist->phandles, sizeof(uint8_t)*plist->allocated_count*2);
+                            if (buffer) {
+                                memset(plist->phandles + plist->allocated_count, 0, sizeof(uint8_t)*plist->allocated_count);
+                                plist->phandles = buffer;
+                            } else {
+                                return 0;
+                            }
+                            plist->allocated_count *= 2;
+                        }
+                        ++(plist->phandles[phandle]);
+                    } else {
+                        return 0;
+                    }
+                }
+                break;
+            case DTB_FDT_NOP_ACTUAL:
+                break;
+            default:
+                fprintf(stderr, "DTS get phandles recursive: Invalid token %"PRIu32"\n", bswap_32(*current));
+                return 0;
+        }
+    }
+    fputs("DTS get phandles recursive: Node not properly ended\n", stderr);
+    return 0;
+
 }
+
+struct dts_phandle_list *dtb_get_phandles(const uint8_t *const dtb, const size_t size) {
+    struct dtb_header dh = dtb_header_swapbytes((struct dtb_header *)dtb);
+    if (dh.totalsize > size) {
+        return NULL;
+    }
+    const uint32_t *current = (const uint32_t *)(dtb + dh.off_dt_struct);
+    uint32_t max_offset = dh.size_dt_struct;
+    while (*current == DTB_FDT_NOP_ACTUAL) {
+        ++current;
+        max_offset -= 4;
+    }
+    if (*current != DTB_FDT_BEGIN_NODE_ACTUAL) {
+        fputs("DTS get phandles: Root node does not start properly", stderr);
+        return NULL;
+    }
+    off_t offset_phandle = stringblock_find_string_raw((const char*)dtb + dh.off_dt_strings, dh.size_dt_strings, "phandle");
+    if (offset_phandle < 0) {
+        return NULL;
+    }
+    off_t offset_linux_phanle = stringblock_find_string_raw((const char*)dtb + dh.off_dt_strings, dh.size_dt_strings, "linux,phandle");
+    struct dts_phandle_list *plist = malloc(sizeof(struct dts_phandle_list));
+    if (!plist) {
+        return NULL;
+    }
+    plist->phandles = malloc(sizeof(uint8_t) * 16);
+    if (!plist->phandles) {
+        free(plist);
+        return NULL;
+    }
+    memset(plist->phandles, 0, sizeof(uint8_t) * 16);
+    plist->allocated_count = 16;
+    plist->have_duplicate_phandle = false;
+    plist->have_linux_phandle = false;
+    if (!dts_get_phandles_recursive((const uint8_t *)current, max_offset, (uint32_t) offset_phandle, (uint32_t) offset_linux_phanle, plist)) {
+        free(plist->phandles);
+        free(plist);
+        return NULL;
+    }
+    return plist;
+}
+
 
 // uint32_t enter_node(uint32_t layer, uint32_t offset_phandle, uint8_t *dtb, uint32_t offset, uint32_t end_offset, struct dtb_header *dh) {
 //     if (offset >= end_offset) {

@@ -105,44 +105,12 @@ struct cli_partition_definer *cli_parse_partition_raw(const char *arg, uint8_t r
     }
     bool have_name = seperators[0] != arg;
     CLI_PARSE_PARTITION_RAW_ALLOWANCE_CHECK(name)
-    // if (have_name && require_name & CLI_ARGUMENT_DISALLOW) {
-    //     fprintf(stderr, "CLI parse partition: Argument contains name but it's not allowed: %s\n", arg);
-    //     return NULL;
-    // }
-    // if (!have_name && require_name & CLI_ARGUMENT_REQUIRED) {
-    //     fprintf(stderr, "CLI parse partition: Argument does not contains name but it must be set: %s\n", arg);
-    //     return NULL;
-    // }
     bool have_offset = seperators[1] - seperators[0] > 1;
     CLI_PARSE_PARTITION_RAW_ALLOWANCE_CHECK(offset)
-    // if (have_offset && require_offset & CLI_ARGUMENT_DISALLOW) {
-    //     fprintf(stderr, "CLI parse partition: Argument contains offset but it's not allowed: %s\n", arg);
-    //     return NULL;
-    // }
-    // if (!have_offset && require_offset & CLI_ARGUMENT_REQUIRED) {
-    //     fprintf(stderr, "CLI parse partition: Argument does not contain offset but it must be set: %s\n", arg);
-    //     return NULL;
-    // }
     bool have_size = seperators[2] - seperators[1] > 1;
     CLI_PARSE_PARTITION_RAW_ALLOWANCE_CHECK(size)
-    // if (have_size && require_size & CLI_ARGUMENT_DISALLOW) {
-    //     fprintf(stderr, "CLI parse partition: Argument contains size but it's not allowed: %s\n", arg);
-    //     return NULL;
-    // }
-    // if (!have_size && require_size & CLI_ARGUMENT_REQUIRED) {
-    //     fprintf(stderr, "CLI parse partition: Argument does not contain size but it must be set: %s\n", arg);
-    //     return NULL;
-    // }
     bool have_masks = *(seperators[2] + 1);
     CLI_PARSE_PARTITION_RAW_ALLOWANCE_CHECK(masks)
-    // if (have_masks && require_masks & CLI_ARGUMENT_DISALLOW) {
-    //     fprintf(stderr, "CLI parse partition: Argument contains masks but it's not allowed: %s\n", arg);
-    //     return NULL;
-    // }
-    // if (!have_masks && require_masks & CLI_ARGUMENT_REQUIRED) {
-    //     fprintf(stderr, "CLI parse partition: Argument does not contains mask but it must be set: %s\n", arg);
-    //     return NULL;
-    // }
     struct cli_partition_definer *part = malloc(sizeof(struct cli_partition_definer));
     if (!part) {
         fprintf(stderr, "CLI parse partition: Failed to allocate memory for arg: %s\n", arg);
@@ -176,38 +144,6 @@ struct cli_partition_definer *cli_parse_partition_raw(const char *arg, uint8_t r
     return part;
 }
 
-// struct cli_partition_definer *cli_parse_partition_yolo_mode(const char *arg) {
-//     return cli_parse_partition_raw(
-//         arg,
-//         CLI_ARGUMENT_REQUIRED,
-//         CLI_ARGUMENT_ALLOW_ABSOLUTE | CLI_ARGUMENT_ALLOW_RELATIVE,
-//         CLI_ARGUMENT_ALLOW_ABSOLUTE,
-//         CLI_ARGUMENT_ANY,
-//         4
-//     );
-// }
-
-// struct cli_partition_definer *cli_parse_partition_clone_mode(const char *arg) {
-//     return cli_parse_partition_raw(
-//         arg,
-//         CLI_ARGUMENT_REQUIRED,
-//         CLI_ARGUMENT_REQUIRED | CLI_ARGUMENT_ALLOW_ABSOLUTE,
-//         CLI_ARGUMENT_REQUIRED | CLI_ARGUMENT_ALLOW_ABSOLUTE,
-//         CLI_ARGUMENT_REQUIRED,
-//         0
-//     );
-// }
-
-// struct cli_partition_definer *cli_parse_partition_safe_mode(const char *arg) {
-//     return cli_parse_partition_raw(
-//         arg,
-//         CLI_ARGUMENT_REQUIRED,
-//         CLI_ARGUMENT_DISALLOW,
-//         CLI_ARGUMENT_REQUIRED | CLI_ARGUMENT_ALLOW_ABSOLUTE,
-//         CLI_ARGUMENT_REQUIRED,
-//         4
-//     );
-// }
 int cli_entry_point(int argc, char *argv[]) {
     for (int i =0; i<argc; ++i) {
         printf("%d: %s\n", i, argv[i]);
@@ -416,7 +352,7 @@ struct cli_partition_updater *cli_parse_partition_update_mode(const char *arg) {
                 return NULL;
         }
     } else {
-        struct cli_partition_definer *definer = cli_parse_partition_yolo_mode(arg);
+        struct cli_partition_definer *definer = CLI_PARSE_PARTITION_YOLO_MODE(arg);
         if (!definer) {
             fprintf(stderr, "CLI parse partition update mode: failed to parse defining mode arg: %s\n", arg);
             free(updater);
@@ -426,14 +362,6 @@ struct cli_partition_updater *cli_parse_partition_update_mode(const char *arg) {
     }
     return updater;
 }
-
-// void cli_initialize() {
-//     cli_options.gap_partition = TABLE_PARTITION_GAP_GENERIC;
-//     cli_options.gap_reserved = TABLE_PARTITION_GAP_RESERVED;
-//     cli_options.offset_reserved = TABLE_PARTITION_GAP_RESERVED + TABLE_PARTITION_BOOTLOADER_SIZE;
-//     cli_options.offset_dtb = DTB_PARTITION_OFFSET;
-//     cli_options.write = CLI_WRITE_DTB | CLI_WRITE_TABLE | CLI_WRITE_MIGRATES;
-// }
 
 void cli_version() {
     fputs("ampart-ng (Amlogic eMMC partition tool) by 7Ji, development version, debug usage only\n", stderr);
@@ -446,30 +374,6 @@ size_t cli_human_readable_to_size_and_report(const char *const literal, const ch
     fprintf(stderr, "CLI interface: Setting %s to %zu / 0x%lx (%lf%c)\n", name, size, size, size_d, suffix);
     return size;
 }
-
-// enum cli_types cli_identify_type() {
-//     if (!cli_options.target) {
-//         return CLI_TYPE_AUTO;
-//     }
-//     enum cli_types type;
-//     uint32_t magic = 0;
-//     switch (magic) {
-//         case 0:
-//             return CLI_TYPE_DISK;
-//         case TABLE_HEADER_MAGIC_UINT32:
-//             return CLI_TYPE_RESERVED;
-//         case DTB_MAGIC_MULTI:
-//         case DTB_MAGIC_PLAIN:
-//             return CLI_TYPE_DTB;
-//         default:
-//             if ((magic & 0xFFFF) == GZIP_MAGIC) {
-//                 return CLI_TYPE_DTB;
-//             }
-//             return CLI_TYPE_AUTO;
-//     }
-
-//     return type;
-// }
 
 int cli_interface(const int argc, char *argv[]) {
     int c, option_index = 0;
@@ -616,13 +520,5 @@ int cli_interface(const int argc, char *argv[]) {
         return 9;
     }
     cli_entry_point(argc-optind, argv+optind);
-    // switch (cli_options.mode) {
-
-    // }
-    // if (optind < argc) {
-    //     printf("non-option ARGV-elements: \n");
-    //     while (optind < argc)
-    //         printf("%s\n", argv[optind++]);
-    // }
     return 0;
 }

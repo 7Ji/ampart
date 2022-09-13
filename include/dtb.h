@@ -11,23 +11,6 @@
 #define DTB_PARTITION_SIZE          0x40000U  //256K
 #define DTB_PARTITION_DATA_SIZE     DTB_PARTITION_SIZE - 4*sizeof(uint32_t)
 
-/*
-  0x000000 - 0x003fff: partition table
-  0x004000 - 0x03ffff: storage key area	(16k offset & 256k size)
-  0x400000 - 0x47ffff: dtb area  (4M offset & 512k size)
-  0x480000 - 64MBytes: resv for other usage.
-
-*/
-
-// struct partitions emmc_partition_table[] = {
-// 	PARTITION_ELEMENT(MMC_BOOT_NAME, MMC_BOOT_DEVICE_SIZE, 0),
-// 	PARTITION_ELEMENT(MMC_RESERVED_NAME, MMC_RESERVED_SIZE, 0),
-// 	/* prior partitions, same partition name with dts*/
-// 	/* partition size will be overide by dts*/
-// 	PARTITION_ELEMENT(MMC_CACHE_NAME, 0, 0),
-// 	PARTITION_ELEMENT(MMC_ENV_NAME, MMC_ENV_SIZE, 0),
-// };
-
 struct dtb_header {
     uint32_t magic;
     DTB_HEADER_HOT(totalsize);
@@ -101,9 +84,9 @@ struct dts_partitions_helper {
 };
 
 struct dts_phandle_list {
-    uint32_t *phandles;
-    uint32_t *min_phandle;
-    uint32_t *max_phandle;
+    uint8_t *phandles;
+    // uint32_t min_phandle;
+    // uint32_t max_phandle;
     uint32_t allocated_count;
     bool have_linux_phandle;
     bool have_duplicate_phandle;

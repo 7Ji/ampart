@@ -40,15 +40,106 @@ uint8_t const       dts_partitions_node_start[DTS_PARTITIONS_NODE_START_LENGTH] 
 
 /* Function */
 
-static uint32_t dts_skip_node(const uint8_t *const node, const uint32_t max_offset) {
-    const uint32_t count = max_offset / 4;
+static inline
+uint32_t
+dts_report_offset(
+    uint32_t const          i,
+    uint32_t const * const  start,
+    uint8_t const * const   node
+){
+    return (i + start - (const uint32_t *)node);
+}
+
+static inline
+uint32_t
+dts_get_prop_length(
+    uint32_t const * const  current
+){
+    return bswap_32(*(current+1));
+}
+
+static inline
+void
+dts_skip_prop_with_length(
+    uint32_t * const    i,
+    uint32_t const      length
+){
+    *i += 2 + length / 4 + length % 4;
+}
+
+static inline
+void
+dts_skip_prop_without_length(
+    uint32_t * const        i,
+    uint32_t const * const  current
+){
+    uint32_t len_prop = dts_get_prop_length(current);
+    dts_skip_prop_with_length(i, len_prop);
+}
+
+static inline
+size_t
+dts_get_len_name(
+    uint8_t const * const   node
+){
+    return strlen((char const*)node) + 1;
+}
+
+static inline
+uint32_t const *
+dts_get_start_with_len_name(
+    uint8_t const * const   node,
+    size_t const            len_name
+) {
+    return (uint32_t *)node + len_name / 4 + (bool)(len_name % 4);
+}
+
+static inline
+uint32_t const *
+dts_get_start_without_len_name(
+    uint8_t const * const   node
+){
+    size_t const len_name = dts_get_len_name(node);
+    return (uint32_t *)node + len_name / 4 + (bool)(len_name % 4);
+}
+
+static inline
+uint32_t
+dts_get_count(
+    uint32_t const max_offset
+){
+    return max_offset / 4;
+}
+
+static inline
+void
+dts_report_invalid_token(
+    const char * const      name,
+    const uint32_t * const  current
+){
+    fprintf(stderr, "DTS %s: Invalid token %"PRIu32"\n", name, bswap_32(*current));
+}
+
+static inline
+void
+dts_report_not_properly_end(
+    const char * const  name
+){
+    fprintf(stderr, "DTS %s: Node not properly ended\n", name);
+}
+
+static inline
+uint32_t
+dts_skip_node(
+    uint8_t const * const   node,
+    uint32_t const          max_offset
+){
+    uint32_t const count = dts_get_count(max_offset);
     if (!count) {
         return 0;
     }
-    const size_t len_name = strlen((const char *)node) + 1;
-    const uint32_t *const start = (uint32_t *)node + len_name / 4 + (bool)(len_name % 4);
+    uint32_t const *const start = dts_get_start_without_len_name(node);
     const uint32_t *current;
-    uint32_t len_prop;
     uint32_t offset_child;
     for (uint32_t i = 0; i < count; ++i) {
         current = start + i;
@@ -63,27 +154,30 @@ static uint32_t dts_skip_node(const uint8_t *const node, const uint32_t max_offs
                 }
                 break;
             case DTS_END_NODE_ACTUAL:
-                return i + start - (const uint32_t *)node;
+                return dts_report_offset(i, start, node);
             case DTS_PROP_ACTUAL:
-                len_prop = bswap_32(*(current+1));
-                i += 2 + len_prop / 4;
-                if (len_prop % 4) {
-                    ++i;
-                }
+                dts_skip_prop_without_length(&i, current);
                 break;
             case DTS_NOP_ACTUAL:
                 break;
             default:
-                fprintf(stderr, "DTS skip node: Invalid token %"PRIu32"\n", bswap_32(*current));
+                dts_report_invalid_token("skip node", current);
                 return 0;
         }
     }
-    fputs("DTS skip node: Node not properly ended\n", stderr);
+    dts_report_not_properly_end("skip node");
     return 0;
 }
 
-uint32_t dts_get_node(const uint8_t *const node, const uint32_t max_offset, const char *const name, const uint32_t layers, const uint8_t **const target) {
-    const uint32_t count = max_offset / 4;
+uint32_t 
+dts_get_node(
+    uint8_t const * const   node, 
+    uint32_t const          max_offset,
+    char const * const      name,
+    uint32_t const          layers,
+    uint8_t const * * const target
+){
+    uint32_t const count = dts_get_count(max_offset);
     if (!count) {
         return 0;
     }
@@ -94,16 +188,15 @@ uint32_t dts_get_node(const uint8_t *const node, const uint32_t max_offset, cons
         *target = node;
         return dts_skip_node(node, max_offset);
     }
-    const size_t len_name = strlen((const char *)node) + 1;
-    const uint32_t *const start = (const uint32_t *)node + len_name / 4 + (bool)(len_name % 4);
-    const uint32_t *current;
-    uint32_t len_prop;
+    size_t const len_name = dts_get_len_name(node);
+    uint32_t const *const start = dts_get_start_with_len_name(node, len_name);
+    uint32_t const *current;
     uint32_t offset_child;
     for (uint32_t i = 0; i < count; ++i) {
         current = start + i;
         switch (*current) {
             case DTS_BEGIN_NODE_ACTUAL:
-                offset_child = dts_get_node((const uint8_t *)(current + 1), max_offset - 4*i, name + len_name, layers - 1, target);
+                offset_child = dts_get_node((uint8_t const *)(current + 1), max_offset - 4*i, name + len_name, layers - 1, target);
                 if (offset_child) {
                     i += offset_child + 1;
                 } else {
@@ -112,29 +205,29 @@ uint32_t dts_get_node(const uint8_t *const node, const uint32_t max_offset, cons
                 }
                 break;
             case DTS_END_NODE_ACTUAL:
-                return i + start - (const uint32_t *)node;
+                return dts_report_offset(i, start, node);
             case DTS_PROP_ACTUAL:
-                len_prop = bswap_32(*(current+1));
-                i += 2 + len_prop / 4;
-                if (len_prop % 4) {
-                    ++i;
-                }
+                dts_skip_prop_without_length(&i, current);
                 break;
             case DTS_NOP_ACTUAL:
                 break;
             default:
-                fprintf(stderr, "DTS get node: Invalid token %"PRIu32"\n", bswap_32(*current));
+                dts_report_invalid_token("get node", current);
                 return 0;
         }
     }
-    fputs("DTS get node: Node not properly ended\n", stderr);
+    dts_report_not_properly_end("get node");
     return 0;
 }
 
-static int dts_get_property_actual(const uint8_t *const node, const uint32_t property_offset) {
-    const size_t len_name = strlen((const char *)node) + 1;
-    const uint32_t *const start = (uint32_t *)node + len_name / 4 + (bool)(len_name % 4);
-    const uint32_t *current;
+static
+int 
+dts_get_property_actual(
+    uint8_t const * const   node,
+    uint32_t const          property_offset
+){
+    uint32_t const *const start = dts_get_start_without_len_name(node);
+    uint32_t const *current;
     uint32_t len_prop, name_off;
     for (uint32_t i = 0; ; ++i) {
         current = start + i;
@@ -153,10 +246,7 @@ static int dts_get_property_actual(const uint8_t *const node, const uint32_t pro
                     dts_property.value = (const uint8_t *)(current + 3);
                     return 0;
                 }
-                i += 2 + len_prop / 4;
-                if (len_prop % 4) {
-                    ++i;
-                }
+                dts_skip_prop_with_length(&i, len_prop);
                 break;
             case DTS_NOP_ACTUAL:
                 break;
@@ -167,49 +257,91 @@ static int dts_get_property_actual(const uint8_t *const node, const uint32_t pro
     }
 }
 
-int dts_get_property(const uint8_t *const node, const struct stringblock_helper *const shelper, const char *const property) {
-    const off_t property_offset = stringblock_find_string(shelper, property);
+int 
+dts_get_property(
+    uint8_t const * const                   node,
+    struct stringblock_helper const * const shelper,
+    char const * const                      property
+){
+    off_t const property_offset = stringblock_find_string(shelper, property);
     if (property_offset < 0) {
         return 1;
     }
     return dts_get_property_actual(node, property_offset);
 }
 
-uint8_t *dts_get_node_from_path(const uint8_t *const dts, const uint32_t max_offset, const char *const path, const size_t len_path) {
+static inline
+int
+dts_get_node_from_path_sanity_check(
+    uint8_t const * const   dts,
+    uint32_t const          max_offset,
+    char const * const      path
+){
     if (!dts) {
         fputs("DTS get node from path: No dtb to lookup\n", stderr);
-        return NULL;
+        return 1;
     }
     if (!max_offset) {
         fputs("DTS get node from path: Max offset invalid\n", stderr);
-        return NULL;
+        return 1;
     }
     if (max_offset % 4) {
         fputs("DTS get node from path: Offset is not multiply of 4\n", stderr);
-        return NULL;
+        return 1;
     }
     if (!path) {
         fputs("DTS get node from path: No path to lookup\n", stderr);
-        return NULL;
+        return 1;
     }
     if (!path[0]) {
         fputs("DTS get node from path: Empty path to lookup\n", stderr);
-        return NULL;
+        return 1;
     }
     if (path[0] != '/') {
         fputs("DTS get node from path: Path does not start with /\n", stderr);
+        return 1;
+    }
+    return 0;
+}
+
+static inline
+int
+dts_get_path_layers(
+    char * const    path,
+    size_t const    len
+){
+    int layers = 0;
+    for (size_t i = 0; i<len; ++i) {
+        switch (path[i]) {
+            case '/':
+                path[i] = '\0';
+                ++layers;
+                break;
+            case '\0': // This should not happend
+                fputs("DTS get path layers: Path ends prematurely\n", stderr);
+                return -1;
+        }
+    }
+    return layers;
+}
+
+uint8_t *
+dts_get_node_from_path(
+    uint8_t const * const   dts,
+    uint32_t const          max_offset,
+    char const * const      path,
+    size_t                  len_path
+){
+    if (dts_get_node_from_path_sanity_check(dts, max_offset, path)) {
         return NULL;
     }
-    size_t len_path_actual;
-    if (len_path) {
-        len_path_actual = len_path;
-    } else {
-        if (!(len_path_actual = strlen(path))) { // This should not happen
+    if (!len_path) {
+        if (!(len_path = strlen(path))) { // This should not happen
             fputs("DTS get node from path: Empty path to lookup\n", stderr);
             return NULL;
         }
     }
-    const uint32_t *current = (const uint32_t *)dts;
+    uint32_t const *current = (uint32_t const *)dts;
     while (*current == DTS_NOP_ACTUAL) {
         ++current;
     }
@@ -217,7 +349,7 @@ uint8_t *dts_get_node_from_path(const uint8_t *const dts, const uint32_t max_off
         fputs("DTS get node from path: Node does not start properly", stderr);
         return NULL;
     }
-    if (len_path_actual == 1) {
+    if (len_path == 1) {
         fputs("DTS get node from path: Early quit for root node\n", stderr);
         return (uint8_t *)(current + 1);
     }
@@ -226,21 +358,13 @@ uint8_t *dts_get_node_from_path(const uint8_t *const dts, const uint32_t max_off
         fputs("DTS get node from path: Failed to dup path\n", stderr);
         return NULL;
     }
-    unsigned layers = 0;
-    for (size_t i = 0; i<len_path_actual; ++i) {
-        switch (path_actual[i]) {
-            case '/':
-                path_actual[i] = '\0';
-                ++layers;
-                break;
-            case '\0': // This should not happend
-                fputs("DTS get node from path: Path ends prematurely\n", stderr);
-                free(path_actual);
-                return NULL;
-        }
+    int const layers = dts_get_path_layers(path_actual, len_path);
+    if (layers < 0) {
+        free(path_actual);
+        return NULL;
     }
     uint8_t *target = NULL;
-    uint32_t r = dts_get_node((const uint8_t *)(current + 1), max_offset - 4, path_actual, layers, (const uint8_t **)&target);
+    uint32_t r = dts_get_node((uint8_t const *)(current + 1), max_offset - 4, path_actual, layers, (uint8_t const **)&target);
     free(path_actual);
     if (r) {
         return target;
@@ -251,7 +375,13 @@ uint8_t *dts_get_node_from_path(const uint8_t *const dts, const uint32_t max_off
 }
 
 
-static inline off_t dts_stringblock_essential_offset_get(const struct stringblock_helper *const shelper, const char *const name, uint32_t *const invalids) {
+static inline
+off_t 
+dts_stringblock_essential_offset_get(
+    struct stringblock_helper const * const shelper,
+    char const * const                      name,
+    uint32_t * const                        invalids
+){
     const off_t offset = stringblock_find_string(shelper, name);
     if (offset < 0) {
         ++(*invalids);
@@ -260,22 +390,37 @@ static inline off_t dts_stringblock_essential_offset_get(const struct stringbloc
     return offset;
 }
 
-struct dts_partitions_helper *dts_get_partitions_from_node(const uint8_t *const node, const struct stringblock_helper *const shelper) {
+static inline
+int
+dts_get_partitions_get_essential_offsets(
+    struct dts_stringblock_essential_offsets * const    offsets,
+    struct stringblock_helper const * const             shelper
+){
+    uint32_t offset_invalids = 0;
+    uint32_t optional_invalids = 0;
+    offsets->parts = dts_stringblock_essential_offset_get(shelper, "parts", &offset_invalids);
+    offsets->pname = dts_stringblock_essential_offset_get(shelper, "pname", &offset_invalids);
+    offsets->size = dts_stringblock_essential_offset_get(shelper, "size", &offset_invalids);
+    offsets->mask = dts_stringblock_essential_offset_get(shelper, "mask", &offset_invalids);
+    offsets->phandle = dts_stringblock_essential_offset_get(shelper, "phandle", &offset_invalids);
+    offsets->linux_phandle = dts_stringblock_essential_offset_get(shelper, "linux,phandle", &optional_invalids);
+    if (offsets->linux_phandle >=0 && offsets->phandle >= 0 && offsets->linux_phandle != offsets->phandle) {
+        ++offset_invalids;
+    }
+    return offset_invalids;
+}
+
+struct dts_partitions_helper *
+dts_get_partitions_from_node(
+    uint8_t const * const                   node,
+    struct stringblock_helper const * const shelper
+){
     if (memcmp(node, dts_partitions_node_start, DTS_PARTITIONS_NODE_START_LENGTH)) {
         fputs("DTB get partitions: node does not start properly\n", stderr);
         return NULL;
     }
-    uint32_t offset_invalids = 0;
-    uint32_t optional_invalids = 0;
-    const struct dts_stringblock_essential_offsets offsets = {
-        dts_stringblock_essential_offset_get(shelper, "parts", &offset_invalids),
-        dts_stringblock_essential_offset_get(shelper, "pname", &offset_invalids),
-        dts_stringblock_essential_offset_get(shelper, "size", &offset_invalids),
-        dts_stringblock_essential_offset_get(shelper, "mask", &offset_invalids),
-        dts_stringblock_essential_offset_get(shelper, "phandle", &offset_invalids),
-        dts_stringblock_essential_offset_get(shelper, "linux,phandle", &optional_invalids)
-    };
-    if (offset_invalids) {
+    struct dts_stringblock_essential_offsets offsets;
+    if (dts_get_partitions_get_essential_offsets(&offsets, shelper)) {
         return NULL;
     }
     struct dts_partitions_helper *const phelper = malloc(sizeof(struct dts_partitions_helper));
@@ -284,7 +429,7 @@ struct dts_partitions_helper *dts_get_partitions_from_node(const uint8_t *const 
         return NULL;
     }
     memset(phelper, 0, sizeof(struct dts_partitions_helper));
-    const uint32_t *const start = (const uint32_t *)(node + DTS_PARTITIONS_NODE_START_LENGTH);
+    uint32_t const * const start = (const uint32_t *)(node + DTS_PARTITIONS_NODE_START_LENGTH);
     const uint32_t *current;
     uint32_t len_prop, name_off;
     size_t len_node_name;
@@ -335,10 +480,7 @@ struct dts_partitions_helper *dts_get_partitions_from_node(const uint8_t *const 
             case DTS_PROP_ACTUAL:
                 len_prop = bswap_32(*(current+1));
                 name_off = bswap_32(*(current+2));
-                i += 2 + len_prop / 4;
-                if (len_prop % 4) {
-                    ++i;
-                }
+                dts_skip_prop_with_length(&i, len_prop);
                 if (in_partition) {
                     if (name_off == offsets.pname) {
                         if (len_prop > 16) {
@@ -501,10 +643,7 @@ uint32_t dts_get_phandles_recursive(const uint8_t *const node, const uint32_t ma
             case DTS_PROP_ACTUAL:
                 len_prop = bswap_32(*(current+1));
                 name_off = bswap_32(*(current+2));
-                i += 2 + len_prop / 4;
-                if (len_prop % 4) {
-                    ++i;
-                }
+                dts_skip_prop_with_length(&i, len_prop);
                 if (name_off == offset_phandle || name_off == offset_linux_phandle) {
                     if (len_prop == 4) {
                         phandle = bswap_32(*(current+3));

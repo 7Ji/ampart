@@ -27,6 +27,8 @@ enum
         IO_TARGET_TYPE_FILE_BLOCKDEVICE
     };
 
+/* Structure */
+
 struct 
     io_target_type {
         enum io_target_type_content content;
@@ -35,7 +37,24 @@ struct
         size_t                      size;
     };
 
+/* Function */
 
+void 
+    io_describe_target_type(
+        struct io_target_type * type,
+        char const * const      path
+    );
+
+char *
+    io_find_disk(
+        char const *    path
+    );
+
+struct io_target_type *
+    io_identify_target_type(
+        char const *    path
+    );
+    
 int 
     io_read_till_finish(
         int     fd, 
@@ -50,14 +69,5 @@ int
         size_t  size
     );
 
-void io_describe_target_type(struct io_target_type *type, const char *const path);
-
-char *
-    io_find_disk(
-        const char *    path
-    );
-
-
-struct io_target_type *io_identify_target_type(const char *const path);
 
 #endif

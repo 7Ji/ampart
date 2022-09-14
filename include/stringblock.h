@@ -16,28 +16,28 @@ struct
 off_t 
     stringblock_append_string_force(
         struct stringblock_helper * shelper,
-        const char *                string,
+        char const *                string,
         size_t                      slength
     );
 
 off_t 
     stringblock_append_string_safely(
         struct stringblock_helper * shelper,
-        const char *                string,
+        char const *                string,
         size_t                      slength
     );
     
 off_t 
     stringblock_find_string(
-        const struct stringblock_helper *   shelper, 
-        const char *                        string
+        struct stringblock_helper const *   shelper, 
+        char const *                        string
     );
     
 off_t 
     stringblock_find_string_raw(
-        const char *    sblock, 
+        char const *    sblock, 
         off_t           length, 
-        const char *    string
+        char const *    string
     );
 
 #endif

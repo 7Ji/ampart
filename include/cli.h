@@ -129,7 +129,7 @@ extern struct cli_options cli_options;
 
 struct cli_partition_definer *
     cli_parse_partition_raw(
-        const char *    arg, 
+        char const *    arg, 
         uint8_t         require_name, 
         uint8_t         require_offset, 
         uint8_t         require_size, 
@@ -139,7 +139,7 @@ struct cli_partition_definer *
 
 struct cli_partition_updater *
     cli_parse_partition_update_mode(
-        const char *    arg
+        char const *    arg
     );
 
 int 

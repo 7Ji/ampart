@@ -74,26 +74,26 @@ struct
 
 int 
     ept_compare(
-        const struct ept_table *    table_a, 
-        const struct ept_table *    table_b
+        struct ept_table const *    table_a, 
+        struct ept_table const *    table_b
     );
 
 struct ept_table *
     ept_complete_dtb(
-        const struct dts_partitions_helper *    dhelper, 
+        struct dts_partitions_helper const *    dhelper, 
         uint64_t                                capacity
     );
 
 struct ept_table *
     ept_from_dtb(
-        const uint8_t * dtb,
+        uint8_t const * dtb,
         size_t          dtb_size,
         uint64_t        capacity
     );
 
 uint64_t 
     ept_get_capacity(
-        const struct ept_table *    table
+        struct ept_table const *    table
     );
 
 int 
@@ -104,12 +104,12 @@ int
 
 void 
     ept_report(
-        const struct ept_table *    table
+        struct ept_table const *    table
     );
 
 int 
     ept_valid(
-        const struct ept_table *    table
+        struct ept_table const *    table
     );
 
 #endif 

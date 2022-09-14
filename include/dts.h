@@ -54,21 +54,21 @@ struct
 
 uint8_t *
     dts_get_node_from_path(
-        const uint8_t * dts, 
+        uint8_t const * dts, 
         uint32_t        max_offset,
-        const char *    path,
+        char const *    path,
         size_t          len_path
     );
 
 struct dts_partitions_helper *
     dts_get_partitions_from_node(
-        const uint8_t *                     node,
-        const struct stringblock_helper *   shelper
+        uint8_t const *                     node,
+        struct stringblock_helper const *   shelper
     );
 
 uint32_t 
     dts_get_phandles_recursive(
-        const uint8_t *             node, 
+        uint8_t const *             node, 
         uint32_t                    max_offset,
         uint32_t                    offset_phandle,
         uint32_t                    offset_linux_phandle,
@@ -82,7 +82,7 @@ int
 
 void
     dts_report_partitions(
-        const struct dts_partitions_helper *    phelper
+        struct dts_partitions_helper const *    phelper
     );
 
 int

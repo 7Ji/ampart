@@ -88,29 +88,29 @@ struct
 
 uint32_t 
     dtb_checksum(
-        const struct dtb_partition *    dtb
+        struct dtb_partition const *    dtb
     );
         
 struct dts_partitions_helper *
     dtb_get_partitions(
-        const uint8_t * dtb, 
+        uint8_t const * dtb, 
         size_t          size
     );
 
 struct dts_phandle_list *
     dtb_get_phandles(
-        const uint8_t * dtb,
+        uint8_t const * dtb,
         size_t          size
     );
 
 enum dtb_type 
     dtb_identify_type(
-        const uint8_t * dtb
+        uint8_t const * dtb
     );
 
 struct dtb_multi_entries_helper *
     dtb_parse_multi_entries(
-        const uint8_t * dtb
+        uint8_t const * dtb
     );
 
 int 

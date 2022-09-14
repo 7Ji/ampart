@@ -173,6 +173,131 @@ io_describe_target_type(
     fputc('\n', stderr);
 }
 
+static inline
+int
+io_identify_target_type_get_basic_stat(
+    struct io_target_type * const   type,
+    int const                       fd,
+    char const * const              path
+){
+    struct stat st;
+    if (fstat(fd, &st)) {
+        fprintf(stderr, "IO identify target type: Failed to get stat of '%s', errno: %d, error: %s\n", path, errno, strerror(errno));
+        return 1;
+    }
+    if (S_ISBLK(st.st_mode)) {
+        fprintf(stderr, "IO identify target type: '%s' is a block device, getting its size via ioctl\n", path);
+        type->file = IO_TARGET_TYPE_FILE_BLOCKDEVICE;
+        if (ioctl(fd, BLKGETSIZE64, &type->size)) {
+            fprintf(stderr, "IO identify target type: Failed to get size of '%s' via ioctl, errno: %d, error: %s\n", path, errno, strerror(errno));
+            return 2;
+        }
+    } else if (S_ISREG(st.st_mode)) {
+        fprintf(stderr, "IO identify target type: '%s' is a regular file, getting its size via stat\n", path);
+        type->file = IO_TARGET_TYPE_FILE_REGULAR;
+        type->size = st.st_size;
+    } else {
+        fprintf(stderr, "IO identify target type: '%s' is neither a regular file nor a block device, assuming its size as 0\n", path);
+        type->file = IO_TARGET_TYPE_FILE_UNSUPPORTED;
+        type->size = 0;
+    }
+    fprintf(stderr, "IO identify target type: size of '%s' is %zu\n", path, type->size);
+    return 0;
+}
+
+static inline
+enum io_target_type_content
+io_identify_target_type_guess_content_from_size(
+    size_t const    size
+){
+    if (size > DTB_PARTITION_SIZE) {
+        if (size > EPT_PARTITION_RESERVED_SIZE) {
+            fputs("IO identify target type: Size larger than reserved partition, considering content full disk\n", stderr);
+            return IO_TARGET_TYPE_CONTENT_DISK;
+        } else if (size == EPT_PARTITION_RESERVED_SIZE) {
+            fputs("IO identify target type: Size equals reserved partition, considering content reserved partition\n", stderr);
+            return IO_TARGET_TYPE_CONTENT_RESERVED;
+        } else {
+            fputs("IO identify target type: Size between reserved partition and DTB partition, considering content unsupported\n", stderr);
+            return IO_TARGET_TYPE_CONTENT_UNSUPPORTED;
+        }
+    } else if (size == DTB_PARTITION_SIZE) {
+        fputs("IO identify target type: Size equals DTB partition, consiering content DTB\n", stderr);
+        return IO_TARGET_TYPE_CONTENT_DTB;
+    } else {
+        fputs("IO identify target type: Size too small, considering content DTB\n", stderr);
+        return IO_TARGET_TYPE_CONTENT_DTB;
+    }
+}
+
+static inline
+enum io_target_type_content
+io_identify_target_type_guess_content_by_read(
+    int const       fd,
+    size_t const    size
+){
+    if (size) {
+        uint8_t buffer[4] = {0};
+        if (read(fd, buffer, 4) == 4) {
+            switch (*(uint32_t *)buffer) {
+                case 0:
+                    fputs("IO identify target type: Content type full disk, as pure 0 in the header was found\n", stderr);
+                    return IO_TARGET_TYPE_CONTENT_DISK;
+                    break;
+                case EPT_HEADER_MAGIC_UINT32:
+                    fputs("IO identify target type: Content type reserved partition, as EPT magic was found\n", stderr);
+                    return IO_TARGET_TYPE_CONTENT_RESERVED;
+                    break;
+                case DTB_MAGIC_MULTI:
+                case DTB_MAGIC_PLAIN:
+                    fputs("IO identify target type: Content type DTB, as DTB magic was found\n", stderr);
+                    return IO_TARGET_TYPE_CONTENT_DTB;
+                    break;
+                default:
+                    if (*(uint16_t *)buffer == GZIP_MAGIC) {
+                        fputs("IO identify target type: Content type DTB, as gzip magic was found\n", stderr);
+                        return IO_TARGET_TYPE_CONTENT_DTB;
+                        break;
+                    }
+                    fputs("IO identify target type: Content type unsupported due to magic unrecognisable\n", stderr);
+                    return IO_TARGET_TYPE_CONTENT_UNSUPPORTED;
+                    break;
+            }
+        } else {
+            fputs("IO identify target type: Content type unsupported due to read failure\n", stderr);
+            return IO_TARGET_TYPE_CONTENT_UNSUPPORTED;
+        }
+    } else {
+        fputs("IO identify target type: Content type unsupported due to size too small\n", stderr);
+        return IO_TARGET_TYPE_CONTENT_UNSUPPORTED;
+    }
+}
+
+static inline
+void
+io_identify_target_type_guess_content(
+    struct io_target_type * const   type,
+    int const                       fd
+){
+    fputs("IO identify target type: Guessing content type by size\n", stderr);
+    enum io_target_type_content ctype_size = io_identify_target_type_guess_content_from_size(type->size);
+    fputs("IO identify target type: Getting content type via reading\n", stderr);
+    enum io_target_type_content ctype_read = io_identify_target_type_guess_content_by_read(fd, type->size);
+    if (ctype_read == ctype_size) {
+        fputs("IO identify target type: Read and Size results are the same, using any\n", stderr);
+        type->content = ctype_read;
+    } else if (ctype_read == IO_TARGET_TYPE_CONTENT_UNSUPPORTED) {
+        fputs("IO identify target type: Read result unsupported, using Size result\n", stderr);
+        type->content = ctype_size;
+    } else if (ctype_size == IO_TARGET_TYPE_CONTENT_UNSUPPORTED) {
+        fputs("IO identify target type: Size result unsupported, using Read result\n", stderr);
+        type->content = ctype_read;
+    } else {
+        fputs("IO identify target type: Both Read and Size results valid, using Read result\n", stderr);
+        type->content = ctype_read;
+    }
+}
+
 struct io_target_type *
 io_identify_target_type(
     char const * const  path
@@ -189,102 +314,12 @@ io_identify_target_type(
         return NULL;
     }
     memset(type, 0, sizeof(struct io_target_type));
-    struct stat st;
-    if (fstat(fd, &st)) {
-        fprintf(stderr, "IO identify target type: Failed to get stat of '%s', errno: %d, error: %s\n", path, errno, strerror(errno));
+    if (io_identify_target_type_get_basic_stat(type, fd, path)) {
         free(type);
         close(fd);
         return NULL;
     }
-    if (S_ISBLK(st.st_mode)) {
-        fprintf(stderr, "IO identify target type: '%s' is a block device, getting its size via ioctl\n", path);
-        type->file = IO_TARGET_TYPE_FILE_BLOCKDEVICE;
-        if (ioctl(fd, BLKGETSIZE64, &type->size)) {
-            fprintf(stderr, "IO identify target type: Failed to get size of '%s' via ioctl, errno: %d, error: %s\n", path, errno, strerror(errno));
-            free(type);
-            close(fd);
-            return NULL;
-        }
-    } else if (S_ISREG(st.st_mode)) {
-        fprintf(stderr, "IO identify target type: '%s' is a regular file, getting its size via stat\n", path);
-        type->file = IO_TARGET_TYPE_FILE_REGULAR;
-        type->size = st.st_size;
-    } else {
-        fprintf(stderr, "IO identify target type: '%s' is neither a regular file nor a block device, assuming its size as 0\n", path);
-        type->file = IO_TARGET_TYPE_FILE_UNSUPPORTED;
-        type->size = 0;
-    }
-    fprintf(stderr, "IO identify target type: size of '%s' is %zu\n", path, type->size);
-    fputs("IO identify target type: Guessing content type by size\n", stderr);
-    enum io_target_type_content ctype_size = IO_TARGET_TYPE_CONTENT_UNSUPPORTED;
-    if (type->size > DTB_PARTITION_SIZE) {
-        if (type->size > EPT_PARTITION_RESERVED_SIZE) {
-            fputs("IO identify target type: Size larger than reserved partition, considering content full disk\n", stderr);
-            ctype_size = IO_TARGET_TYPE_CONTENT_DISK;
-        } else if (type->size == EPT_PARTITION_RESERVED_SIZE) {
-            fputs("IO identify target type: Size equals reserved partition, considering content reserved partition\n", stderr);
-            ctype_size = IO_TARGET_TYPE_CONTENT_RESERVED;
-        } else {
-            fputs("IO identify target type: Size between reserved partition and DTB partition, considering content unsupported\n", stderr);
-            ctype_size = IO_TARGET_TYPE_CONTENT_UNSUPPORTED;
-        }
-    } else if (type->size == DTB_PARTITION_SIZE) {
-        fputs("IO identify target type: Size equals DTB partition, consiering content DTB\n", stderr);
-        ctype_size = IO_TARGET_TYPE_CONTENT_DTB;
-    } else {
-        fputs("IO identify target type: Size too small, considering content DTB\n", stderr);
-        ctype_size = IO_TARGET_TYPE_CONTENT_DTB;
-    }
-    fputs("IO identify target type: Getting content type via reading\n", stderr);
-    enum io_target_type_content ctype_read;
-    if (type->size) {
-        uint8_t buffer[4] = {0};
-        if (read(fd, buffer, 4) == 4) {
-            switch (*(uint32_t *)buffer) {
-                case 0:
-                    fputs("IO identify target type: Content type full disk, as pure 0 in the header was found\n", stderr);
-                    ctype_read = IO_TARGET_TYPE_CONTENT_DISK;
-                    break;
-                case EPT_HEADER_MAGIC_UINT32:
-                    fputs("IO identify target type: Content type reserved partition, as EPT magic was found\n", stderr);
-                    ctype_read = IO_TARGET_TYPE_CONTENT_RESERVED;
-                    break;
-                case DTB_MAGIC_MULTI:
-                case DTB_MAGIC_PLAIN:
-                    fputs("IO identify target type: Content type DTB, as DTB magic was found\n", stderr);
-                    ctype_read = IO_TARGET_TYPE_CONTENT_DTB;
-                    break;
-                default:
-                    if (*(uint16_t *)buffer == GZIP_MAGIC) {
-                        fputs("IO identify target type: Content type DTB, as gzip magic was found\n", stderr);
-                        ctype_read = IO_TARGET_TYPE_CONTENT_DTB;
-                        break;
-                    }
-                    fputs("IO identify target type: Content type unsupported due to magic unrecognisable\n", stderr);
-                    ctype_read = IO_TARGET_TYPE_CONTENT_UNSUPPORTED;
-                    break;
-            }
-        } else {
-            fputs("IO identify target type: Content type unsupported due to read failure\n", stderr);
-            ctype_read = IO_TARGET_TYPE_CONTENT_UNSUPPORTED;
-        }
-    } else {
-        fputs("IO identify target type: Content type unsupported due to size too small\n", stderr);
-        ctype_read = IO_TARGET_TYPE_CONTENT_UNSUPPORTED;
-    }
-    if (ctype_read == ctype_size) {
-        fputs("IO identify target type: Read and Size results are the same, using any\n", stderr);
-        type->content = ctype_read;
-    } else if (ctype_read == IO_TARGET_TYPE_CONTENT_UNSUPPORTED) {
-        fputs("IO identify target type: Read result unsupported, using Size result\n", stderr);
-        type->content = ctype_size;
-    } else if (ctype_size == IO_TARGET_TYPE_CONTENT_UNSUPPORTED) {
-        fputs("IO identify target type: Size result unsupported, using Read result\n", stderr);
-        type->content = ctype_read;
-    } else {
-        fputs("IO identify target type: Both Read and Size results valid, using Read result\n", stderr);
-        type->content = ctype_read;
-    }
+    io_identify_target_type_guess_content(type, fd);
     close(fd);
     return type;
 }

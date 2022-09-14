@@ -414,6 +414,40 @@ parg_parse_modifier_get_placer(
     return 0;
 }
 
+static inline
+int
+parg_parse_modifier_dispatcher(
+    struct parg_modifier * const    modifier,
+    char const *                    arg
+) {
+    switch (modifier->modify_part) {
+        case PARG_MODIFY_PART_ADJUST:
+            if (parg_parse_modifier_get_adjustor(modifier, arg)) {
+                fprintf(stderr, "PARG parse modifier: adjustor invalid: %s\n", arg);
+                return 1;
+            }
+            break;
+        case PARG_MODIFY_PART_DELETE:
+            break;
+        case PARG_MODIFY_PART_CLONE:
+            if (parg_parse_modifier_get_cloner(modifier, arg)) {
+                fprintf(stderr, "PARG parse modifier: cloner invalid: %s\n", arg);
+                return 1;
+            }
+            break;
+        case PARG_MODIFY_PART_PLACE:
+            if (parg_parse_modifier_get_placer(modifier, arg)) {
+                fprintf(stderr, "PARG parse modifier: placer invalid: %s\n", arg);
+                return 1;
+            }
+            break;
+        default:
+            fputs("PARG parse modifier: illegal part modification method\n", stderr);
+            return 1;
+    }
+    return 0;
+}
+
 
 struct parg_modifier *
 parg_parse_modifier(
@@ -443,34 +477,9 @@ parg_parse_modifier(
         free(modifier);
         return NULL;
     }
-    switch (modifier->modify_part) {
-        case PARG_MODIFY_PART_ADJUST:
-            if (parg_parse_modifier_get_adjustor(modifier, select_end + 1)) {
-                fprintf(stderr, "PARG parse modifier: adjustor invalid: %s\n", arg);
-                free(modifier);
-                return NULL;
-            }
-            break;
-        case PARG_MODIFY_PART_DELETE:
-            break;
-        case PARG_MODIFY_PART_CLONE:
-            if (parg_parse_modifier_get_cloner(modifier, select_end + 1)) {
-                fprintf(stderr, "PARG parse modifier: cloner invalid: %s\n", arg);
-                free(modifier);
-                return NULL;
-            }
-            break;
-        case PARG_MODIFY_PART_PLACE:
-            if (parg_parse_modifier_get_placer(modifier, select_end + 1)) {
-                fprintf(stderr, "PARG parse modifier: placer invalid: %s\n", arg);
-                free(modifier);
-                return NULL;
-            }
-            break;
-        default:
-            fputs("PARG parse modifier: illegal part modification method\n", stderr);
-            free(modifier);
-            return NULL;
+    if (parg_parse_modifier_dispatcher(modifier, select_end + 1)) {
+        free(modifier);
+        return NULL;
     }
     return modifier;
 }

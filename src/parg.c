@@ -520,3 +520,5 @@ parg_parse_editor(
         return editor;
     }
 }
+
+/* parg.c: Processing partition arguments */

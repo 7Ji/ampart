@@ -12,16 +12,16 @@ enum cli_modes {
     CLI_MODE_SNAPSHOT
 };
 
-enum cli_types {
-    CLI_TYPE_AUTO,
-    CLI_TYPE_DTB,
-    CLI_TYPE_RESERVED,
-    CLI_TYPE_DISK
+enum cli_content_types {
+    CLI_CONTENT_TYPE_AUTO,
+    CLI_CONTENT_TYPE_DTB,
+    CLI_CONTENT_TYPE_RESERVED,
+    CLI_CONTENT_TYPE_DISK
 };
 
 struct cli_options {
     enum cli_modes mode;
-    enum cli_types type;
+    enum cli_content_types content;
     bool dry_run;
     bool strict_device;
     uint8_t write;
@@ -29,6 +29,7 @@ struct cli_options {
     uint64_t offset_dtb;
     uint64_t gap_partition;
     uint64_t gap_reserved;
+    size_t size;
     char *target;
 };
 

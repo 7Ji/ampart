@@ -1,7 +1,9 @@
 #include "cli.h"
 
-#include <string.h>
+#include <fcntl.h>
 #include <getopt.h>
+#include <string.h>
+#include <unistd.h>
 
 #include "gzip.h"
 #include "io.h"
@@ -61,7 +63,7 @@ const char cli_mode_strings[][9] = {
     "snapshot"
 };
 
-const char cli_type_strings[][9] = {
+const char cli_content_type_strings[][9] = {
     "auto",
     "dtb",
     "reserved",
@@ -70,7 +72,7 @@ const char cli_type_strings[][9] = {
 
 struct cli_options cli_options = {
     .mode = CLI_MODE_YOLO,
-    .type = CLI_TYPE_AUTO,
+    .content = CLI_CONTENT_TYPE_AUTO,
     .dry_run = false,
     .strict_device = false,
     .write = CLI_WRITE_DTB | CLI_WRITE_TABLE | CLI_WRITE_MIGRATES,
@@ -78,6 +80,7 @@ struct cli_options cli_options = {
     .offset_dtb = DTB_PARTITION_OFFSET,
     .gap_partition = TABLE_PARTITION_GAP_GENERIC,
     .gap_reserved = TABLE_PARTITION_GAP_RESERVED,
+    .size = 0,
     .target = NULL
 };
 

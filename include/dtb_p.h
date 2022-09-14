@@ -8,6 +8,7 @@
 
 #include "stringblock.h"
 #include "gzip.h"
+#include "io.h"
 #include "util.h"
 
 #define DTB_FDT_BEGIN_NODE_SPEC     0x00000001U

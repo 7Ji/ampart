@@ -31,32 +31,37 @@ struct dtb_multi_header {
 };
 
 struct dtb_multi_entry {
+    char soc[12];
+    char platform[12];
+    char variant[12];
+    char target[36];
     uint8_t *dtb;
     uint32_t offset;
     uint32_t size;
 };
 
 struct dtb_multi_entries_helper {
+    uint8_t version;
     uint32_t entry_count;
     struct dtb_multi_entry *entries;
     // uint8_t **entries;
 };
 
-#define DTB_MULTI_HEADER_LENGTH_V1  4U
-#define DTB_MULTI_HEADER_LENGTH_V2  16U
-struct dtb_multi_header_entry_v1 {
-    char soc[DTB_MULTI_HEADER_LENGTH_V1];
-    char platform[DTB_MULTI_HEADER_LENGTH_V1];
-    char variant[DTB_MULTI_HEADER_LENGTH_V1];
-    uint32_t offset;
-};
+// #define DTB_MULTI_HEADER_LENGTH_V1  4U
+// #define DTB_MULTI_HEADER_LENGTH_V2  16U
+// struct dtb_multi_header_entry_v1 {
+//     char soc[DTB_MULTI_HEADER_LENGTH_V1];
+//     char platform[DTB_MULTI_HEADER_LENGTH_V1];
+//     char variant[DTB_MULTI_HEADER_LENGTH_V1];
+//     uint32_t offset;
+// };
 
-struct dtb_multi_header_entry_v2 {
-    char soc[DTB_MULTI_HEADER_LENGTH_V2];
-    char platform[DTB_MULTI_HEADER_LENGTH_V2];
-    char variant[DTB_MULTI_HEADER_LENGTH_V2];
-    uint32_t offset;
-};
+// struct dtb_multi_header_entry_v2 {
+//     char soc[DTB_MULTI_HEADER_LENGTH_V2];
+//     char platform[DTB_MULTI_HEADER_LENGTH_V2];
+//     char variant[DTB_MULTI_HEADER_LENGTH_V2];
+//     uint32_t offset;
+// };
 
 struct dtb_partition {
     uint8_t data[DTB_PARTITION_DATA_SIZE];
@@ -109,4 +114,5 @@ void dtb_report_partitions(const struct dts_partitions_helper *phelper);
 enum dtb_type dtb_identify_type(const uint8_t *dtb);
 struct dtb_multi_entries_helper *dtb_parse_multi_entries(const uint8_t *dtb);
 struct dts_phandle_list *dtb_get_phandles(const uint8_t *dtb, size_t size);
+int dtb_read_partitions_and_report(int fd, size_t size);
 #endif

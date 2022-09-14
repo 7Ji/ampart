@@ -1,10 +1,23 @@
+/* Self */
+
 #include "stringblock.h"
+
+/* System */
 
 #include <string.h>
 
+/* Local */
+
 #include "util.h"
 
-off_t stringblock_find_string_raw(const char *const sblock, const off_t length, const char *const string) {
+/* Function */
+
+off_t 
+stringblock_find_string_raw(
+    char const * const  sblock,
+    off_t const         length,
+    char const * const  string
+){
     if (string[0]) {
         for (off_t i=0; i<length; ++i) {
             if (sblock[i] && !strcmp(sblock + i, string)) {
@@ -21,11 +34,20 @@ off_t stringblock_find_string_raw(const char *const sblock, const off_t length, 
     return -1;
 }
 
-off_t stringblock_find_string(const struct stringblock_helper *const shelper, const char *const string) {
+off_t
+stringblock_find_string(
+    struct stringblock_helper const * const shelper,
+    char const * const                      string
+){
     return stringblock_find_string_raw(shelper->stringblock, shelper->length, string);
 }
 
-off_t stringblock_append_string_force(struct stringblock_helper *const shelper, const char *const string, size_t slength) {
+off_t
+stringblock_append_string_force(
+    struct stringblock_helper * const   shelper,
+    char const * const                  string,
+    size_t                              slength
+){
     if (!slength && !(slength = strlen(string))) {
         for (off_t i=0; i<shelper->length; ++i) {
             if (!shelper->stringblock[i]) {
@@ -50,7 +72,12 @@ off_t stringblock_append_string_force(struct stringblock_helper *const shelper, 
     return offset;
 }
 
-off_t stringblock_append_string_safely(struct stringblock_helper *const shelper, const char *const string, const size_t slength) {
+off_t 
+stringblock_append_string_safely(
+    struct stringblock_helper * const   shelper,
+    char const * const                  string, 
+    size_t const                        slength
+){
     const off_t offset = stringblock_find_string(shelper, string);
     if (offset>=0) {
         return offset;
@@ -58,25 +85,4 @@ off_t stringblock_append_string_safely(struct stringblock_helper *const shelper,
     return stringblock_append_string_force(shelper, string, slength);
 }
 
-#if 0
-int main() {
-    struct stringblock_helper shelper;
-    shelper.length = 24;
-    shelper.allocated_length = util_nearest_upper_bound_ulong(24, 4096, 1);
-    shelper.stringblock = malloc(shelper.allocated_length);
-    if (shelper.stringblock) {
-        memcpy(
-            shelper.stringblock,
-            "Whatever\0Goodbyte\0What?",
-            24
-        );
-    } else {
-        puts("Failed to alloc");
-        return 1;
-    }
-    off_t offset = stringblock_append_string_safely(&shelper, "hat?", 0);
-    printf("%ld, %ld, %ld\n", offset, shelper.length, shelper.allocated_length);
-    puts(shelper.stringblock+offset);
-    return 0;
-}
-#endif
+/* stringblock.c: Stingblock-related functions, used for but not only for the string block found in DTB */

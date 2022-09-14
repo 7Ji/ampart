@@ -12,25 +12,34 @@
 
 /* Variable */
 
-const char      util_human_readable_suffixes[]      =   UTIL_HUMAN_READABLE_SUFFIXES;
-const size_t    util_human_readable_suffixes_length =   strlen(UTIL_HUMAN_READABLE_SUFFIXES);
+char const      util_human_readable_suffixes[] = UTIL_HUMAN_READABLE_SUFFIXES;
+size_t const    util_human_readable_suffixes_length = strlen(UTIL_HUMAN_READABLE_SUFFIXES);
 
 /* Function */
 
 unsigned long 
-    util_nearest_upper_bound_ulong(
-        const unsigned long value, 
-        const unsigned long bound, 
-        const unsigned long multiply)
-{
+util_nearest_upper_bound_ulong(
+    unsigned long const value, 
+    unsigned long const bound, 
+    unsigned long const multiply
+){
     return (value % bound) ? (value / bound * bound * multiply + bound) : (value * multiply);
 }
 
-long util_nearest_upper_bound_long(const long value, const long bound, const long multiply) {
+long 
+util_nearest_upper_bound_long(
+    long const  value, 
+    long const  bound, 
+    long const  multiply
+){
     return (value % bound) ? (value / bound * bound * multiply + bound) : (value * multiply);
 }
 
-double util_size_to_human_readable(const uint64_t size, char *const suffix) {
+double
+util_size_to_human_readable(
+    uint64_t const  size, 
+    char * const    suffix
+){
     unsigned int i;
     double size_human = size;
     for (i=0; i<util_human_readable_suffixes_length; ++i) {
@@ -43,7 +52,10 @@ double util_size_to_human_readable(const uint64_t size, char *const suffix) {
     return size_human;
 }
 
-int util_get_base_of_integer_literal(const char *const literal) {
+int 
+util_get_base_of_integer_literal(
+    char const * const  literal
+){
     switch (literal[0]) {
         case '0':
             switch (literal[1]) {
@@ -62,7 +74,10 @@ int util_get_base_of_integer_literal(const char *const literal) {
     }
 }
 
-size_t util_human_readable_to_size(const char *const literal) {
+size_t
+util_human_readable_to_size(
+    char const * const  literal
+){
     char *suffix = NULL;
     size_t size = strtoul(literal, &suffix, 0);
     switch (suffix[0]) {
@@ -105,3 +120,16 @@ size_t util_human_readable_to_size(const char *const literal) {
     }
     return size;
 }
+
+bool 
+util_string_is_empty(
+    char const * const  string
+){
+    if (string && string[0]) {
+        return true;
+    } else {
+        return false;
+    }
+}
+
+/* util.c: Utility functions that do not lean to specific tasks */

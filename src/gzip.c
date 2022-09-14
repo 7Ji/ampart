@@ -1,9 +1,17 @@
+/* Self */
+
 #include "gzip.h"
+
+/* System */
 
 #include <zlib.h>
 #include <time.h>
 
+/* Local */
+
 #include "util.h"
+
+/* Definition */
 
 #define GZIP_FILE_FLAG_TEXT     0b00000001U
 #define GZIP_FILE_FLAG_HCRC     0b00000010U
@@ -14,7 +22,15 @@
 #define GZIP_DEFAULT_MEM_LEVEL  8U
 #define GZIP_WRAPPER            16U // Add this to the window bit will cause it to wrap around and use a gzip container
 
-static inline size_t gzip_unzip_no_header(uint8_t *const in, const size_t in_size, uint8_t **const out) {
+/* Function */
+
+static inline 
+size_t 
+gzip_unzip_no_header(
+    uint8_t * const     in,
+    size_t const        in_size,
+    uint8_t * * const   out
+){
     size_t allocated_size = util_nearest_upper_bound_ulong(in_size, 64, 4); // 4 times the size, nearest multiply of 64
     fprintf(stderr, "unzip: Decompressing raw deflated data, in size %ld, allocated %ld\n", in_size, allocated_size);
     *out = malloc(allocated_size);
@@ -70,7 +86,11 @@ static inline size_t gzip_unzip_no_header(uint8_t *const in, const size_t in_siz
     }
 }
 
-static inline unsigned int gzip_valid_header(uint8_t *data) {
+static inline 
+unsigned int 
+gzip_valid_header(
+    uint8_t *   data
+){
     const struct gzip_header *const gh = (const struct gzip_header *)data;
     if (gh->magic != GZIP_MAGIC) {
         fprintf(stderr, "GZIP header: Magic is wrong, record %"PRIx16" != expected %"PRIx16"\n", gh->magic, GZIP_MAGIC);
@@ -100,7 +120,12 @@ static inline unsigned int gzip_valid_header(uint8_t *data) {
     return offset;
 }
 
-size_t gzip_unzip(uint8_t *const in, const size_t in_size, uint8_t **const out) {
+size_t 
+gzip_unzip(
+    uint8_t * const     in,
+    size_t const        in_size,
+    uint8_t * * const   out
+){
     const int offset = gzip_valid_header(in);
     if (!offset) {
         fputs("unzip: Gzip header invalid", stderr);
@@ -109,7 +134,12 @@ size_t gzip_unzip(uint8_t *const in, const size_t in_size, uint8_t **const out) 
     return gzip_unzip_no_header(in+offset, in_size-offset, out);
 }
 
-size_t gzip_zip(uint8_t *const in, const size_t in_size, uint8_t **const out) {
+size_t
+gzip_zip(
+    uint8_t * const     in,
+    size_t const        in_size,
+    uint8_t * * const   out
+){
     z_stream s;
     s.zalloc = Z_NULL;
     s.zfree = Z_NULL;
@@ -146,3 +176,5 @@ size_t gzip_zip(uint8_t *const in, const size_t in_size, uint8_t **const out) {
         return 0;
     }
 }
+
+/* gzip.c: Compressing and decompressing GZIP format stream */

@@ -15,3 +15,5 @@ static_assert(sizeof(struct ept_partition) == 40, "Size of partition is not 40")
 static_assert(sizeof(struct ept_header) == 24, "Size of partition table header is not 24");
 
 static_assert(sizeof(struct ept_table) == 1304, "Size of partition table is not 1304");
+
+/* size.c: Sanity check for struct size */

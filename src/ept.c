@@ -1,12 +1,20 @@
+/* Self */
+
 #include "ept.h"
+
+/* System */
 
 #include <fcntl.h>
 #include <string.h>
 #include <unistd.h>
 
+/* Local */
+
 #include "cli.h"
 #include "io.h"
 #include "util.h"
+
+/* Definition */
 
 #define EPT_PART_MAXIMUM  32
 
@@ -15,19 +23,21 @@
 #define EPT_PART_MASKS_DATA   4
 
 
-#define EPT_HEADER_MAGIC_STRING   "MPT"
-#define EPT_HEADER_VERSION_STRING "01.00.00"
-#define EPT_HEADER_VERSION_UINT32_0   (uint32_t)0x302E3130U
-#define EPT_HEADER_VERSION_UINT32_1   (uint32_t)0x30302E30U
-#define EPT_HEADER_VERSION_UINT32_2   (uint32_t)0x00000000U
+#define EPT_HEADER_MAGIC_STRING         "MPT"
+#define EPT_HEADER_VERSION_STRING       "01.00.00"
+#define EPT_HEADER_VERSION_UINT32_0     (uint32_t)0x302E3130U
+#define EPT_HEADER_VERSION_UINT32_1     (uint32_t)0x30302E30U
+#define EPT_HEADER_VERSION_UINT32_2     (uint32_t)0x00000000U
 
-static const uint32_t ept_header_version_uint32[] = {
+/* Variable */
+
+uint32_t const          ept_header_version_uint32[] = {
     EPT_HEADER_VERSION_UINT32_0,
     EPT_HEADER_VERSION_UINT32_1,
     EPT_HEADER_VERSION_UINT32_2
 };
 
-static struct ept_table ept_table_empty = {
+struct ept_table const  ept_table_empty = {
     {
         {
             { .magic_uint32 = EPT_HEADER_MAGIC_UINT32 },
@@ -46,6 +56,7 @@ static struct ept_table ept_table_empty = {
                 0U
             },
             /*
+            Layout of reserved partition:
             0x000000 - 0x003fff: partition table
             0x004000 - 0x03ffff: storage key area	(16k offset & 256k size)
             0x400000 - 0x47ffff: dtb area  (4M offset & 512k size)
@@ -75,10 +86,15 @@ static struct ept_table ept_table_empty = {
             {{0U},0U,0U,0U,0U}
         }
     }
-    
 };
 
-uint32_t ept_checksum(const struct ept_partition *const partitions, const int partitions_count) {
+/* Function */
+
+uint32_t
+ept_checksum(
+    struct ept_partition const * const  partitions, 
+    int const                           partitions_count
+){
     int i, j;
     uint32_t checksum = 0, *p;
     for (i = 0; i < partitions_count; i++) { // This is utterly wrong, but it's how amlogic does. So we have to stick with the glitch algorithm that only calculates 1 partition if we want ampart to work
@@ -91,7 +107,10 @@ uint32_t ept_checksum(const struct ept_partition *const partitions, const int pa
     return checksum;
 }
 
-int ept_valid_header(const struct ept_header *const header) {
+int
+ept_valid_header(
+    struct ept_header const * const header
+){
     int ret = 0;
     if (header->partitions_count > 32) {
         fprintf(stderr, "table valid header: Partitions count invalid, only integer 0~32 is acceppted, actual: %d\n", header->partitions_count);
@@ -122,7 +141,10 @@ int ept_valid_header(const struct ept_header *const header) {
     return ret;
 }
 
-unsigned int ept_valid_partition_name(const char *const name) {
+unsigned int
+ept_valid_partition_name(
+    char const * const  name
+){
     unsigned int ret = 0;
     unsigned int i;
     bool term = true;
@@ -158,14 +180,20 @@ unsigned int ept_valid_partition_name(const char *const name) {
 }
 
 
-int ept_valid_partition(const struct ept_partition *const part) {
+int 
+ept_valid_partition(
+    struct ept_partition const * const  part
+){
     if (ept_valid_partition_name(part->name)) {
         return 1;
     }
     return 0;
 }
 
-int ept_valid(const struct ept_table *const table) {
+int 
+ept_valid(
+    struct ept_table const * const  table
+){
     int ret = ept_valid_header((const struct ept_header *)table);
     const uint32_t valid_count = table->partitions_count < 32 ? table->partitions_count : 32;
     for (uint32_t i=0; i<valid_count; ++i) {
@@ -174,7 +202,10 @@ int ept_valid(const struct ept_table *const table) {
     return ret;
 }
 
-void ept_report(const struct ept_table *const table) {
+void 
+ept_report(
+    struct ept_table const * const  table
+){
     fprintf(stderr, "table report: %d partitions in the table:\n===================================================================================\nID| name            |          offset|(   human)|            size|(   human)| masks\n-----------------------------------------------------------------------------------\n", table->partitions_count);
     const struct ept_partition *part;
     double num_offset, num_size;
@@ -200,7 +231,12 @@ void ept_report(const struct ept_table *const table) {
     return;
 }
 
-static inline int ept_pedantic_offsets(struct ept_table *const table, const uint64_t capacity) {
+static inline
+int 
+ept_pedantic_offsets(
+    struct ept_table * const    table,
+    uint64_t const              capacity
+){
     if (table->partitions_count < 4) {
         fputs("table pedantic offsets: refuse to fill-in offsets for heavily modified table (at least 4 partitions should exist)\n", stderr);
         return 1;
@@ -229,7 +265,11 @@ static inline int ept_pedantic_offsets(struct ept_table *const table, const uint
     return 0;
 }
 
-struct ept_table *ept_complete_dtb(const struct dts_partitions_helper *const dhelper, const uint64_t capacity) {
+struct ept_table *
+ept_complete_dtb(
+    struct dts_partitions_helper const * const  dhelper, 
+    uint64_t const                              capacity
+){
     if (!dhelper) {
         return NULL;
     }
@@ -267,7 +307,12 @@ struct ept_table *ept_complete_dtb(const struct dts_partitions_helper *const dhe
     return table;
 }
 
-struct ept_table *ept_from_dtb(const uint8_t *const dtb, const size_t dtb_size, const uint64_t capacity) {
+struct ept_table *
+ept_from_dtb(
+    uint8_t const * const   dtb,
+    size_t const            dtb_size,
+    uint64_t const          capacity
+){
     struct dts_partitions_helper *const dhelper = dtb_get_partitions(dtb, dtb_size);
     if (!dhelper) {
         return NULL;
@@ -284,7 +329,11 @@ struct ept_table *ept_from_dtb(const uint8_t *const dtb, const size_t dtb_size, 
     return table;
 }
 
-int ept_compare(const struct ept_table *const ept_a, const struct ept_table *const ept_b) {
+int
+ept_compare(
+    struct ept_table const * const  ept_a,
+    struct ept_table const * const  ept_b
+){
     if (!(ept_a && ept_b)) {
         fputs("table compare: not both tables are valid\n", stderr);
         return -1;
@@ -292,7 +341,10 @@ int ept_compare(const struct ept_table *const ept_a, const struct ept_table *con
     return (memcmp(ept_a, ept_b, sizeof(struct ept_table)));
 }
 
-uint64_t ept_get_capacity(const struct ept_table *const table) {
+uint64_t 
+ept_get_capacity(
+    struct ept_table const * const  table
+){
     if (!table || !table->partitions_count) {
         return 0;
     }
@@ -309,7 +361,11 @@ uint64_t ept_get_capacity(const struct ept_table *const table) {
     return capacity;
 }
 
-struct ept_table *ept_read(const int fd, const size_t size) {
+struct ept_table *
+ept_read(
+    int const       fd,
+    size_t const    size
+){
     if (size < sizeof(struct ept_table)) {
         fputs("table read: Input size too small\n", stderr);
         return NULL;
@@ -327,7 +383,11 @@ struct ept_table *ept_read(const int fd, const size_t size) {
     return table;
 }
 
-int ept_read_and_report(const int fd, const size_t size) {
+int
+ept_read_and_report(
+    int const       fd,
+    size_t const    size
+){
     struct ept_table *table = ept_read(fd, size);
     if (table) {
         ept_report(table);
@@ -336,3 +396,5 @@ int ept_read_and_report(const int fd, const size_t size) {
         return -1;
     }
 }
+
+/* ept.c: eMMC Partition Table related functions */

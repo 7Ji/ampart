@@ -1,4 +1,8 @@
+/* Self */
+
 #include "io.h"
+
+/* System */
 
 #include <dirent.h>
 #include <errno.h>
@@ -13,10 +17,18 @@
 #include <sys/stat.h>
 #include <sys/sysmacros.h>
 
+/* Local */
+
 #include "gzip.h"
 #include "ept.h"
 
-static inline bool io_can_retry(const int id) {
+/* Function */
+
+static inline
+bool 
+io_can_retry(
+    int const   id
+){
     switch (id) {
         case EAGAIN:
 #if (EAGAIN != EWOULDBLOCK)
@@ -31,7 +43,12 @@ static inline bool io_can_retry(const int id) {
 
 }
 
-int io_read_till_finish(const int fd, void *buffer, size_t size) {
+int
+io_read_till_finish(
+    int const   fd,
+    void *      buffer,
+    size_t      size
+){
     ssize_t r;
     while (size) {
         do {
@@ -46,7 +63,12 @@ int io_read_till_finish(const int fd, void *buffer, size_t size) {
     return 0;
 }
 
-int io_write_till_finish(const int fd, void *buffer, size_t size) {
+int 
+io_write_till_finish(
+    int const   fd,
+    void *      buffer, 
+    size_t      size
+){
     ssize_t r;
     while (size) {
         do {
@@ -61,7 +83,10 @@ int io_write_till_finish(const int fd, void *buffer, size_t size) {
     return 0;
 }
 
-char *io_find_disk(const char *const path) {
+char *
+io_find_disk(
+    char const * const  path
+){
     const char* const name = basename(path);
     fprintf(stderr, "IO find disk: Trying to find corresponding full disk drive of '%s' (name %s) so more advanced operations (partition migration, actual table manipulation, partprobe, etc) can be performed\n", path, name);
     const size_t len_name = strlen(name);
@@ -109,7 +134,11 @@ char *io_find_disk(const char *const path) {
     return NULL;
 }
 
-void io_describe_target_type(struct io_target_type *type, const char *const path) {
+void 
+io_describe_target_type(
+    struct io_target_type * type,
+    char const * const      path
+){
     if (path) {
         fprintf(stderr, "IO identify target type: '%s' is a ", path);
     } else {
@@ -144,7 +173,10 @@ void io_describe_target_type(struct io_target_type *type, const char *const path
     fputc('\n', stderr);
 }
 
-struct io_target_type *io_identify_target_type(const char *const path) {
+struct io_target_type *
+io_identify_target_type(
+    char const * const  path
+){
     int fd = open(path, O_RDONLY);
     if (fd < 0) {
         fprintf(stderr, "IO identify target type: Failed to open '%s' as read-only\n", path);
@@ -256,42 +288,5 @@ struct io_target_type *io_identify_target_type(const char *const path) {
     close(fd);
     return type;
 }
-#if 0
-int main(int argc, char **argv) {
-    if (argc <= 1) {
-        return 1;
-    }
-    int fd = open(argv[1], O_RDONLY);
-    if (fd < 0) {
-        return 2;
-    }
-    puts("Ready to read");
-    struct stat st_fd;
-    fstat(fd, &st_fd);
-    printf("Size is %ld, %lx\n", st_fd.st_size, st_fd.st_size);
-    unsigned char *buf = malloc(st_fd.st_size);
-    if (!buf) {
-        close(fd);
-        return 3;
-    }
-    if (io_read_till_finish(fd, buf, st_fd.st_size)) {
-        puts("Failed to read");
-        close(fd);
-        return 4;
-    }
-    close(fd);
-    fd = open("testout", O_WRONLY | O_CREAT, S_IRWXU | S_IRGRP | S_IROTH);
-    if (fd < 0) {
-        return 5;
-    }
-    puts("Ready to write");
-    if (io_write_till_finish(fd, buf, st_fd.st_size)) {
-        puts("Failed to write");
-        close(fd);
-        return 6;
-    }
-    close (fd);
 
-    return 0;
-}
-#endif
+/* io.c: IO-related functions, type-recognition is also here */

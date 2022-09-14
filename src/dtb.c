@@ -1,4 +1,8 @@
+/* Self */
+
 #include "dtb.h"
+
+/* System */
 
 #include <byteswap.h>
 #include <errno.h>
@@ -6,18 +10,24 @@
 #include <string.h>
 #include <unistd.h>
 
+/* Local */
+
 #include "dts.h"
 #include "gzip.h"
 #include "io.h"
 #include "stringblock.h"
 #include "util.h"
 
+/* Definition */
+
 #define DTB_PARTITION_CHECKSUM_COUNT   (DTB_PARTITION_SIZE - 4U) >> 2U
 
+/* Macro */
 
 #define DTB_GET_PARTITIONS_NODE_FROM_DTS(dts, max_offset) \
     dts_get_node_from_path(dts, max_offset, "/partitions", 11)
 
+/* Function */
 
 uint32_t dtb_checksum(const struct dtb_partition * const dtb) {
     uint32_t checksum = 0;

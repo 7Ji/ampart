@@ -1,22 +1,44 @@
+/* Self */
+
 #include "dts.h"
+
+/* System */
 
 #include <byteswap.h>
 #include <string.h>
 
+/* Local */
+
 #include "util.h"
+
+/* Definition */
 
 #define DTS_PARTITIONS_NODE_START_LENGTH    12U
 
-static const uint8_t dts_partitions_node_start[DTS_PARTITIONS_NODE_START_LENGTH] = "partitions";
+/* Structure */
 
-struct dts_stringblock_essential_offsets {
-    off_t parts, pname, size, mask, phandle, linux_phandle;
-};
+struct 
+    dts_property {
+        uint32_t        len;
+        uint8_t const * value;
+    };
 
-struct {
-    uint32_t len;
-    const uint8_t *value;
-} dts_property;
+struct 
+    dts_stringblock_essential_offsets {
+        off_t parts;
+        off_t pname;
+        off_t size;
+        off_t mask;
+        off_t phandle;
+        off_t linux_phandle;
+    };
+
+/* Variable */
+
+struct dts_property dts_property = {0};
+uint8_t const       dts_partitions_node_start[DTS_PARTITIONS_NODE_START_LENGTH] = "partitions";
+
+/* Function */
 
 static uint32_t dts_skip_node(const uint8_t *const node, const uint32_t max_offset) {
     const uint32_t count = max_offset / 4;

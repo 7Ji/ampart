@@ -35,4 +35,8 @@ double
         char *      suffix
     );
 
+bool 
+    util_string_is_empty (
+        char const *    string
+    );
 #endif

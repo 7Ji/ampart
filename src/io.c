@@ -1,4 +1,20 @@
-#include "io_p.h"
+#include "io.h"
+
+#include <dirent.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <limits.h>
+#include <string.h>
+#include <unistd.h>
+
+#include <linux/fs.h>
+
+#include <sys/ioctl.h>
+#include <sys/stat.h>
+#include <sys/sysmacros.h>
+
+#include "gzip.h"
+#include "ept.h"
 
 static inline bool io_can_retry(const int id) {
     switch (id) {
@@ -170,10 +186,10 @@ struct io_target_type *io_identify_target_type(const char *const path) {
     fputs("IO identify target type: Guessing content type by size\n", stderr);
     enum io_target_type_content ctype_size = IO_TARGET_TYPE_CONTENT_UNSUPPORTED;
     if (type->size > DTB_PARTITION_SIZE) {
-        if (type->size > TABLE_PARTITION_RESERVED_SIZE) {
+        if (type->size > EPT_PARTITION_RESERVED_SIZE) {
             fputs("IO identify target type: Size larger than reserved partition, considering content full disk\n", stderr);
             ctype_size = IO_TARGET_TYPE_CONTENT_DISK;
-        } else if (type->size == TABLE_PARTITION_RESERVED_SIZE) {
+        } else if (type->size == EPT_PARTITION_RESERVED_SIZE) {
             fputs("IO identify target type: Size equals reserved partition, considering content reserved partition\n", stderr);
             ctype_size = IO_TARGET_TYPE_CONTENT_RESERVED;
         } else {
@@ -197,7 +213,7 @@ struct io_target_type *io_identify_target_type(const char *const path) {
                     fputs("IO identify target type: Content type full disk, as pure 0 in the header was found\n", stderr);
                     ctype_read = IO_TARGET_TYPE_CONTENT_DISK;
                     break;
-                case TABLE_HEADER_MAGIC_UINT32:
+                case EPT_HEADER_MAGIC_UINT32:
                     fputs("IO identify target type: Content type reserved partition, as EPT magic was found\n", stderr);
                     ctype_read = IO_TARGET_TYPE_CONTENT_RESERVED;
                     break;

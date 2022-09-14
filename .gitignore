@@ -1,10 +1,5 @@
 ampart
 .vscode/
-obj/cli.o
-obj/dtb.o
-obj/gzip.o
-obj/io.o
-obj/main.o
-obj/stringblock.o
-obj/table.o
-obj/util.o
+obj/*
+dtbs
+images/

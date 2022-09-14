@@ -1,0 +1,5 @@
+#!/bin/bash
+
+# For use on EmuELEC ONLY!!!!!
+
+LAYOUT_PARTITIONS_COUNT="3"

@@ -1,4 +1,95 @@
-#include "cli_p.h"
+#include "cli.h"
+
+#include <errno.h>
+#include <fcntl.h>
+#include <getopt.h>
+#include <string.h>
+#include <unistd.h>
+
+#include "ept.h"
+#include "gzip.h"
+#include "io.h"
+#include "util.h"
+
+#define CLI_WRITE_NOTHING   0b00000000
+#define CLI_WRITE_DTB       0b00000001
+#define CLI_WRITE_TABLE     0b00000010
+#define CLI_WRITE_MIGRATES  0b00000100
+
+#define CLI_PARSE_PARTITION_RAW_ALLOWANCE_CHECK(name) \
+    if (have_##name && require_##name & CLI_ARGUMENT_DISALLOW) { \
+        fprintf(stderr, "CLI parse partition: Argument contains "#name" but it's not allowed: %s\n", arg); \
+        return NULL; \
+    } \
+    if (!have_##name && require_##name & CLI_ARGUMENT_REQUIRED) { \
+        fprintf(stderr, "CLI parse partition: Argument does not contain "#name" but it must be set: %s\n", arg); \
+        return NULL; \
+    }
+
+#define CLI_PARSE_PARTITION_YOLO_MODE(arg) \
+    cli_parse_partition_raw( \
+        arg, \
+        CLI_ARGUMENT_REQUIRED, \
+        CLI_ARGUMENT_ALLOW_ABSOLUTE | CLI_ARGUMENT_ALLOW_RELATIVE, \
+        CLI_ARGUMENT_ALLOW_ABSOLUTE, \
+        CLI_ARGUMENT_ANY, \
+        4 \
+    )
+
+#define CLI_PARSE_PARTITION_CLONE_MODE(arg) \
+    cli_parse_partition_raw( \
+        arg, \
+        CLI_ARGUMENT_REQUIRED, \
+        CLI_ARGUMENT_REQUIRED | CLI_ARGUMENT_ALLOW_ABSOLUTE, \
+        CLI_ARGUMENT_REQUIRED | CLI_ARGUMENT_ALLOW_ABSOLUTE, \
+        CLI_ARGUMENT_REQUIRED, \
+        0 \
+    )
+
+#define CLI_PARSE_PARTITION_SAFE_MODE(arg) \
+    cli_parse_partition_raw( \
+        arg, \
+        CLI_ARGUMENT_REQUIRED, \
+        CLI_ARGUMENT_DISALLOW, \
+        CLI_ARGUMENT_REQUIRED | CLI_ARGUMENT_ALLOW_ABSOLUTE, \
+        CLI_ARGUMENT_REQUIRED, \
+        4 \
+    )
+
+const char cli_mode_strings[][9] = {
+    "",
+    "dtoe",
+    "etod",
+    "pedantic",
+    "dedit",
+    "eedit",
+    "dsnapshot",
+    "esnapshot",
+    "dclone",
+    "eclone",
+    "ecreate"
+};
+
+const char cli_content_type_strings[][9] = {
+    "auto",
+    "dtb",
+    "reserved",
+    "disk"
+};
+
+struct cli_options cli_options = {
+    .mode = CLI_MODE_INVALID,
+    .content = CLI_CONTENT_TYPE_AUTO,
+    .dry_run = false,
+    .strict_device = false,
+    .write = CLI_WRITE_DTB | CLI_WRITE_TABLE | CLI_WRITE_MIGRATES,
+    .offset_reserved = EPT_PARTITION_GAP_RESERVED + EPT_PARTITION_BOOTLOADER_SIZE,
+    .offset_dtb = DTB_PARTITION_OFFSET,
+    .gap_partition = EPT_PARTITION_GAP_GENERIC,
+    .gap_reserved = EPT_PARTITION_GAP_RESERVED,
+    .size = 0,
+    .target = NULL
+};
 
 static inline int cli_parse_u64(uint64_t *const value, bool *const relative, const uint8_t requirement, const char *start, const char *const end) {
     if (*start == '+') {
@@ -384,16 +475,16 @@ int cli_early_stage(int argc, char *argv[]) {
         fputs("CLI early stage: Failed to open target\n", stderr);
         return 1;
     }
-    size_t dtb_offset;
+    size_t dtb_offset = 0, ept_offset = 0;
     switch (cli_options.content) {
         case CLI_CONTENT_TYPE_DTB:
-            dtb_offset = 0;
             break;
         case CLI_CONTENT_TYPE_RESERVED:
             dtb_offset = cli_options.offset_dtb;
             break;
         case CLI_CONTENT_TYPE_DISK:
             dtb_offset = cli_options.offset_reserved + cli_options.offset_dtb;
+            ept_offset = cli_options.offset_reserved;
             break;
         default:
             fputs("CLI early stage: Ilegal target content type (auto), this should not happen\n", stderr);
@@ -402,19 +493,53 @@ int cli_early_stage(int argc, char *argv[]) {
     }
     fprintf(stderr, "CLI early stage: Seeking to %zu to read DTB and report\n", dtb_offset);
     if (lseek(fd, dtb_offset, SEEK_SET) < 0) {
+        fprintf(stderr, "CLI early stage: Failed to seek for DTB, errno: %d, error: %s\n", errno, strerror(errno));
         close(fd);
         return 3;
     }
-    int r = dtb_read_partitions_and_report(fd, cli_options.size - dtb_offset);
-    close(fd);
+    int r = dtb_read_partitions_and_report(fd, cli_options.size - dtb_offset, cli_options.content != CLI_CONTENT_TYPE_DTB);
     if (r > 0) {
+        fputs("CLI early stage: Utterly wrong when trying to read DTB, giving up\n", stderr);
+        close(fd);
         return 4;
     } else if (r < 0 ) {
-        return 5;
+        switch (cli_options.mode) {
+            case CLI_MODE_DTOE:
+            case CLI_MODE_DEDIT:
+            case CLI_MODE_DSNAPSHOT:
+                fprintf(stderr, "CLI early stage: Mode %s requires DTB to exist and partitions node to exist in it, and multiple DTBs (if any) should have represent the same partitions, these requirement are however not met, giving up\n", cli_mode_strings[cli_options.mode]);
+                close(fd);
+                return 5;
+            default:
+                break;
+        }
+    }
+    if (cli_options.content != CLI_CONTENT_TYPE_DTB) {
+        fprintf(stderr, "CLI early stage: Seeking to %zu to read EPT and report\n", ept_offset);
+        if (lseek(fd, ept_offset, SEEK_SET) < 0) {
+            fprintf(stderr, "CLI early stage: Failed to seek for EPT, errno: %d, error: %s\n", errno, strerror(errno));
+            close(fd);
+            return 6;
+        }
+        r = ept_read_and_report(fd, cli_options.size - ept_offset);
+        if (r) {
+            switch (cli_options.mode) {
+                case CLI_MODE_ETOD:
+                case CLI_MODE_PEDANTIC:
+                case CLI_MODE_EEDIT:
+                case CLI_MODE_ESNAPSHOT:
+                    fprintf(stderr, "CLI early stage: Mode %s requires EPT to exist and is valid, these requirement are however not met, giving up\n", cli_mode_strings[cli_options.mode]);
+                    close(fd);
+                    return 7;
+                default:
+                    break;
+            }
+        }
     }
     for (int i =0; i<argc; ++i) {
         printf("%d: %s\n", i, argv[i]);
     }
+    close(fd);
     return 0;
 }
 
@@ -423,8 +548,8 @@ int cli_interface(const int argc, char *argv[]) {
     static struct option long_options[] = {
         {"version",         no_argument,        NULL,   'v'},
         {"help",            no_argument,        NULL,   'h'},
-        {"mode",            required_argument,  NULL,   'm'},   // The mode: yolo, clone, safe, update. Default: yolo
-        {"content",         required_argument,  NULL,   'c'},   // The type of input file: auto, dtb, reserved, disk. Default: auto
+        {"mode",            required_argument,  NULL,   'm'},
+        {"content",         required_argument,  NULL,   'c'},
         {"strict-device",   no_argument,        NULL,   's'},
         {"dry-run",         no_argument,        NULL,   'd'},
         {"offset-reserved", required_argument,  NULL,   'R'},
@@ -444,7 +569,7 @@ int cli_interface(const int argc, char *argv[]) {
                 return 0;
             case 'm': {   // mode:
                 bool mode_valid = false;
-                for (enum cli_modes mode = CLI_MODE_YOLO; mode <= CLI_MODE_SNAPSHOT; ++mode) {
+                for (enum cli_modes mode = CLI_MODE_INVALID; mode <= CLI_MODE_ECREATE; ++mode) {
                     if (!strcmp(cli_mode_strings[mode], optarg)) {
                         fprintf(stderr, "CLI interface: Mode is set to %s\n", optarg);
                         mode_valid = true;
@@ -500,6 +625,10 @@ int cli_interface(const int argc, char *argv[]) {
                 fprintf(stderr, "CLI interface: Unrecognizable option %s\n", argv[optind-1]);
                 return 3;
         }
+    }
+    if (cli_options.mode == CLI_MODE_INVALID) {
+        fputs("CLI interface: Mode not set or invalid, you must specify the mode with --mode [mode] argument\n", stderr);
+        return 4;
     }
     if (cli_options.dry_run) {
         cli_options.write = CLI_WRITE_NOTHING;

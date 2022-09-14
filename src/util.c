@@ -1,4 +1,10 @@
-#include "util_p.h"
+#include "util.h"
+#include <string.h>
+
+#define UTIL_HUMAN_READABLE_SUFFIXES    "BKMGTPEZY"
+
+const char util_human_readable_suffixes[] = UTIL_HUMAN_READABLE_SUFFIXES;
+const size_t util_human_readable_suffixes_length = strlen(UTIL_HUMAN_READABLE_SUFFIXES);
 
 unsigned long util_nearest_upper_bound_ulong(const unsigned long value, const unsigned long bound, const unsigned long multiply) {
     return (value % bound) ? (value / bound * bound * multiply + bound) : (value * multiply);

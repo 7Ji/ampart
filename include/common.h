@@ -12,6 +12,7 @@
 #include <stdbool.h>
 #include <inttypes.h>
 
+/* Defitition */
 
 #define MAX_PARTITION_NAME_LENGTH 16
 #define MAX_PARTITIONS_COUNT      32

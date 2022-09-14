@@ -1,4 +1,8 @@
-#include "stringblock_p.h"
+#include "stringblock.h"
+
+#include <string.h>
+
+#include "util.h"
 
 off_t stringblock_find_string_raw(const char *const sblock, const off_t length, const char *const string) {
     if (string[0]) {

@@ -15,42 +15,6 @@
 
 #define DTS_PARTITIONS_NODE_START_LENGTH    12U
 
-/* Macro */
-
-#define DTS_COMMON_NODE_BEGINNER \
-    const size_t len_name = strlen((const char *)node) + 1; \
-    const uint32_t *const start = (uint32_t *)node + len_name / 4 + (bool)(len_name % 4); \
-    const uint32_t *current; \
-    uint32_t len_prop;
-
-#define DTS_COMMON_NODE_BEGINNER_WITH_OFFSET_CHILD \
-    DTS_COMMON_NODE_BEGINNER \
-    uint32_t offset_child;
-
-#define DTS_SKIP_PROP \
-    case DTS_PROP_ACTUAL: \
-        len_prop = bswap_32(*(current+1)); \
-        i += 2 + len_prop / 4; \
-        if (len_prop % 4) { \
-            ++i; \
-        } \
-        break;
-
-#define saywhat(x) fputs(x)
-#define DTS_INVALID_TOKEN(x) \
-    default: \
-        fprintf(stderr, "DTS "#x": Invalid token %"PRIu32"\n", bswap_32(*current)); \
-        return 0;
-
-#define DTS_BASIC_HANDLING(x) \
-    case DTS_NOP_ACTUAL: \
-        break; \
-    case DTS_END_NODE_ACTUAL: \
-        return i + start - (const uint32_t *)node; \
-    DTS_INVALID_TOKEN(x)
-
-
-
 /* Structure */
 
 struct 
@@ -81,7 +45,11 @@ static uint32_t dts_skip_node(const uint8_t *const node, const uint32_t max_offs
     if (!count) {
         return 0;
     }
-    DTS_COMMON_NODE_BEGINNER_WITH_OFFSET_CHILD
+    const size_t len_name = strlen((const char *)node) + 1;
+    const uint32_t *const start = (uint32_t *)node + len_name / 4 + (bool)(len_name % 4);
+    const uint32_t *current;
+    uint32_t len_prop;
+    uint32_t offset_child;
     for (uint32_t i = 0; i < count; ++i) {
         current = start + i;
         switch (*current) {
@@ -94,8 +62,20 @@ static uint32_t dts_skip_node(const uint8_t *const node, const uint32_t max_offs
                     return 0;
                 }
                 break;
-            DTS_SKIP_PROP
-            DTS_BASIC_HANDLING(skip node)
+            case DTS_END_NODE_ACTUAL:
+                return i + start - (const uint32_t *)node;
+            case DTS_PROP_ACTUAL:
+                len_prop = bswap_32(*(current+1));
+                i += 2 + len_prop / 4;
+                if (len_prop % 4) {
+                    ++i;
+                }
+                break;
+            case DTS_NOP_ACTUAL:
+                break;
+            default:
+                fprintf(stderr, "DTS skip node: Invalid token %"PRIu32"\n", bswap_32(*current));
+                return 0;
         }
     }
     fputs("DTS skip node: Node not properly ended\n", stderr);
@@ -114,7 +94,11 @@ uint32_t dts_get_node(const uint8_t *const node, const uint32_t max_offset, cons
         *target = node;
         return dts_skip_node(node, max_offset);
     }
-    DTS_COMMON_NODE_BEGINNER_WITH_OFFSET_CHILD
+    const size_t len_name = strlen((const char *)node) + 1;
+    const uint32_t *const start = (const uint32_t *)node + len_name / 4 + (bool)(len_name % 4);
+    const uint32_t *current;
+    uint32_t len_prop;
+    uint32_t offset_child;
     for (uint32_t i = 0; i < count; ++i) {
         current = start + i;
         switch (*current) {
@@ -127,8 +111,20 @@ uint32_t dts_get_node(const uint8_t *const node, const uint32_t max_offset, cons
                     return 0;
                 }
                 break;
-            DTS_SKIP_PROP
-            DTS_BASIC_HANDLING(get node)
+            case DTS_END_NODE_ACTUAL:
+                return i + start - (const uint32_t *)node;
+            case DTS_PROP_ACTUAL:
+                len_prop = bswap_32(*(current+1));
+                i += 2 + len_prop / 4;
+                if (len_prop % 4) {
+                    ++i;
+                }
+                break;
+            case DTS_NOP_ACTUAL:
+                break;
+            default:
+                fprintf(stderr, "DTS get node: Invalid token %"PRIu32"\n", bswap_32(*current));
+                return 0;
         }
     }
     fputs("DTS get node: Node not properly ended\n", stderr);
@@ -136,8 +132,10 @@ uint32_t dts_get_node(const uint8_t *const node, const uint32_t max_offset, cons
 }
 
 static int dts_get_property_actual(const uint8_t *const node, const uint32_t property_offset) {
-    DTS_COMMON_NODE_BEGINNER
-    uint32_t name_off;
+    const size_t len_name = strlen((const char *)node) + 1;
+    const uint32_t *const start = (uint32_t *)node + len_name / 4 + (bool)(len_name % 4);
+    const uint32_t *current;
+    uint32_t len_prop, name_off;
     for (uint32_t i = 0; ; ++i) {
         current = start + i;
         switch (*current) {
@@ -479,8 +477,11 @@ uint32_t dts_get_phandles_recursive(const uint8_t *const node, const uint32_t ma
     if (!count) {
         return 0;
     }
-    DTS_COMMON_NODE_BEGINNER_WITH_OFFSET_CHILD
-    uint32_t name_off;
+    const size_t len_name = strlen((const char *)node) + 1;
+    const uint32_t *const start = (uint32_t *)node + len_name / 4 + (bool)(len_name % 4);
+    const uint32_t *current;
+    uint32_t len_prop, name_off;
+    uint32_t offset_child;
     uint32_t phandle;
     uint8_t *buffer;
     for (uint32_t i = 0; i < count; ++i) {

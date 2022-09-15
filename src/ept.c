@@ -383,7 +383,7 @@ ept_read(
     return table;
 }
 
-int
+struct ept_table *
 ept_read_and_report(
     int const       fd,
     size_t const    size
@@ -391,9 +391,9 @@ ept_read_and_report(
     struct ept_table *table = ept_read(fd, size);
     if (table) {
         ept_report(table);
-        return ept_valid(table);
+        return table;
     } else {
-        return -1;
+        return NULL;
     }
 }
 

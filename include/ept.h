@@ -96,7 +96,7 @@ uint64_t
         struct ept_table const *    table
     );
 
-int 
+struct ept_table *
     ept_read_and_report(
         int     fd,
         size_t  size

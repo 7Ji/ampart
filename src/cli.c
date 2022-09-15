@@ -147,8 +147,8 @@ cli_early_stage(
             close(fd);
             return 6;
         }
-        r = ept_read_and_report(fd, cli_options.size - ept_offset);
-        if (r) {
+        struct ept_table *table = ept_read_and_report(fd, cli_options.size - ept_offset);
+        if (!table) {
             switch (cli_options.mode) {
                 case CLI_MODE_ETOD:
                 case CLI_MODE_PEDANTIC:
@@ -161,6 +161,7 @@ cli_early_stage(
                     break;
             }
         }
+        free(table);
     }
     for (int i =0; i<argc; ++i) {
         printf("%d: %s\n", i, argv[i]);

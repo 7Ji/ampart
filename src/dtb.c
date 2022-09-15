@@ -27,6 +27,26 @@
 #define DTB_GET_PARTITIONS_NODE_FROM_DTS(dts, max_offset) \
     dts_get_node_from_path(dts, max_offset, "/partitions", 11)
 
+/* Struct */
+
+struct
+    dtb_buffer {
+        uint8_t *res; // Free on this
+        uint8_t *buffer;
+        struct dts_partitions_helper *partitions;
+    };
+
+struct
+    dtb_buffers {
+        struct dtb_buffer *dtbs;
+        unsigned dtb_count;
+        enum dtb_type type_main;
+        enum dtb_type type_sub;
+    };
+
+/* Variable */
+struct dtb_buffers dtb_buffers = {0};
+
 /* Function */
 
 uint32_t dtb_checksum(const struct dtb_partition * const dtb) {
@@ -195,7 +215,6 @@ struct dts_phandle_list *dtb_get_phandles(const uint8_t *const dtb, const size_t
     }
     memset(plist->phandles, 0, sizeof(uint8_t) * 16);
     plist->allocated_count = 16;
-    // plist->have_duplicate_phandle = false;
     plist->have_linux_phandle = false;
     if (!dts_get_phandles_recursive(
         (const uint8_t *)(current + 1), 

@@ -630,7 +630,10 @@ dts_get_partitions_from_node(
     }
 }
 
-int dts_sort_partitions(struct dts_partitions_helper *const phelper) {
+int
+dts_sort_partitions(
+    struct dts_partitions_helper * const    phelper
+){
     if (!phelper) {
         fputs("DTB sort partitions: no partitions helper to sort\n", stderr);
         return 1;
@@ -652,12 +655,15 @@ int dts_sort_partitions(struct dts_partitions_helper *const phelper) {
             }
         }
     }
-    fputs("DTB sort partitions: partitions now in part-num order defined in partitions node's properties\n", stderr);
+    fputs("DTS sort partitions: partitions now in part-num order defined in partitions node's properties\n", stderr);
     return 0;
 }
 
-void dts_report_partitions(const struct dts_partitions_helper *const phelper) {
-    fprintf(stderr, "DTB report partitions: %u partitions in the DTB:\n=======================================================\nID| name            |            size|(   human)| masks\n-------------------------------------------------------\n", phelper->partitions_count);
+void
+dts_report_partitions(
+    struct dts_partitions_helper const * const  phelper
+){
+    fprintf(stderr, "DTS report partitions: %u partitions in the DTB:\n=======================================================\nID| name            |            size|(   human)| masks\n-------------------------------------------------------\n", phelper->partitions_count);
     const struct dts_partition_entry *part;
     double num_size;
     char suffix_size;
@@ -674,14 +680,20 @@ void dts_report_partitions(const struct dts_partitions_helper *const phelper) {
     return;
 }
 
-uint32_t dts_get_phandles_recursive(const uint8_t *const node, const uint32_t max_offset, const uint32_t offset_phandle, const uint32_t offset_linux_phandle, struct dts_phandle_list *plist) {
-    const uint32_t count = max_offset / 4;
+uint32_t
+dts_get_phandles_recursive(
+    uint8_t const * const           node,
+    uint32_t const                  max_offset,
+    uint32_t const                  offset_phandle,
+    uint32_t const                  offset_linux_phandle,
+    struct dts_phandle_list * const plist
+){
+    uint32_t const count = dts_get_count(max_offset);
     if (!count) {
         return 0;
     }
-    const size_t len_name = strlen((const char *)node) + 1;
-    const uint32_t *const start = (uint32_t *)node + len_name / 4 + (bool)(len_name % 4);
-    const uint32_t *current;
+    uint32_t const *const start = dts_get_start_without_len_name(node);
+    uint32_t const *current;
     uint32_t len_prop, name_off;
     uint32_t offset_child;
     uint32_t phandle;
@@ -737,35 +749,53 @@ uint32_t dts_get_phandles_recursive(const uint8_t *const node, const uint32_t ma
 
 }
 
-int dts_phandle_list_finish(struct dts_phandle_list *const plist) {
+static inline 
+int
+dts_phandle_list_finish_entry(
+    struct dts_phandle_list * const plist,
+    uint32_t const                  i,
+    bool * const                    init,
+    bool * const                    have_1,
+    bool * const                    have_2
+){
+    if (plist->phandles[i]) {
+        switch (plist->phandles[i]) {
+            case 1:
+                *have_1 = true;
+                break;
+            case 2:
+                *have_2 = true;
+                break;
+            default:
+                fprintf(stderr, "DTS phandle list finish: phandle %u/%x appears %u times, which is illegal\n", i, i, plist->phandles[i]);
+                return 1;
+        }
+        if (*init)  {
+            if (i<plist->min_phandle) {
+                plist->min_phandle = i;
+            }
+            if (i>plist->max_phandle) {
+                plist->max_phandle = i;
+            }
+        } else {
+            *init = true;
+            plist->min_phandle = i;
+            plist->max_phandle = i;
+        }
+    }
+    return 0;
+}
+
+int
+dts_phandle_list_finish(
+    struct dts_phandle_list * const plist
+){
     bool init = false;
     bool have_1 = false;
     bool have_2 = false;
     for (uint32_t i = 0; i < plist->allocated_count; ++i) {
-        if (plist->phandles[i]) {
-            switch (plist->phandles[i]) {
-                case 1:
-                    have_1 = true;
-                    break;
-                case 2:
-                    have_2 = true;
-                    break;
-                default:
-                    fprintf(stderr, "DTS phandle list finish: phandle %u/%x appears %u times, which is illegal\n", i, i, plist->phandles[i]);
-                    return 1;
-            }
-            if (init)  {
-                if (i<plist->min_phandle) {
-                    plist->min_phandle = i;
-                }
-                if (i>plist->max_phandle) {
-                    plist->max_phandle = i;
-                }
-            } else {
-                init = true;
-                plist->min_phandle = i;
-                plist->max_phandle = i;
-            }
+        if (dts_phandle_list_finish_entry(plist, i, &init, &have_1, &have_2)) {
+            return 1;
         }
     }
     if (!init) {

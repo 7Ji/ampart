@@ -22,7 +22,7 @@ enum
         DTB_TYPE_INVALID,
         DTB_TYPE_PLAIN,
         DTB_TYPE_MULTI,
-        DTB_TYPE_GZIPPED=4
+        DTB_TYPE_GZIPPED
     };
 
 /* Structure */

@@ -38,12 +38,15 @@ Note: in the above context, the sign {} indicates a sub-argument that should be 
    - A non-negative number to select a partition from start to end (0 for the first)
    - A negative number to select a partition from end to start (-1 for the last)
 #### Example
- - userdata
+ - ``userdata``
    - Select the partition that's named userdata
- - 4
+   - Example parg: ``^userdata?``
+ - ``4``
    - Select the 5th partition
- - -2
+   - Example parg: ``^4:my::+1G:``
+ - ``-2``
    - Select the second last partition
+   - Example parg: ``^-2%Cloned``
 ### Operator
  - ? *Delete Operator*
    - Deletes a partition, shift all partitions after it one to left.
@@ -53,8 +56,9 @@ Note: in the above context, the sign {} indicates a sub-argument that should be 
    - Suffix: {name} *Cloner*
      - The cloner should be a unique name that no existing partitions share
    - Example:
-     - %CE_STORAGE
+     - ``%CE_STORAGE``
        - Clone the partition to CE_STORAGE
+       - Example parg: ``^-1%CE_STORAGE``
  - @ *Place Operator*
    - Place a partition, move it around
    - Suffix: {placer}
@@ -69,12 +73,16 @@ Note: in the above context, the sign {} indicates a sub-argument that should be 
     - Example:
       - @-2
         - Move the partition 2 to left, move the 2 partitions it crossed 1 to right
+        - Example parg: ``^-1@-2``
       - @+3
         - Move the partition 3 to right, move the 3 partitions it crossed 1 to left
+        - Example parg: ``^roms@+3``
       - @7 or @=+7
         - Place the partition as the 8th partition, if it moves to left, move the partitions it crossed 1 to right; if it moved to right, move the partitions it crosses 1 to left; if it does not move, nothing changes
+        - Example parg: ``^system@7``, ``^system@=+7``
       - @=-4
         - Place the partition as the 4th last partition (should be 3 other partitions after it). Same logic as the last one.
+        - Example parg: ``^logo@=-7``
  - : *Adjust Operator*
    - Suffix: {adjustor}
      - {name}:{offset}:{size}:{masks}
@@ -83,7 +91,9 @@ Note: in the above context, the sign {} indicates a sub-argument that should be 
    - Example:
      - :bootleg::-1G:
        - Rename the partition to bootleg, shrink its size by 1G
+       - Example parg: ``^boot:bootleg::-1G:``
      - ::+2G:+1G:4
        - Increase the partition's offset by 2G, increase its size by 1G, change its mask to 4 
+       - Example parg: ``^factory::+2G:+1G:4``
 
 [philosophy of ampart]: empty

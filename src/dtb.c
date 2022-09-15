@@ -260,40 +260,6 @@ dtb_get_phandles(
     return plist;
 }
 
-uint32_t 
-dtb_compare_partitions(
-    struct dts_partitions_helper const * const  phelper_a, 
-    struct dts_partitions_helper const * const  phelper_b
-){
-    uint32_t r = 0;
-    uint32_t compare_partitions;
-    uint32_t diff;
-    if (phelper_a->partitions_count > phelper_b->partitions_count) {
-        compare_partitions = phelper_b->partitions_count;
-        diff = phelper_a->partitions_count - phelper_b->partitions_count;
-    } else {
-        compare_partitions = phelper_b->partitions_count;
-        diff = phelper_b->partitions_count - phelper_a->partitions_count;
-    }
-    if (compare_partitions) {
-        struct dts_partition_entry const *part_a, *part_b;
-        for (uint32_t i = 0; i < compare_partitions; ++i) {
-            part_a = phelper_a->partitions + i;
-            part_b = phelper_b->partitions + i;
-            if (strncmp(part_a->name, part_b->name, MAX_PARTITION_NAME_LENGTH)) {
-                r += 1;
-            }
-            if (part_a->size != part_b->size) {
-                r += 2;
-            }
-            if (part_a->mask != part_b->mask) {
-                r += 4;
-            }
-        }
-    } 
-    return r + 8 * diff;
-}
-
 uint8_t *
 dtb_partition_choose_correct(
     uint8_t *const buffer
@@ -607,6 +573,48 @@ dtb_read_into_buffer_helper(
 }
 
 int
+dtb_are_buffers_partitions_different(
+    struct dtb_buffer_helper *bhelper
+){
+    if (!bhelper || !bhelper->dtb_count) {
+        return -1;
+    }
+    if (bhelper->dtb_count == 1) {
+        if (!bhelper->dtbs->partitions->partitions_count) {
+            return -2;
+        }
+        return 0;
+    }
+    struct dts_partitions_helper const *phelper_a, *phelper_b;
+    struct dts_partition_entry const *entry_a, *entry_b;
+
+    for (unsigned i = 0; i < bhelper->dtb_count; ++i) {
+        phelper_a = (bhelper->dtbs+i)->partitions;
+        for (unsigned j = i; j < bhelper->dtb_count; ++j) {
+            phelper_b = (bhelper->dtbs+j)->partitions;
+            if (phelper_a->partitions_count != phelper_b->partitions_count) {
+                return 1;
+            }
+            if (!phelper_a->partitions_count) { // Essentially should mean both 0
+                return -2;
+            }
+            if (phelper_a->partitions_count > MAX_PARTITIONS_COUNT) {
+                return -2;
+            }
+            for (unsigned k = 0; k <phelper_a->partitions_count; ++k) {
+                entry_a = phelper_a->partitions + k;
+                entry_b = phelper_a->partitions + k;
+                if (strncmp(entry_a->name, entry_b->name, MAX_PARTITION_NAME_LENGTH) || entry_a->size != entry_b->size || entry_a->mask != entry_b->mask) {
+                    return 2;
+                }
+            }
+        }
+    }
+    return 0;
+}
+
+
+int
 dtb_read_partitions_and_report(
     int const       fd,
     size_t const    size_max,
@@ -623,6 +631,11 @@ dtb_read_partitions_and_report(
         puts(bhelper->dtbs[i].soc);
         puts(bhelper->dtbs[i].platform);
         puts(bhelper->dtbs[i].variant);
+    }
+    if (dtb_are_buffers_partitions_different(bhelper)) {
+        puts("Naughty partitions!!!!");
+    } else {
+        puts("All good");
     }
     dtb_free_buffer_helper(&bhelper);
     return 0;

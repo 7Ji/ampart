@@ -845,3 +845,38 @@ dts_get_property_string(
     strncpy(string, (const char *)dts_property.value, dts_property.len);
     return 0;
 }
+
+
+uint32_t 
+dts_compare_partitions(
+    struct dts_partitions_helper const * const  phelper_a, 
+    struct dts_partitions_helper const * const  phelper_b
+){
+    uint32_t r = 0;
+    uint32_t compare_partitions;
+    uint32_t diff;
+    if (phelper_a->partitions_count > phelper_b->partitions_count) {
+        compare_partitions = phelper_b->partitions_count;
+        diff = phelper_a->partitions_count - phelper_b->partitions_count;
+    } else {
+        compare_partitions = phelper_b->partitions_count;
+        diff = phelper_b->partitions_count - phelper_a->partitions_count;
+    }
+    if (compare_partitions) {
+        struct dts_partition_entry const *part_a, *part_b;
+        for (uint32_t i = 0; i < compare_partitions; ++i) {
+            part_a = phelper_a->partitions + i;
+            part_b = phelper_b->partitions + i;
+            if (strncmp(part_a->name, part_b->name, MAX_PARTITION_NAME_LENGTH)) {
+                r += 1;
+            }
+            if (part_a->size != part_b->size) {
+                r += 2;
+            }
+            if (part_a->mask != part_b->mask) {
+                r += 4;
+            }
+        }
+    } 
+    return r + 8 * diff;
+}

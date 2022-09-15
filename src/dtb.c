@@ -49,9 +49,12 @@ struct dtb_buffers dtb_buffers = {0};
 
 /* Function */
 
-uint32_t dtb_checksum(const struct dtb_partition * const dtb) {
+uint32_t
+dtb_checksum(
+    struct dtb_partition const * const  dtb
+){
     uint32_t checksum = 0;
-    const uint32_t *const dtb_as_uint = (const uint32_t *)dtb;
+    uint32_t const * const dtb_as_uint = (uint32_t const *)dtb;
     for (uint32_t i=0; i<DTB_PARTITION_CHECKSUM_COUNT; ++i) {
         checksum += dtb_as_uint[i];
     }
@@ -59,7 +62,11 @@ uint32_t dtb_checksum(const struct dtb_partition * const dtb) {
     return checksum;
 }
 
-static inline struct dtb_header dtb_header_swapbytes(const struct dtb_header *const dh) {
+static inline
+struct dtb_header
+dtb_header_swapbytes(
+    struct dtb_header const * const dh
+){
     struct dtb_header dh_new = {
         bswap_32(dh->magic),
         {bswap_32(dh->totalsize)},
@@ -75,24 +82,28 @@ static inline struct dtb_header dtb_header_swapbytes(const struct dtb_header *co
     return dh_new;
 }
 
-struct dtb_multi_entries_helper *dtb_parse_multi_entries(const uint8_t *const dtb) {
-    const struct dtb_multi_header *const header = (const struct dtb_multi_header *)dtb;
-    if (header->magic != DTB_MAGIC_MULTI) {
-        fputs("DTB parse multi entries: given dtb's magic is not correct\n", stderr);
-        return NULL;
-    }
-    uint32_t len_property;
+static inline
+uint32_t
+dtb_get_multi_header_property_length(
+    struct dtb_multi_header const *const    header
+){
     switch(header->version) {
         case 1:
-            len_property = 4;
-            break;
+            return 4;
         case 2:
-            len_property = 16;
-            break;
+            return 16;
         default:
             fprintf(stderr, "DTB parse multi entries: version not supported, only v1 and v2 supported yet the version is %"PRIu32"\n", header->version);
-            return NULL;
+            return 0;
     }
+
+}
+
+static inline
+struct dtb_multi_entries_helper *
+dtb_prepare_multi_entries_helper(
+    struct dtb_multi_header const *const header
+){
     struct dtb_multi_entries_helper *const mhelper = malloc(sizeof(struct dtb_multi_entries_helper));
     if (!mhelper) {
         fputs("DTB parse multi entries: failed to allocate memory for entries helper\n", stderr);
@@ -106,45 +117,77 @@ struct dtb_multi_entries_helper *dtb_parse_multi_entries(const uint8_t *const dt
         free(mhelper);
         return NULL;
     }
-    uint32_t entry_offset, prop_offset;
+    return mhelper;
+}
+
+static inline
+void
+dtb_pasre_multi_entries_each(
+    uint8_t const * const                   dtb,
+    struct dtb_multi_entries_helper *const  mhelper,
+    uint32_t const                          len_property,
+    uint32_t const                          i
+){
+    uint32_t const entry_offset = 12 + (len_property * 3 + 8) * i;
+    uint32_t const prop_offset = entry_offset + len_property * 3;
+    mhelper->entries[i].offset = *(const uint32_t *)(dtb + prop_offset);
+    mhelper->entries[i].size = *(const uint32_t *)(dtb + prop_offset + 4);
+    mhelper->entries[i].dtb = (uint8_t *)dtb + mhelper->entries[i].offset;
     char target[3][12] = {0};
-    char *str_hot, *header_hot;
-    for (uint32_t i = 0; i<mhelper->entry_count; ++i) {
-        entry_offset = 12 + (len_property * 3 + 8) * i;
-        prop_offset = entry_offset + len_property * 3;
-        mhelper->entries[i].offset = *(const uint32_t *)(dtb + prop_offset);
-        mhelper->entries[i].size = *(const uint32_t *)(dtb + prop_offset + 4);
-        mhelper->entries[i].dtb = (uint8_t *)dtb + mhelper->entries[i].offset;
-        memset(target, 0, 36);
-        for (int j = 0; j < 3; ++j) {
-            for (uint32_t k = 0; k < len_property; k += 4) {
-                str_hot = target[j] + k;
-                header_hot = (char *)dtb + entry_offset + len_property * j + k;
-                if (*(uint32_t *)header_hot) {
-                    str_hot[0] = header_hot[3];
-                    str_hot[1] = header_hot[2];
-                    str_hot[2] = header_hot[1];
-                    str_hot[3] = header_hot[0];
-                } else {
-                    *(uint32_t *)str_hot = 0;
-                }
-            }
-            for (int k = 0; k < 12; ++k) {
-                if (target[j][k] == ' ') {
-                    target[j][k] = '\0';
-                }
+    for (int j = 0; j < 3; ++j) {
+        for (uint32_t k = 0; k < len_property; k += 4) {
+            char *const str_hot = target[j] + k;
+            char *const header_hot = (char *)dtb + entry_offset + len_property * j + k;
+            if (*(uint32_t *)header_hot) {
+                str_hot[0] = header_hot[3];
+                str_hot[1] = header_hot[2];
+                str_hot[2] = header_hot[1];
+                str_hot[3] = header_hot[0];
+            } else {
+                *(uint32_t *)str_hot = 0;
             }
         }
-        strncpy(mhelper->entries[i].soc, target[0], 12);
-        strncpy(mhelper->entries[i].platform, target[1], 12);
-        strncpy(mhelper->entries[i].variant, target[2], 12);
-        snprintf(mhelper->entries[i].target, 36, "%s_%s_%s", target[0], target[1], target[2]);
-        fprintf(stderr, "DTB parse multi entries: Entry %uth of %u, %s, for SoC %s, platform %s, variant %s\n", i+1, mhelper->entry_count, mhelper->entries[i].target, mhelper->entries[i].soc, mhelper->entries[i].platform, mhelper->entries[i].variant);
+        for (int k = 0; k < 12; ++k) {
+            if (target[j][k] == ' ') {
+                target[j][k] = '\0';
+            }
+        }
+    }
+    strncpy(mhelper->entries[i].soc, target[0], 12);
+    strncpy(mhelper->entries[i].platform, target[1], 12);
+    strncpy(mhelper->entries[i].variant, target[2], 12);
+    snprintf(mhelper->entries[i].target, 36, "%s_%s_%s", target[0], target[1], target[2]);
+    fprintf(stderr, "DTB parse multi entries: Entry %uth of %u, %s, for SoC %s, platform %s, variant %s\n", i+1, mhelper->entry_count, mhelper->entries[i].target, mhelper->entries[i].soc, mhelper->entries[i].platform, mhelper->entries[i].variant);
+}
+
+struct dtb_multi_entries_helper *
+dtb_parse_multi_entries(
+    uint8_t const * const   dtb
+){
+    struct dtb_multi_header const *const header = (struct dtb_multi_header const *)dtb;
+    if (header->magic != DTB_MAGIC_MULTI) {
+        fputs("DTB parse multi entries: given dtb's magic is not correct\n", stderr);
+        return NULL;
+    }
+    uint32_t const len_property = dtb_get_multi_header_property_length(header);
+    if (!len_property) {
+        return NULL;
+    }
+    struct dtb_multi_entries_helper *const mhelper = dtb_prepare_multi_entries_helper(header);
+    if (!mhelper) {
+        return NULL;
+    }
+    for (uint32_t i = 0; i<mhelper->entry_count; ++i) {
+        dtb_pasre_multi_entries_each(dtb, mhelper, len_property, i);
     }
     return mhelper;
 }
 
-struct dts_partitions_helper *dtb_get_partitions(const uint8_t *const dtb, const size_t size) {
+struct dts_partitions_helper *
+dtb_get_partitions(
+    uint8_t const * const   dtb, 
+    size_t const            size
+){
     struct dtb_header dh = dtb_header_swapbytes((struct dtb_header *)dtb);
     if (dh.off_dt_strings + dh.size_dt_strings > size) {
         fputs("DTB get partitions: dtb end point overflows\n", stderr);
@@ -169,7 +212,10 @@ struct dts_partitions_helper *dtb_get_partitions(const uint8_t *const dtb, const
     return phelper;
 }
 
-enum dtb_type dtb_identify_type(const uint8_t *const dtb) {
+enum dtb_type
+dtb_identify_type(
+    uint8_t const * const dtb
+){
     switch (*(uint32_t *)dtb) {
         case DTB_MAGIC_PLAIN:
             return DTB_TYPE_PLAIN;
@@ -184,12 +230,16 @@ enum dtb_type dtb_identify_type(const uint8_t *const dtb) {
     }
 }
 
-struct dts_phandle_list *dtb_get_phandles(const uint8_t *const dtb, const size_t size) {
+struct dts_phandle_list *
+dtb_get_phandles(
+    uint8_t const * const   dtb,
+    size_t const            size
+){
     struct dtb_header dh = dtb_header_swapbytes((struct dtb_header *)dtb);
     if (dh.totalsize > size) {
         return NULL;
     }
-    const uint32_t *current = (const uint32_t *)(dtb + dh.off_dt_struct);
+    uint32_t const *current = (uint32_t const*)(dtb + dh.off_dt_struct);
     uint32_t max_offset = dh.size_dt_struct;
     while (*current == DTS_NOP_ACTUAL) {
         ++current;
@@ -199,11 +249,11 @@ struct dts_phandle_list *dtb_get_phandles(const uint8_t *const dtb, const size_t
         fputs("DTS get phandles: Root node does not start properly", stderr);
         return NULL;
     }
-    const off_t offset_phandle = stringblock_find_string_raw((const char*)dtb + dh.off_dt_strings, dh.size_dt_strings, "phandle");
+    off_t const offset_phandle = stringblock_find_string_raw((const char*)dtb + dh.off_dt_strings, dh.size_dt_strings, "phandle");
     if (offset_phandle < 0) {
         return NULL;
     }
-    const off_t offset_linux_phandle = stringblock_find_string_raw((const char*)dtb + dh.off_dt_strings, dh.size_dt_strings, "linux,phandle");
+    off_t const offset_linux_phandle = stringblock_find_string_raw((const char*)dtb + dh.off_dt_strings, dh.size_dt_strings, "linux,phandle");
     struct dts_phandle_list *plist = malloc(sizeof(struct dts_phandle_list));
     if (!plist) {
         return NULL;
@@ -230,7 +280,11 @@ struct dts_phandle_list *dtb_get_phandles(const uint8_t *const dtb, const size_t
     return plist;
 }
 
-uint32_t dtb_compare_partitions(struct dts_partitions_helper *phelper_a, struct dts_partitions_helper *phelper_b) {
+uint32_t 
+dtb_compare_partitions(
+    struct dts_partitions_helper const * const  phelper_a, 
+    struct dts_partitions_helper const * const  phelper_b
+){
     uint32_t r = 0;
     uint32_t compare_partitions;
     uint32_t diff;
@@ -242,7 +296,7 @@ uint32_t dtb_compare_partitions(struct dts_partitions_helper *phelper_a, struct 
         diff = phelper_b->partitions_count - phelper_a->partitions_count;
     }
     if (compare_partitions) {
-        struct dts_partition_entry *part_a, *part_b;
+        struct dts_partition_entry const *part_a, *part_b;
         for (uint32_t i = 0; i < compare_partitions; ++i) {
             part_a = phelper_a->partitions + i;
             part_b = phelper_b->partitions + i;
@@ -260,7 +314,12 @@ uint32_t dtb_compare_partitions(struct dts_partitions_helper *phelper_a, struct 
     return r + 8 * diff;
 }
 
-int dtb_read_partitions_and_report(const int fd, const size_t size_max, const bool checksum) {
+int
+dtb_read_partitions_and_report(
+    int const       fd,
+    size_t const    size_max,
+    bool const      checksum
+){
     size_t size_read, size_dtb;
     if (checksum) {
         size_read = DTB_PARTITION_SIZE * 2;

@@ -680,6 +680,41 @@ dts_report_partitions(
     return;
 }
 
+static inline
+int
+dts_get_phandles_recursive_parse_prop(
+    uint32_t const * const          current,
+    uint32_t * const                i,
+    uint32_t const                  offset_phandle,
+    uint32_t const                  offset_linux_phandle,
+    struct dts_phandle_list * const plist
+){
+    uint32_t const len_prop = bswap_32(*(current+1));
+    uint32_t const name_off = bswap_32(*(current+2));
+    dts_skip_prop_with_length(i, len_prop);
+    if (name_off == offset_phandle || name_off == offset_linux_phandle) {
+        if (len_prop == 4) {
+            uint32_t const phandle = bswap_32(*(current+3));
+            while (phandle >= plist->allocated_count) {
+                uint8_t * buffer = realloc(plist->phandles, sizeof(uint8_t)*plist->allocated_count*2);
+                if (buffer) {
+                    memset(buffer + plist->allocated_count, 0, sizeof(uint8_t)*plist->allocated_count);
+                    plist->phandles = buffer;
+                } else {
+                    fputs("DTS get phandles recursive: Failed to re-allocate memory\n", stderr);
+                    return 1;
+                }
+                plist->allocated_count *= 2;
+            }
+            ++(plist->phandles[phandle]);
+        } else {
+            fputs("DTS get phandles recursive: phandle not of length 4\n", stderr);
+            return 1;
+        }
+    }
+    return 0;
+}
+
 uint32_t
 dts_get_phandles_recursive(
     uint8_t const * const           node,
@@ -694,10 +729,7 @@ dts_get_phandles_recursive(
     }
     uint32_t const *const start = dts_get_start_without_len_name(node);
     uint32_t const *current;
-    uint32_t len_prop, name_off;
     uint32_t offset_child;
-    uint32_t phandle;
-    uint8_t *buffer;
     for (uint32_t i = 0; i < count; ++i) {
         current = start + i;
         switch (*current) {
@@ -713,28 +745,8 @@ dts_get_phandles_recursive(
             case DTS_END_NODE_ACTUAL:
                 return i + start - (const uint32_t *)node;
             case DTS_PROP_ACTUAL:
-                len_prop = bswap_32(*(current+1));
-                name_off = bswap_32(*(current+2));
-                dts_skip_prop_with_length(&i, len_prop);
-                if (name_off == offset_phandle || name_off == offset_linux_phandle) {
-                    if (len_prop == 4) {
-                        phandle = bswap_32(*(current+3));
-                        while (phandle >= plist->allocated_count) {
-                            buffer = realloc(plist->phandles, sizeof(uint8_t)*plist->allocated_count*2);
-                            if (buffer) {
-                                memset(buffer + plist->allocated_count, 0, sizeof(uint8_t)*plist->allocated_count);
-                                plist->phandles = buffer;
-                            } else {
-                                fputs("DTS get phandles recursive: Failed to re-allocate memory\n", stderr);
-                                return 0;
-                            }
-                            plist->allocated_count *= 2;
-                        }
-                        ++(plist->phandles[phandle]);
-                    } else {
-                        fputs("DTS get phandles recursive: phandle not of length 4\n", stderr);
-                        return 0;
-                    }
+                if (dts_get_phandles_recursive_parse_prop(current, &i, offset_phandle, offset_linux_phandle, plist)) {
+                    return 0;
                 }
                 break;
             case DTS_NOP_ACTUAL:

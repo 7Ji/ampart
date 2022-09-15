@@ -113,11 +113,11 @@ ept_valid_header(
 ){
     int ret = 0;
     if (header->partitions_count > 32) {
-        fprintf(stderr, "table valid header: Partitions count invalid, only integer 0~32 is acceppted, actual: %d\n", header->partitions_count);
+        fprintf(stderr, "EPT valid header: Partitions count invalid, only integer 0~32 is acceppted, actual: %d\n", header->partitions_count);
         ++ret;
     }
     if (header->magic_uint32 != EPT_HEADER_MAGIC_UINT32) {
-        fprintf(stderr, "table valid header: Magic invalid, expect: %"PRIx32", actual: %"PRIx32"\n", header->magic_uint32, EPT_HEADER_MAGIC_UINT32);
+        fprintf(stderr, "EPT valid header: Magic invalid, expect: %"PRIx32", actual: %"PRIx32"\n", header->magic_uint32, EPT_HEADER_MAGIC_UINT32);
         ++ret;
     }
     bool version_invalid = false;
@@ -128,13 +128,13 @@ ept_valid_header(
         }
     }
     if (version_invalid) {
-        fprintf(stderr, "table valid header: Version invalid, expect (little endian) 0x%08x%08x%08x ("EPT_HEADER_VERSION_STRING"), actual: 0x%08"PRIx32"%08"PRIx32"%08"PRIx32"\n", EPT_HEADER_VERSION_UINT32_2, EPT_HEADER_VERSION_UINT32_1, EPT_HEADER_VERSION_UINT32_0, header->version_uint32[2], header->version_uint32[1], header->version_uint32[0]);
+        fprintf(stderr, "EPT valid header: Version invalid, expect (little endian) 0x%08x%08x%08x ("EPT_HEADER_VERSION_STRING"), actual: 0x%08"PRIx32"%08"PRIx32"%08"PRIx32"\n", EPT_HEADER_VERSION_UINT32_2, EPT_HEADER_VERSION_UINT32_1, EPT_HEADER_VERSION_UINT32_0, header->version_uint32[2], header->version_uint32[1], header->version_uint32[0]);
         ret += 1;
     }
     if (header->partitions_count < 32) { // If it's corrupted it may be too large
         const uint32_t checksum = ept_checksum(((const struct ept_table *)header)->partitions, header->partitions_count);
         if (header->checksum != checksum) {
-            fprintf(stderr, "table valid header: Checksum mismatch, calculated: %"PRIx32", actual: %"PRIx32"\n", checksum, header->checksum);
+            fprintf(stderr, "EPT valid header: Checksum mismatch, calculated: %"PRIx32", actual: %"PRIx32"\n", checksum, header->checksum);
             ret += 1;
         }
     }
@@ -169,7 +169,7 @@ ept_valid_partition_name(
         term = false;
     }
     if (ret) {
-        fprintf(stderr, "table valid partition name: %u illegal characters found in partition name '%s'", ret, name);
+        fprintf(stderr, "EPT valid partition name: %u illegal characters found in partition name '%s'", ret, name);
         if (term) {
             fputc('\n', stderr);
         } else {
@@ -238,11 +238,11 @@ ept_pedantic_offsets(
     uint64_t const              capacity
 ){
     if (table->partitions_count < 4) {
-        fputs("table pedantic offsets: refuse to fill-in offsets for heavily modified table (at least 4 partitions should exist)\n", stderr);
+        fputs("EPT pedantic offsets: refuse to fill-in offsets for heavily modified table (at least 4 partitions should exist)\n", stderr);
         return 1;
     }
     if (strncmp(table->partitions[0].name, EPT_PARTITION_BOOTLOADER_NAME, MAX_PARTITION_NAME_LENGTH) || strncmp(table->partitions[1].name, EPT_PARTITION_RESERVED_NAME, MAX_PARTITION_NAME_LENGTH) || strncmp(table->partitions[2].name, EPT_PARTITION_CACHE_NAME, MAX_PARTITION_NAME_LENGTH) || strncmp(table->partitions[3].name, EPT_PARTITION_ENV_NAME, MAX_PARTITION_NAME_LENGTH)) {
-        fprintf(stderr, "table pedantic offsets: refuse to fill-in offsets for a table where the first 4 partitions are not bootloader, reserved, cache, env (%s, %s, %s, %s instead)\n", table->partitions[0].name, table->partitions[1].name, table->partitions[2].name, table->partitions[3].name);
+        fprintf(stderr, "EPT pedantic offsets: refuse to fill-in offsets for a table where the first 4 partitions are not bootloader, reserved, cache, env (%s, %s, %s, %s instead)\n", table->partitions[0].name, table->partitions[1].name, table->partitions[2].name, table->partitions[3].name);
         return 2;
     }
     table->partitions[0].offset = 0;
@@ -253,7 +253,7 @@ ept_pedantic_offsets(
         part_current= table->partitions + i;
         part_current->offset = part_last->offset + part_last->size + cli_options.gap_partition;
         if (part_current->offset > capacity) {
-            fprintf(stderr, "table pedantic offsets: partition %"PRIu32" (%s) overflows, its offset (%"PRIu64") is larger than eMMC capacity (%zu)\n", i, part_current->name, part_current->offset, capacity);
+            fprintf(stderr, "EPT pedantic offsets: partition %"PRIu32" (%s) overflows, its offset (%"PRIu64") is larger than eMMC capacity (%zu)\n", i, part_current->name, part_current->offset, capacity);
             return 3;
         }
         if (part_current->size == (uint64_t)-1 || part_current->offset + part_current->size > capacity) {
@@ -261,7 +261,7 @@ ept_pedantic_offsets(
         }
         part_last = part_current;
     }
-    fputs("table pedantic offsets: layout now compatible with Amlogic's u-boot\n", stderr);
+    fputs("EPT pedantic offsets: layout now compatible with Amlogic's u-boot\n", stderr);
     return 0;
 }
 
@@ -335,7 +335,7 @@ ept_compare(
     struct ept_table const * const  ept_b
 ){
     if (!(ept_a && ept_b)) {
-        fputs("table compare: not both tables are valid\n", stderr);
+        fputs("EPT compare: not both tables are valid\n", stderr);
         return -1;
     }
     return (memcmp(ept_a, ept_b, sizeof(struct ept_table)));
@@ -367,16 +367,16 @@ ept_read(
     size_t const    size
 ){
     if (size < sizeof(struct ept_table)) {
-        fputs("table read: Input size too small\n", stderr);
+        fputs("EPT read: Input size too small\n", stderr);
         return NULL;
     }
     struct ept_table *table = malloc(sizeof(struct ept_table));
     if (table == NULL) {
-        fputs("table read: Failed to allocate memory for partition table\n", stderr);
+        fputs("EPT read: Failed to allocate memory for partition table\n", stderr);
         return NULL;
     }
     if (io_read_till_finish(fd, table, sizeof(struct ept_table))) {
-        fputs("table read: Failed to read into buffer", stderr);
+        fputs("EPT read: Failed to read into buffer", stderr);
         free(table);
         return NULL;
     }

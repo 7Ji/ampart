@@ -304,6 +304,7 @@ ept_complete_dtb(
         free(table);
         return NULL;
     }
+    table->checksum = ept_checksum(table->partitions, table->partitions_count);
     return table;
 }
 
@@ -323,7 +324,7 @@ ept_from_dtb(
     if (!table) {
         return NULL;
     }
-    table->checksum = ept_checksum(table->partitions, table->partitions_count);
+    // table->checksum = ept_checksum(table->partitions, table->partitions_count);
     // ept_report(table);
     // printf("%d\n", ept_valid(table));
     return table;
@@ -334,11 +335,18 @@ ept_compare(
     struct ept_table const * const  ept_a,
     struct ept_table const * const  ept_b
 ){
-    if (!(ept_a && ept_b)) {
-        fputs("EPT compare: not both tables are valid\n", stderr);
+    if (!ept_a || !ept_b || ept_a->magic_uint32 != EPT_HEADER_MAGIC_UINT32 || ept_b->magic_uint32 != EPT_HEADER_MAGIC_UINT32 || !ept_a->partitions_count || !ept_b->partitions_count) {
+        fputs("EPT compare: not both tables are valid and contain valid partitions\n", stderr);
         return -1;
     }
-    return (memcmp(ept_a, ept_b, sizeof(struct ept_table)));
+    int r = 128 * (ept_a->version_uint32[0] != ept_b->version_uint32[0]) + 256 * (ept_a->version_uint32[1] != ept_b->version_uint32[1]) + 512 * (ept_a->version_uint32[2] != ept_b->version_uint32[2]) + 1024 * (ept_a->partitions_count != ept_b->partitions_count);
+    struct ept_partition const *part_a, *part_b;
+    for (unsigned i = 0; i < MAX_PARTITIONS_COUNT; ++i) {
+        part_a = ept_a->partitions + i;
+        part_b = ept_b->partitions + i;
+        r += !!strncmp(part_a->name, part_b->name, MAX_PARTITION_NAME_LENGTH) + 2 * (part_a->offset != part_b->offset) + 4 * (part_a->size != part_b->size) + 8 * (part_a->mask_flags != part_b->mask_flags);
+    }
+    return r;
 }
 
 uint64_t 

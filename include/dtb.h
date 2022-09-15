@@ -110,7 +110,17 @@ uint32_t
     dtb_checksum(
         struct dtb_partition const *    dtb
     );
-        
+
+int
+    dtb_check_buffers_partitions(
+        struct dtb_buffer_helper const * const  bhelper
+    );
+
+void
+    dtb_free_buffer_helper(
+        struct dtb_buffer_helper * *    bhelper
+    );
+
 struct dts_partitions_helper *
     dtb_get_partitions(
         uint8_t const * dtb, 
@@ -133,8 +143,15 @@ struct dtb_multi_entries_helper *
         uint8_t const * dtb
     );
 
-int 
-    dtb_read_partitions_and_report(
+struct dtb_buffer_helper *
+    dtb_read_into_buffer_helper(
+        int const       fd,
+        size_t const    size_max,
+        bool const      should_checksum
+    );
+
+struct dtb_buffer_helper *
+    dtb_read_into_buffer_helper_and_report(
         int     fd, 
         size_t  size_max, 
         bool    checksum

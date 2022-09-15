@@ -30,7 +30,7 @@ char const  cli_mode_strings[][10] = {
     "",
     "dtoe",
     "etod",
-    "pedantic",
+    "epedantic",
     "dedit",
     "eedit",
     "dsnapshot",
@@ -93,10 +93,13 @@ cli_describe_options() {
 
 static inline
 int
-cli_read(){
+cli_read(
+    struct dtb_buffer_helper * * const  bhelper,
+    struct ept_table * * const          table
+){
     int fd = open(cli_options.target, O_RDONLY);
     if (fd < 0) {
-        fputs("CLI early stage: Failed to open target\n", stderr);
+        fputs("CLI read: Failed to open target\n", stderr);
         return 1;
     }
     size_t dtb_offset = 0, ept_offset = 0;
@@ -111,72 +114,60 @@ cli_read(){
             ept_offset = cli_options.offset_reserved;
             break;
         default:
-            fputs("CLI early stage: Ilegal target content type (auto), this should not happen\n", stderr);
+            fputs("CLI read: Ilegal target content type (auto), this should not happen\n", stderr);
             close(fd);
             return 2;
     }
-    fprintf(stderr, "CLI early stage: Seeking to %zu to read DTB and report\n", dtb_offset);
+    fprintf(stderr, "CLI read: Seeking to %zu to read DTB and report\n", dtb_offset);
     if (lseek(fd, dtb_offset, SEEK_SET) < 0) {
-        fprintf(stderr, "CLI early stage: Failed to seek for DTB, errno: %d, error: %s\n", errno, strerror(errno));
+        fprintf(stderr, "CLI read: Failed to seek for DTB, errno: %d, error: %s\n", errno, strerror(errno));
         close(fd);
         return 3;
     }
-    int r = dtb_read_partitions_and_report(fd, cli_options.size - dtb_offset, cli_options.content != CLI_CONTENT_TYPE_DTB);
-    if (r > 0) {
-        fputs("CLI early stage: Utterly wrong when trying to read DTB, giving up\n", stderr);
-        close(fd);
-        return 4;
-    } else if (r < 0 ) {
-        switch (cli_options.mode) {
-            case CLI_MODE_DTOE:
-            case CLI_MODE_DEDIT:
-            case CLI_MODE_DSNAPSHOT:
-                fprintf(stderr, "CLI early stage: Mode %s requires DTB to exist and partitions node to exist in it, and multiple DTBs (if any) should have represent the same partitions, these requirement are however not met, giving up\n", cli_mode_strings[cli_options.mode]);
-                close(fd);
-                return 5;
-            default:
-                break;
-        }
-    }
+    *bhelper = dtb_read_into_buffer_helper_and_report(fd, cli_options.size - dtb_offset, cli_options.content != CLI_CONTENT_TYPE_DTB);
     if (cli_options.content != CLI_CONTENT_TYPE_DTB) {
-        fprintf(stderr, "CLI early stage: Seeking to %zu to read EPT and report\n", ept_offset);
+        fprintf(stderr, "CLI read: Seeking to %zu to read EPT and report\n", ept_offset);
         if (lseek(fd, ept_offset, SEEK_SET) < 0) {
-            fprintf(stderr, "CLI early stage: Failed to seek for EPT, errno: %d, error: %s\n", errno, strerror(errno));
-            close(fd);
-            return 6;
-        }
-        struct ept_table *table = ept_read_and_report(fd, cli_options.size - ept_offset);
-        if (!table) {
-            switch (cli_options.mode) {
-                case CLI_MODE_ETOD:
-                case CLI_MODE_PEDANTIC:
-                case CLI_MODE_EEDIT:
-                case CLI_MODE_ESNAPSHOT:
-                    fprintf(stderr, "CLI early stage: Mode %s requires EPT to exist and is valid, these requirement are however not met, giving up\n", cli_mode_strings[cli_options.mode]);
-                    close(fd);
-                    return 7;
-                default:
-                    break;
+            fprintf(stderr, "CLI read: Failed to seek for EPT, errno: %d, error: %s\n", errno, strerror(errno));
+            if (*bhelper) {
+                free(*bhelper);
+                *bhelper = NULL;
             }
+            close(fd);
+            return 4;
         }
-        free(table);
+        *table = ept_read_and_report(fd, cli_options.size - ept_offset);
+        // if (!table) {
+        //     switch (cli_options.mode) {
+        //         case CLI_MODE_ETOD:
+        //         case CLI_MODE_PEDANTIC:
+        //         case CLI_MODE_EEDIT:
+        //         case CLI_MODE_ESNAPSHOT:
+        //             fprintf(stderr, "CLI early stage: Mode %s requires EPT to exist and is valid, these requirement are however not met, giving up\n", cli_mode_strings[cli_options.mode]);
+        //             close(fd);
+        //             return 7;
+        //         default:
+        //             break;
+        //     }
+        // }
+        // free(table);
     }
     close(fd);
     return 0;
 }
 
-static inline
-int 
-cli_early_stage(
-    int     argc,
-    char *  argv[]
-){
-    int const r = cli_read();
-    for (int i =0; i<argc; ++i) {
-        printf("%d: %s\n", i, argv[i]);
-    }
-    return r;
-}
+// static inline
+// int 
+// cli_early_stage(
+//     int     argc,
+//     char *  argv[]
+// ){
+//     int const r = cli_read();
+//     for (int i =0; i<argc; ++i) {
+//         printf("%d: %s\n", i, argv[i]);
+//     }
+//     return r;
+// }
 
 static inline
 int
@@ -369,7 +360,261 @@ cli_complete_options(
     return 0;
 }
 
-int cli_interface(
+static inline
+int
+cli_mode_dtoe(
+    struct dtb_buffer_helper const * const  bhelper,
+    struct ept_table const * const          table
+){
+    fputs("CLI mode dtoe: Create EPT from DTB\n", stderr);
+    if (!bhelper || !bhelper->dtb_count) {
+        fputs("CLI mode dtoe: DTB not correct or invalid\n", stderr);
+        return 1;
+    }
+    if (dtb_check_buffers_partitions(bhelper)) {
+        fputs("CLI mode dtoe: Not all DTB entries have partitions node and identical, refuse to work\n", stderr);
+        return 2;
+    }
+    uint64_t capacity;
+    if (cli_options.content == CLI_CONTENT_TYPE_DISK) {
+        capacity = cli_options.size;
+    } else {
+        if (!table) {
+            fputs("CLI mode dtoe: Can't get eMMC size, since target is not a full disk (image), and EPT is not valid, refuse to work\n", stderr);
+            return 3;
+        }
+        capacity = ept_get_capacity(table);
+    }
+    struct ept_table *table_new = ept_complete_dtb(bhelper->dtbs->partitions, capacity);
+    if (!table_new) {
+        fputs("CLI mode dtoe: Failed to create new partition table\n", stderr);
+        return 4;
+    }
+    ept_report(table_new);
+    if (table && !ept_compare(table, table_new)) {
+        fputs("CLI mode dtoe: New table is the same as the old table, no need to update\n", stderr);
+        free(table_new);
+        return 0;
+    }
+    if (cli_options.content != CLI_CONTENT_TYPE_DTB) {
+        // Write
+    }
+    free(table_new);
+    return 0;
+}
+
+static inline
+int
+cli_mode_etod(
+    struct dtb_buffer_helper const * const  bhelper,
+    struct ept_table const * const          table
+){
+    fputs("CLI mode etod: Recreate partitions node in DTB from EPT\n", stderr);
+    if (!bhelper) {
+        return 1;
+    }
+    if (!table) {
+        return 2;
+    }
+    return 0;
+}
+
+static inline
+int
+cli_mode_epedantic(
+    struct ept_table const * const  table
+){
+    fputs("CLI mode epedantic: Check if EPT is pedantic\n", stderr);
+    if (!table) {
+        return 1;
+    }
+    return 0;
+}
+
+static inline
+int
+cli_mode_dedit(
+    struct dtb_buffer_helper const * const  bhelper,
+    struct ept_table const * const          table,
+    int const                               argc,
+    char *                                  argv[]
+){
+    fputs("CLI mode dedit: Edit partitions node in DTB, and potentially create EPT from it\n", stderr);
+    if (argc <= 0) {
+        fputs("CLI mode dedit: No PARG, early quite\n", stderr);
+        return 0;
+    }
+    for (int i =0; i<argc; ++i) {
+        printf("%d: %s\n", i, argv[i]);
+    }
+    if (!bhelper) {
+        return 1;
+    }
+    if (!table) {
+        return 2;
+    }
+    
+    return 0;
+}
+
+static inline
+int
+cli_mode_eedit(
+    struct ept_table const * const  table,
+    int const                       argc,
+    char *                          argv[]
+){
+    fputs("CLI mode eedit: Edit EPT\n", stderr);
+    if (argc <= 0) {
+        fputs("CLI mode eedit: No PARG, early quite\n", stderr);
+        return 0;
+    }
+    for (int i =0; i<argc; ++i) {
+        printf("%d: %s\n", i, argv[i]);
+    }
+    if (!table) {
+        return 1;
+    }
+    return 0;
+}
+
+static inline
+int
+cli_mode_dsnapshot(
+    struct dtb_buffer_helper const * const  bhelper
+){
+    fputs("CLI mode dsnapshot: Take snapshot of partitions node in DTB\n", stderr);
+    if (!bhelper) {
+        return 1;
+    }
+    return 0;
+}
+
+static inline
+int
+cli_mode_esnapshot(
+    struct ept_table const * const  table
+){
+    fputs("CLI mode esnapshot: Take snapshot of EPT\n", stderr);
+    if (!table) {
+        return 1;
+    }
+    return 0;
+}
+
+static inline
+int
+cli_mode_dclone(
+    struct dtb_buffer_helper const * const  bhelper,
+    struct ept_table const * const          table,
+    int const                               argc,
+    char *                                  argv[]
+){
+    fputs("CLI mode dclone: Apply a snapshot taken in dsnapshot mode\n", stderr);
+    if (argc <= 0) {
+        fputs("CLI mode dclone: No PARG, early quite\n", stderr);
+        return 0;
+    }
+    for (int i =0; i<argc; ++i) {
+        printf("%d: %s\n", i, argv[i]);
+    }
+    if (!bhelper) {
+        return 1;
+    }
+    if (!table) {
+        return 2;
+    }
+    return 0;
+}
+
+static inline
+int
+cli_mode_eclone(
+    struct ept_table const * const  table,
+    int const                       argc,
+    char *                          argv[]
+){
+    fputs("CLI mode eclone: Apply a snapshot taken in esnapshot mode\n", stderr);
+    if (argc <= 0) {
+        fputs("CLI mode eclone: No PARG, early quit\n", stderr);
+        return 0;
+    }
+    for (int i =0; i<argc; ++i) {
+        printf("%d: %s\n", i, argv[i]);
+    }
+    if (!table) {
+        return 1;
+    }
+    return 0;
+}
+
+static inline
+int
+cli_mode_ecreate(
+    struct ept_table const * const  table,
+    int const                       argc,
+    char *                          argv[]
+){
+    fputs("CLI mode ecreate: Create EPT in a YOLO way\n", stderr);
+    if (argc <= 0) {
+        fputs("CLI mode ecreate: No PARG, early quit\n", stderr);
+        return 0;
+    }
+    for (int i =0; i<argc; ++i) {
+        printf("%d: %s\n", i, argv[i]);
+    }
+    if (!table) {
+        return 1;
+    }
+    return 0;
+}
+
+static inline
+int 
+cli_dispatcher(
+    struct dtb_buffer_helper const * const  bhelper,
+    struct ept_table const * const          table,
+    int const                               argc,
+    char *                                  argv[]
+){
+    // for (int i =0; i<argc; ++i) {
+    //     printf("%d: %s\n", i, argv[i]);
+    // }
+    if (cli_options.mode == CLI_MODE_INVALID) {
+        fputs("CLI dispatcher: invalid mode\n", stderr);
+        return -1;
+    } else {
+        fprintf(stderr, "CLI dispatcher: Dispatch to mode %s\n", cli_mode_strings[cli_options.mode]);
+    }
+    switch (cli_options.mode) {
+        case CLI_MODE_INVALID:
+            return -1;
+        case CLI_MODE_DTOE:
+            return cli_mode_dtoe(bhelper, table);
+        case CLI_MODE_ETOD:
+            return cli_mode_etod(bhelper, table);
+        case CLI_MODE_EPEDANTIC:
+            return cli_mode_epedantic(table);
+        case CLI_MODE_DEDIT:
+            return cli_mode_dedit(bhelper, table, argc, argv);
+        case CLI_MODE_EEDIT:
+            return cli_mode_eedit(table, argc, argv);
+        case CLI_MODE_DSNAPSHOT:
+            return cli_mode_dsnapshot(bhelper);
+        case CLI_MODE_ESNAPSHOT:
+            return cli_mode_esnapshot(table);
+        case CLI_MODE_DCLONE:
+            return cli_mode_dclone(bhelper, table, argc, argv);
+        case CLI_MODE_ECLONE:
+            return cli_mode_eclone(table, argc, argv);
+        case CLI_MODE_ECREATE:
+            return cli_mode_ecreate(table, argc, argv);
+    }
+    return 0;
+}
+
+int 
+cli_interface(
     int const   argc,
     char *      argv[]
 ){
@@ -383,8 +628,15 @@ int cli_interface(
         return 10 + r;
     }
     cli_describe_options();
-    if ((r = cli_early_stage(argc-optind, argv+optind))) {
+    struct dtb_buffer_helper *bhelper = NULL;
+    struct ept_table *table = NULL;
+    if ((r = cli_read(&bhelper, &table))) {
         return 20 + r;
+    }
+    cli_dispatcher(bhelper, table, argc - optind, argv + optind);
+    dtb_free_buffer_helper(&bhelper);
+    if (table) {
+        free(table);
     }
     return 0;
 }

@@ -20,7 +20,7 @@ enum
         CLI_MODE_INVALID,
         CLI_MODE_DTOE,
         CLI_MODE_ETOD,
-        CLI_MODE_PEDANTIC,
+        CLI_MODE_EPEDANTIC,
         CLI_MODE_DEDIT,
         CLI_MODE_EEDIT,
         CLI_MODE_DSNAPSHOT,

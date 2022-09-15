@@ -132,4 +132,13 @@ util_string_is_empty(
     }
 }
 
+inline
+void
+util_log_title(
+    const char * const  title
+){
+    fputs(title, stderr);
+    fputs(": ", stderr);
+}
+
 /* util.c: Utility functions that do not lean to specific tasks */

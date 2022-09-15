@@ -27,6 +27,26 @@ enum
 
 /* Structure */
 
+struct
+    dtb_buffer_entry {
+        uint8_t *                       buffer;
+        size_t                          size;
+        struct dts_partitions_helper *  partitions;
+        char                            target[36];
+        char                            soc[12];
+        char                            platform[12];
+        char                            variant[12];
+    };
+
+struct
+    dtb_buffer_helper {
+        struct dtb_buffer_entry *dtbs;
+        unsigned dtb_count;
+        enum dtb_type type_main;
+        enum dtb_type type_sub;
+        
+    };
+
 struct 
     dtb_header {
         uint32_t        magic;

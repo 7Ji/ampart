@@ -223,7 +223,7 @@ dts_get_node(
     return 0;
 }
 
-static
+static inline
 int 
 dts_get_property_actual(
     uint8_t const * const   node,
@@ -822,5 +822,26 @@ dts_phandle_list_finish(
     } else if (have_2) {
         plist->have_linux_phandle = true;
     }
+    return 0;
+}
+
+int
+dts_get_property_string(
+    uint8_t const * const   node,
+    uint32_t const          property_offset,
+    char *                  string,
+    size_t const            max_len
+){
+    dts_property.len = 0;
+    dts_property.value = NULL;
+    if (dts_get_property_actual(node, property_offset)) {
+        fputs("DTS get property string: Failed to get property\n", stderr);
+        return 1;
+    }
+    if (max_len && dts_property.len > max_len) {
+        fputs("DTS get property string: String too long\n", stderr);
+        return 2;
+    }
+    strncpy(string, (const char *)dts_property.value, dts_property.len);
     return 0;
 }

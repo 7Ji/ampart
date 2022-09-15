@@ -75,6 +75,14 @@ uint32_t
         struct dts_phandle_list *   plist
     );
 
+int
+    dts_get_property_string(
+        uint8_t const * const   node,
+        uint32_t const          property_offset,
+        char *                  string,
+        size_t const            max_len
+    );
+
 int 
     dts_phandle_list_finish(
         struct dts_phandle_list *   plist

@@ -27,26 +27,6 @@
 #define DTB_GET_PARTITIONS_NODE_FROM_DTS(dts, max_offset) \
     dts_get_node_from_path(dts, max_offset, "/partitions", 11)
 
-/* Struct */
-
-struct
-    dtb_buffer {
-        uint8_t *res; // Free on this
-        uint8_t *buffer;
-        struct dts_partitions_helper *partitions;
-    };
-
-struct
-    dtb_buffers {
-        struct dtb_buffer *dtbs;
-        unsigned dtb_count;
-        enum dtb_type type_main;
-        enum dtb_type type_sub;
-    };
-
-/* Variable */
-struct dtb_buffers dtb_buffers = {0};
-
 /* Function */
 
 uint32_t
@@ -314,151 +294,477 @@ dtb_compare_partitions(
     return r + 8 * diff;
 }
 
+uint8_t *
+dtb_partition_choose_correct(
+    uint8_t *const buffer
+){
+    struct dtb_partition const *dtb = (struct dtb_partition const*)buffer;
+    if (dtb_checksum(dtb) == dtb->checksum) {
+        fputs("DTB read: Using first 256K in DTB partition\n", stderr);
+        return buffer;
+    }
+    ++dtb;
+    if (dtb_checksum(dtb) == dtb->checksum) {
+        fputs("DTB read: Using second 256K in DTB partition\n", stderr);
+        return buffer + DTB_PARTITION_SIZE;
+    }
+    fputs("DTB read: Both copies in DTB partition invalid, using first one\n", stderr);
+    return buffer;
+}
+
+uint8_t *
+dtb_identify_and_redirect_buffer(
+    struct dtb_buffer_helper *const bhelper,
+    uint8_t       * const           buffer,
+    size_t const                    size_max
+){
+    if (!buffer || !buffer[0]) {
+        return NULL;
+    }
+    switch (dtb_identify_type(buffer)) {
+        case DTB_TYPE_PLAIN:
+            bhelper->type_main = DTB_TYPE_PLAIN;
+            return buffer;
+        case DTB_TYPE_MULTI:
+            bhelper->type_main = DTB_TYPE_MULTI;
+            return buffer;
+        case DTB_TYPE_GZIPPED: {
+            bhelper->type_main = DTB_TYPE_GZIPPED;
+            uint8_t *gbuffer;
+            if (!gzip_unzip(buffer, size_max, &gbuffer)) {
+                fputs("DTB read partitions and report: Failed to unzipped gzipped DTB\n", stderr);
+                return NULL;
+            }
+            switch (dtb_identify_type(gbuffer)) {
+                case DTB_TYPE_PLAIN:
+                    bhelper->type_sub = DTB_TYPE_PLAIN;
+                    break;
+                case DTB_TYPE_MULTI:
+                    bhelper->type_sub = DTB_TYPE_MULTI;
+                    break;
+                default:
+                    fputs("DTB read partitions and report: Gzipped DTB does not contain valid plain/multi DTB\n", stderr);
+                    free(gbuffer);
+                    return NULL;
+            }
+            return gbuffer;
+        }
+        default:
+            fprintf(stderr, "DTB read partitions and report: Unrecognizable DTB, magic %08x\n", *(uint32_t *)buffer);
+            return NULL;
+    }
+}
+
+static inline
+size_t
+dtb_get_size(
+    uint8_t const * const   dtb
+){
+    return bswap_32(((struct dtb_header *)dtb)->totalsize);
+}
+
+static inline
+uint8_t *
+dtb_get_dts(
+    uint8_t const * const   dtb
+){
+    return (uint8_t *)dtb + bswap_32(((struct dtb_header *)dtb)->off_dt_struct);
+}
+
+static inline
+uint32_t
+dtb_get_dts_size(
+    uint8_t const * const   dtb
+){
+    return bswap_32(((struct dtb_header *)dtb)->size_dt_struct);
+}
+
+static inline
+void
+dtb_complete_stringblock_helper(
+    uint8_t const * const       dtb,
+    struct stringblock_helper * shelper
+){
+    struct dtb_header const *const dh = (struct dtb_header *)dtb;
+    shelper->stringblock = (char *)dtb + bswap_32(dh->off_dt_strings);
+    shelper->length = bswap_32(dh->size_dt_strings);
+    shelper->allocated_length = shelper->length;
+}
+
+static inline
+int
+dtb_get_target(
+    uint8_t const * const   dtb,
+    char * const            target
+){
+    struct stringblock_helper shelper;
+    dtb_complete_stringblock_helper(dtb, &shelper);
+    off_t off_target = stringblock_find_string(&shelper, "amlogic-dt-id");
+    if (off_target < 0) {
+        return 1;
+    }
+    uint8_t const * const dts = dtb_get_dts(dtb);
+    uint32_t const size_dts = dtb_get_dts_size(dtb);
+    uint8_t const * node = dts_get_node_from_path(dts, size_dts, "/", 1);
+    if (!node) {
+        return 2;
+    }
+    dts_get_property_string(node, off_target, target, 36);
+    return 0;
+}
+
+static inline
+int
+dtb_entry_split_target_string(
+    struct dtb_buffer_entry * const entry
+){
+    char buffer[36] = {0};
+    strncpy(buffer, entry->target, 36);
+    char *key[3] = {buffer, NULL};
+    unsigned key_id = 0;
+    for (unsigned i = 0; i < 36; ++i) {
+        if (buffer[i] == '_') {
+            buffer[i] = '\0';
+            key[++key_id] = buffer + i + 1;
+        }
+        if (key_id == 2) {
+            break;
+        }
+    }
+    if (key_id != 2) {
+        return 1;
+    }
+    strncpy(entry->soc, key[0], 12);
+    strncpy(entry->platform, key[1], 12);
+    strncpy(entry->variant, key[2], 12);
+    return 0;
+}
+
+static inline
+int
+dtb_parse_entry(
+    struct dtb_buffer_entry * const entry,
+    uint8_t const * const           buffer
+){
+    entry->size = dtb_get_size(buffer);
+    entry->buffer = malloc(entry->size);
+    if (!entry->buffer) {
+        return 1;
+    }
+    memcpy(entry->buffer, buffer, entry->size);
+    if (!(entry->partitions = dtb_get_partitions(entry->buffer, entry->size))) {
+        free(entry->buffer);
+        return 2;
+    }
+    if (dtb_get_target(entry->buffer, entry->target)) {
+        return 3;
+    }
+    if (dtb_entry_split_target_string(entry)) {
+        return 4;
+    }
+    return 0;
+}
+
+static inline
+int
+dtb_get_read_size(
+    bool const      checksum,
+    size_t const    size_max,
+    size_t          *size_read,
+    size_t          *size_dtb
+){
+    if (checksum) {
+        *size_read = DTB_PARTITION_SIZE * 2;
+        if (*size_read > size_max) {
+            fputs("DTB read partitions and report: Remaning data size smaller than minimum required for DTB checksum\n", stderr);
+            return 1;
+        }
+        *size_dtb = DTB_PARTITION_DATA_SIZE;
+    } else {
+        if (size_max > DTB_PARTITION_DATA_SIZE) {
+            *size_read = DTB_PARTITION_DATA_SIZE;
+        } else {
+            *size_read = size_max;
+        }
+        *size_dtb = *size_read;
+    }
+    return 0;
+}
+
+void
+dtb_free_buffer_helper(
+    struct dtb_buffer_helper * * const  bhelper
+){
+    if (*bhelper) {
+        if ((*bhelper)->dtb_count) {
+            for (unsigned i = 0; i < (*bhelper)->dtb_count; ++i) {
+                free((*bhelper)->dtbs[i].buffer);
+                free((*bhelper)->dtbs[i].partitions);
+            }
+            free((*bhelper)->dtbs);
+        }
+        free(*bhelper);
+        *bhelper = NULL;
+    }
+}
+
+struct dtb_buffer_helper *
+dtb_read_into_buffer_helper(
+    int const       fd,
+    size_t const    size_max,
+    bool const      should_checksum
+){
+    struct dtb_buffer_helper *const bhelper = malloc(sizeof(struct dtb_buffer_helper));
+    if (!bhelper) {
+        fputs("DTB read into buffer helper: Failed to allocate memory\n", stderr);
+        return NULL;
+    }
+    memset(bhelper, 0, sizeof(struct dtb_buffer_helper));
+    size_t size_read, size_dtb;
+    if (dtb_get_read_size(should_checksum, size_max, &size_read, &size_dtb)) {
+        free(bhelper);
+        fputs("DTB read into buffer helper: Failed to get size to read\n", stderr);
+        return NULL;
+    }
+    uint8_t *const buffer_read = malloc(size_read);
+    if (!buffer_read) {
+        fputs("DTB read into buffer helper: Failed to allocate memory for read buffer\n", stderr);
+        free(bhelper);
+        return NULL;
+    }
+    if (io_read_till_finish(fd, buffer_read, size_read)) {
+        fputs("DTB read into buffer helper: Failed to read into buffer buffer\n", stderr);
+        free(buffer_read);
+        free(bhelper);
+        return NULL;
+    }
+    uint8_t *buffer_use = should_checksum ? dtb_partition_choose_correct(buffer_read) : buffer_read;
+    if (!(buffer_use = dtb_identify_and_redirect_buffer(bhelper, buffer_use, size_dtb))) {
+        fputs("DTB read into buffer helper: Failed to identify DTB type\n", stderr);
+        free(buffer_read);
+        free(bhelper);
+        return NULL;
+    }
+    if (bhelper->type_main == DTB_TYPE_MULTI || bhelper->type_sub == DTB_TYPE_MULTI) {
+        struct dtb_multi_entries_helper *mhelper = dtb_parse_multi_entries(buffer_use);
+        if (!mhelper || !mhelper->entry_count) {
+            fputs("DTB read into buffer helper: Failed to get multi-DTB helper\n", stderr);
+            free(buffer_read);
+            free(bhelper);
+            return NULL;
+        }
+        bhelper->dtb_count = mhelper->entry_count;
+        if (!(bhelper->dtbs = malloc(sizeof(struct dtb_buffer_entry) * bhelper->dtb_count))) {
+            fputs("DTB read into buffer helper: Failed to allocate memory for multi DTBs\n", stderr);
+            free(mhelper);
+            free(buffer_read);
+            free(bhelper);
+            return NULL;
+        }
+        for (unsigned i = 0; i < bhelper->dtb_count; ++i) {
+            if (dtb_parse_entry(bhelper->dtbs + i, mhelper->entries[i].dtb)) {
+                fprintf(stderr, "DTB read into buffer helper: Failed to parse entry %u of %u\n", i + 1, bhelper->dtb_count);
+                for (unsigned j = 0; j < i; ++j) {
+                    free(bhelper->dtbs[j].buffer);
+                }
+                free(bhelper->dtbs);
+                free(buffer_read);
+                free(bhelper);
+                return NULL;
+            }
+            if (strncmp((bhelper->dtbs + i)->target, mhelper->entries[i].target, 36)) {
+                fprintf(stderr, "DTB read into buffer helper: Target name in header is different from amlogic-dt-id in DTS: %s != %s\n", mhelper->entries[i].target, (bhelper->dtbs + i)->target);
+                for (unsigned j = 0; j <= i; ++j) {
+                    free(bhelper->dtbs[j].buffer);
+                }
+                free(bhelper->dtbs);
+                free(buffer_read);
+                free(bhelper);
+            }
+        }
+        free(mhelper);
+    } else {
+        bhelper->dtb_count = 1;
+        if (!(bhelper->dtbs = malloc(sizeof(struct dtb_buffer_entry)))) {
+            fputs("DTB read into buffer helper: Failed to allocate memory for DTB\n", stderr);
+            free(buffer_read);
+            free(bhelper);
+            return NULL;
+        }
+        if (dtb_parse_entry(bhelper->dtbs, buffer_use)) {
+            fputs("DTB read into buffer helper: Failed to parse the only entry\n", stderr);
+            free(bhelper->dtbs);
+            free(buffer_read);
+            free(bhelper);
+            return NULL;
+        }
+    }
+    if (bhelper->type_main == DTB_TYPE_GZIPPED) {
+        free(buffer_use);
+    }
+    free(buffer_read);
+    return bhelper;
+}
+
 int
 dtb_read_partitions_and_report(
     int const       fd,
     size_t const    size_max,
     bool const      checksum
 ){
-    size_t size_read, size_dtb;
-    if (checksum) {
-        size_read = DTB_PARTITION_SIZE * 2;
-        if (size_read > size_max) {
-            fputs("DTB read partitions and report: Remaning data size smaller than minimum required for DTB checksum\n", stderr);
-            return 1;
-        }
-        size_dtb = DTB_PARTITION_DATA_SIZE;
-    } else {
-        if (size_max > DTB_PARTITION_DATA_SIZE) {
-            size_read = DTB_PARTITION_DATA_SIZE;
-        } else {
-            size_read = size_max;
-        }
-        size_dtb = size_read;
+    struct dtb_buffer_helper * bhelper = dtb_read_into_buffer_helper(fd, size_max, checksum);
+    if (!bhelper) {
+        fputs("DTB read partitions and report: Read failure\n", stderr);
+        return 1;
     }
-    uint8_t *buffer_read = malloc(size_read);
-    if (!buffer_read) {
-        fputs("DTB read partitions and report: Failed to allocate memroy\n", stderr);
-        return 2;
+    for (unsigned i = 0; i < bhelper->dtb_count; ++i) {
+        dts_report_partitions(bhelper->dtbs[i].partitions);
+        puts(bhelper->dtbs[i].target);
+        puts(bhelper->dtbs[i].soc);
+        puts(bhelper->dtbs[i].platform);
+        puts(bhelper->dtbs[i].variant);
     }
-    if (io_read_till_finish(fd, buffer_read, size_read)) {
-        fputs("DTB read partitions and report: Failed to read into buffer\n", stderr);
-        free(buffer_read);
-        return 3;
-    }
-    uint8_t *buffer;
-    if (checksum) {
-        const struct dtb_partition *dtb_partition_a = (const struct dtb_partition *)buffer_read;
-        const struct dtb_partition *dtb_partition_b = dtb_partition_a + 1;
-        bool correct_a = dtb_checksum(dtb_partition_a) == dtb_partition_a->checksum;
-        bool correct_b = dtb_checksum(dtb_partition_b) == dtb_partition_b->checksum;
-        if (correct_a) {
-            fputs("DTB read partitions and report: Using first 256K in DTB partition\n", stderr);
-            buffer = (uint8_t *)dtb_partition_a;
-        } else if (correct_b) {
-            fputs("DTB read partitions and report: Using second 256K in DTB partition\n", stderr);
-            buffer = (uint8_t *)dtb_partition_b;
-        } else {
-            fputs("DTB read partitions and report: Both copies in DTB partition invalid, using first one\n", stderr);
-            buffer = (uint8_t *)dtb_partition_a;
-        }
-    } else {
-        buffer = buffer_read;
-    }
-    uint8_t *buffer_gzip = NULL;
-    bool multi = false;
-    switch (dtb_identify_type(buffer)) {
-        case DTB_TYPE_PLAIN:
-            break;
-        case DTB_TYPE_MULTI:
-            multi = true;
-            break;
-        case DTB_TYPE_GZIPPED:
-            if (!gzip_unzip(buffer, size_dtb, &buffer_gzip)) {
-                free(buffer_read);
-                fputs("DTB read partitions and report: Failed to unzipped gzipped DTB\n", stderr);
-                return 4;
-            }
-            buffer = buffer_gzip;
-            switch (*(uint32_t *)buffer) {
-                case DTB_MAGIC_PLAIN:
-                    break;
-                case DTB_MAGIC_MULTI:
-                    multi = true;
-                    break;
-                default:
-                    free(buffer_gzip);
-                    free(buffer_read);
-                    fputs("DTB read partitions and report: Gzipped DTB does not contain valid plain/multi DTB\n", stderr);
-                    return 5;
-            }
-            break;
-        default:
-            fprintf(stderr, "DTB read partitions and report: Unrecognizable DTB, magic %08x\n", *(uint32_t *)buffer);
-            free(buffer_read);
-            return 6;
-    }
-    struct dts_partitions_helper *phelper;
-    bool missing_partitions = false;
-    uint32_t different_partitions = 0;
-    if (multi) {
-        struct dtb_multi_entries_helper *mhelper = dtb_parse_multi_entries(buffer);
-        if (!mhelper) {
-            free(buffer_read);
-            if (buffer_gzip) {
-                free(buffer_gzip);
-            }
-            fputs("DTB read partitions and report: Failed to parse multi DTB\n", stderr);
-            return 7;
-        }
-        struct dts_partitions_helper *phelpers = malloc(sizeof(struct dts_partitions_helper) * mhelper->entry_count);
-        if (!phelpers) {
-            return 8;
-        }
-        memset(phelpers, 0, sizeof(struct dts_partitions_helper) * mhelper->entry_count);
-        for (uint32_t i = 0; i < mhelper->entry_count; ++i) {
-            fprintf(stderr, "DTB read partitions and report: parsing %uth of %u, for %s (SoC %s, platform %s, variant %s)\n", i+1, mhelper->entry_count, mhelper->entries[i].target, mhelper->entries[i].soc, mhelper->entries[i].platform, mhelper->entries[i].variant);
-            if ((phelper = dtb_get_partitions(mhelper->entries[i].dtb, mhelper->entries[i].size))) {
-                phelpers[i] = *phelper;
-                dts_report_partitions(phelper);
-                free(phelper);
-            } else {
-                fprintf(stderr, "DTB read partitions and report: Failed to read partitions in the %uth of %u DTB\n", i+1, mhelper->entry_count);
-                missing_partitions = true;
-            }
-        }
-        struct dts_partitions_helper *phelper_a;
-        struct dts_partitions_helper *phelper_b;
-        for (uint32_t i = 0; i < mhelper->entry_count; ++i) {
-            phelper_a = phelpers + i;
-            for (uint32_t j = i + 1; j < mhelper->entry_count; ++j) {
-                phelper_b = phelpers + j;
-                if (dtb_compare_partitions(phelper_a, phelper_b)) {
-                    fprintf(stderr, "DTB read partitions and report: %dth DTB and %dth DTB are different:\n", i, j);
-                    dts_report_partitions(phelper_a);
-                    dts_report_partitions(phelper_b);
-                    ++different_partitions;
-                }   
-            }
-        }
-        if (!different_partitions) {
-            fputs("DTB read partitions and report: No different partitions\n", stderr);
-        }
-        free(phelpers);
-    } else {
-        if ((phelper = dtb_get_partitions(buffer, size_dtb))) {
-            dts_report_partitions(phelper);
-            free(phelper);
-        } else {
-            fputs("DTB read partitions and report: Failed to read partitions in the plain DTB\n", stderr);
-            missing_partitions = true;
-        }
-    }
-    free(buffer_read);
-    if (buffer_gzip) {
-        free(buffer_gzip);
-    }
-    return 0 - 128 * missing_partitions - different_partitions;
+    dtb_free_buffer_helper(&bhelper);
+    return 0;
+    // size_t size_read, size_dtb;
+    // if (checksum) {
+    //     size_read = DTB_PARTITION_SIZE * 2;
+    //     if (size_read > size_max) {
+    //         fputs("DTB read partitions and report: Remaning data size smaller than minimum required for DTB checksum\n", stderr);
+    //         return 1;
+    //     }
+    //     size_dtb = DTB_PARTITION_DATA_SIZE;
+    // } else {
+    //     if (size_max > DTB_PARTITION_DATA_SIZE) {
+    //         size_read = DTB_PARTITION_DATA_SIZE;
+    //     } else {
+    //         size_read = size_max;
+    //     }
+    //     size_dtb = size_read;
+    // }
+    // uint8_t *buffer_read = malloc(size_read);
+    // if (!buffer_read) {
+    //     fputs("DTB read partitions and report: Failed to allocate memroy\n", stderr);
+    //     return 2;
+    // }
+    // if (io_read_till_finish(fd, buffer_read, size_read)) {
+    //     fputs("DTB read partitions and report: Failed to read into buffer\n", stderr);
+    //     free(buffer_read);
+    //     return 3;
+    // }
+    // uint8_t *buffer;
+    // if (checksum) {
+    //     const struct dtb_partition *dtb_partition_a = (const struct dtb_partition *)buffer_read;
+    //     const struct dtb_partition *dtb_partition_b = dtb_partition_a + 1;
+    //     bool correct_a = dtb_checksum(dtb_partition_a) == dtb_partition_a->checksum;
+    //     bool correct_b = dtb_checksum(dtb_partition_b) == dtb_partition_b->checksum;
+    //     if (correct_a) {
+    //         fputs("DTB read partitions and report: Using first 256K in DTB partition\n", stderr);
+    //         buffer = (uint8_t *)dtb_partition_a;
+    //     } else if (correct_b) {
+    //         fputs("DTB read partitions and report: Using second 256K in DTB partition\n", stderr);
+    //         buffer = (uint8_t *)dtb_partition_b;
+    //     } else {
+    //         fputs("DTB read partitions and report: Both copies in DTB partition invalid, using first one\n", stderr);
+    //         buffer = (uint8_t *)dtb_partition_a;
+    //     }
+    // } else {
+    //     buffer = buffer_read;
+    // }
+    // uint8_t *buffer_gzip = NULL;
+    // bool multi = false;
+    // switch (dtb_identify_type(buffer)) {
+    //     case DTB_TYPE_PLAIN:
+    //         break;
+    //     case DTB_TYPE_MULTI:
+    //         multi = true;
+    //         break;
+    //     case DTB_TYPE_GZIPPED:
+    //         if (!gzip_unzip(buffer, size_dtb, &buffer_gzip)) {
+    //             free(buffer_read);
+    //             fputs("DTB read partitions and report: Failed to unzipped gzipped DTB\n", stderr);
+    //             return 4;
+    //         }
+    //         buffer = buffer_gzip;
+    //         switch (*(uint32_t *)buffer) {
+    //             case DTB_MAGIC_PLAIN:
+    //                 break;
+    //             case DTB_MAGIC_MULTI:
+    //                 multi = true;
+    //                 break;
+    //             default:
+    //                 free(buffer_gzip);
+    //                 free(buffer_read);
+    //                 fputs("DTB read partitions and report: Gzipped DTB does not contain valid plain/multi DTB\n", stderr);
+    //                 return 5;
+    //         }
+    //         break;
+    //     default:
+    //         fprintf(stderr, "DTB read partitions and report: Unrecognizable DTB, magic %08x\n", *(uint32_t *)buffer);
+    //         free(buffer_read);
+    //         return 6;
+    // }
+    // struct dts_partitions_helper *phelper;
+    // bool missing_partitions = false;
+    // uint32_t different_partitions = 0;
+    // if (multi) {
+    //     struct dtb_multi_entries_helper *mhelper = dtb_parse_multi_entries(buffer);
+    //     if (!mhelper) {
+    //         free(buffer_read);
+    //         if (buffer_gzip) {
+    //             free(buffer_gzip);
+    //         }
+    //         fputs("DTB read partitions and report: Failed to parse multi DTB\n", stderr);
+    //         return 7;
+    //     }
+    //     struct dts_partitions_helper *phelpers = malloc(sizeof(struct dts_partitions_helper) * mhelper->entry_count);
+    //     if (!phelpers) {
+    //         return 8;
+    //     }
+    //     memset(phelpers, 0, sizeof(struct dts_partitions_helper) * mhelper->entry_count);
+    //     for (uint32_t i = 0; i < mhelper->entry_count; ++i) {
+    //         fprintf(stderr, "DTB read partitions and report: parsing %uth of %u, for %s (SoC %s, platform %s, variant %s)\n", i+1, mhelper->entry_count, mhelper->entries[i].target, mhelper->entries[i].soc, mhelper->entries[i].platform, mhelper->entries[i].variant);
+    //         if ((phelper = dtb_get_partitions(mhelper->entries[i].dtb, mhelper->entries[i].size))) {
+    //             phelpers[i] = *phelper;
+    //             dts_report_partitions(phelper);
+    //             free(phelper);
+    //         } else {
+    //             fprintf(stderr, "DTB read partitions and report: Failed to read partitions in the %uth of %u DTB\n", i+1, mhelper->entry_count);
+    //             missing_partitions = true;
+    //         }
+    //     }
+    //     struct dts_partitions_helper *phelper_a;
+    //     struct dts_partitions_helper *phelper_b;
+    //     for (uint32_t i = 0; i < mhelper->entry_count; ++i) {
+    //         phelper_a = phelpers + i;
+    //         for (uint32_t j = i + 1; j < mhelper->entry_count; ++j) {
+    //             phelper_b = phelpers + j;
+    //             if (dtb_compare_partitions(phelper_a, phelper_b)) {
+    //                 fprintf(stderr, "DTB read partitions and report: %dth DTB and %dth DTB are different:\n", i, j);
+    //                 dts_report_partitions(phelper_a);
+    //                 dts_report_partitions(phelper_b);
+    //                 ++different_partitions;
+    //             }   
+    //         }
+    //     }
+    //     if (!different_partitions) {
+    //         fputs("DTB read partitions and report: No different partitions\n", stderr);
+    //     }
+    //     free(phelpers);
+    // } else {
+    //     if ((phelper = dtb_get_partitions(buffer, size_dtb))) {
+    //         dts_report_partitions(phelper);
+    //         free(phelper);
+    //     } else {
+    //         fputs("DTB read partitions and report: Failed to read partitions in the plain DTB\n", stderr);
+    //         missing_partitions = true;
+    //     }
+    // }
+    // free(buffer_read);
+    // if (buffer_gzip) {
+    //     free(buffer_gzip);
+    // }
+    // return 0 - 128 * missing_partitions - different_partitions;
 }
 
 int dtb_replace_partitions() {

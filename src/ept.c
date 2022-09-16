@@ -12,6 +12,7 @@
 
 #include "cli.h"
 #include "io.h"
+#include "parg.h"
 #include "util.h"
 
 /* Definition */
@@ -477,6 +478,50 @@ ept_is_not_pedantic(
             fprintf(stderr, "EPT is pedantic: Part %u (%s) has a non-pedantic offset\n", i, current->name);
             return 10 + i;
         }
+    }
+    return 0;
+}
+
+int
+ept_eclone_parse(
+    int const                   argc,
+    char const * const * const  argv,
+    struct ept_table * const    table,
+    size_t const                capacity
+){
+    struct parg_definer_helper *dhelper = parg_parse_eclone_mode(argc, argv);
+    if (!dhelper) {
+        fputs("EPT eclone parse: Failed to parse PARGS\n", stderr);
+        return 1;
+    }
+    *table = ept_table_empty;
+    table->partitions_count = dhelper->count;
+    struct parg_definer *definer;
+    struct ept_partition *part;
+    size_t part_end;
+    for (unsigned i = 0; i < dhelper->count; ++i) {
+        definer = dhelper->definers + i;
+        part = table->partitions + i;
+        strncpy(part->name, definer->name, MAX_PARTITION_NAME_LENGTH);
+        part->offset = definer->offset;
+        part->size = definer->size;
+        part_end = part->offset + part->size;
+        if (part_end > capacity) {
+            part->size -= (part_end - capacity);
+            fprintf(stderr, "EPT eclone parse: Warning, part %u (%s) overflows, shrink its size to %lu\n", i, part->name, part->size);
+        }
+        part->mask_flags = definer->masks;
+    }
+    parg_free_definer_helper(&dhelper);
+    table->checksum = ept_checksum(table->partitions, table->partitions_count);
+    fputs("EPT eclone parse: New EPT:\n", stderr);
+    ept_report(table);
+    size_t const capacity_new = ept_get_capacity(table);
+    if (capacity_new > capacity) {
+        fputs("EPT eclone parse: New table max part end larger than capacity, refuse to continue:\n", stderr);
+        return 2;
+    } else if (capacity_new < capacity) {
+        fputs("EPT eclone parse: Warning, new table max part end smaller than capcity, this may result in unexpected behaviour:\n", stderr);
     }
     return 0;
 }

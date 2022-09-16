@@ -65,6 +65,13 @@ struct
 
 /* Function */
 
+int
+    dts_dclone_parse(
+        int const                                   argc,
+        char const * const * const                  argv,
+        struct dts_partitions_helper_simple * const dparts
+    );
+
 uint8_t *
     dts_get_node_from_path(
         uint8_t const * dts, 

@@ -62,12 +62,21 @@ int
         size_t  size
     );
 
+off_t
+    io_seek_dtb(
+        int const   fd
+    );
+
+off_t
+    io_seek_ept(
+        int const   fd
+    );
+
 int 
     io_write_till_finish(
         int     fd,
         void *  buffer,
         size_t  size
     );
-
 
 #endif

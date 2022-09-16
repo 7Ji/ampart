@@ -19,6 +19,7 @@
 
 /* Local */
 
+#include "cli.h"
 #include "gzip.h"
 #include "ept.h"
 
@@ -322,6 +323,57 @@ io_identify_target_type(
     io_identify_target_type_guess_content(type, fd);
     close(fd);
     return type;
+}
+
+off_t
+io_seek_dtb(
+    int const   fd
+){
+    off_t offset;
+    switch (cli_options.content) {
+        case CLI_CONTENT_TYPE_DTB:
+            offset = 0;
+            break;
+        case CLI_CONTENT_TYPE_RESERVED:
+            offset = cli_options.offset_dtb;
+            break;
+        case CLI_CONTENT_TYPE_DISK:
+            offset = cli_options.offset_reserved + cli_options.offset_dtb;
+            break;
+        default:
+            fputs("IO seek DTB: Ilegal target content type (auto), this should not happen\n", stderr);
+            return -1;
+    }
+    fprintf(stderr, "IO seek DTB: Seeking to %ld\n", offset);
+    if ((offset = lseek(fd, offset, SEEK_SET)) < 0) {
+        fprintf(stderr, "IO seek DTB: Failed to seek for DTB, errno: %d, error: %s\n", errno, strerror(errno));
+        return -1;
+    }
+    return offset;
+}
+
+off_t
+io_seek_ept(
+    int const   fd
+){
+    off_t offset;
+    switch (cli_options.content) {
+        case CLI_CONTENT_TYPE_RESERVED:
+            offset = 0;
+            break;
+        case CLI_CONTENT_TYPE_DISK:
+            offset = cli_options.offset_reserved;
+            break;
+        default:
+            fprintf(stderr, "IO seek EPT: Ilegal target content type (%s), this should not happen\n", cli_mode_strings[cli_options.content]);
+            return -1;
+    }
+    fprintf(stderr, "IO seek EPT: Seeking to %ld\n", offset);
+    if ((offset = lseek(fd, offset, SEEK_SET)) < 0) {
+        fprintf(stderr, "IO seek EPT: Failed to seek for EPT, errno: %d, error: %s\n", errno, strerror(errno));
+        return -1;
+    }
+    return offset;
 }
 
 /* io.c: IO-related functions, type-recognition is also here */

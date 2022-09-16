@@ -103,72 +103,23 @@ cli_read(
         fputs("CLI read: Failed to open target\n", stderr);
         return 1;
     }
-    size_t dtb_offset = 0, ept_offset = 0;
-    switch (cli_options.content) {
-        case CLI_CONTENT_TYPE_DTB:
-            break;
-        case CLI_CONTENT_TYPE_RESERVED:
-            dtb_offset = cli_options.offset_dtb;
-            break;
-        case CLI_CONTENT_TYPE_DISK:
-            dtb_offset = cli_options.offset_reserved + cli_options.offset_dtb;
-            ept_offset = cli_options.offset_reserved;
-            break;
-        default:
-            fputs("CLI read: Ilegal target content type (auto), this should not happen\n", stderr);
-            close(fd);
-            return 2;
-    }
-    fprintf(stderr, "CLI read: Seeking to %zu to read DTB and report\n", dtb_offset);
-    if (lseek(fd, dtb_offset, SEEK_SET) < 0) {
-        fprintf(stderr, "CLI read: Failed to seek for DTB, errno: %d, error: %s\n", errno, strerror(errno));
+    off_t const offset_dtb = io_seek_dtb(fd);
+    if (offset_dtb < 0) {
         close(fd);
-        return 3;
+        return 2;
     }
-    *bhelper = dtb_read_into_buffer_helper_and_report(fd, cli_options.size - dtb_offset, cli_options.content != CLI_CONTENT_TYPE_DTB);
+    *bhelper = dtb_read_into_buffer_helper_and_report(fd, cli_options.size - offset_dtb, cli_options.content != CLI_CONTENT_TYPE_DTB);
     if (cli_options.content != CLI_CONTENT_TYPE_DTB) {
-        fprintf(stderr, "CLI read: Seeking to %zu to read EPT and report\n", ept_offset);
-        if (lseek(fd, ept_offset, SEEK_SET) < 0) {
-            fprintf(stderr, "CLI read: Failed to seek for EPT, errno: %d, error: %s\n", errno, strerror(errno));
-            if (*bhelper) {
-                free(*bhelper);
-                *bhelper = NULL;
-            }
+        off_t const offset_ept = io_seek_ept(fd);
+        if (offset_ept < 0) {
             close(fd);
-            return 4;
+            return 3;
         }
-        *table = ept_read_and_report(fd, cli_options.size - ept_offset);
-        // if (!table) {
-        //     switch (cli_options.mode) {
-        //         case CLI_MODE_ETOD:
-        //         case CLI_MODE_PEDANTIC:
-        //         case CLI_MODE_EEDIT:
-        //         case CLI_MODE_ESNAPSHOT:
-        //             fprintf(stderr, "CLI early stage: Mode %s requires EPT to exist and is valid, these requirement are however not met, giving up\n", cli_mode_strings[cli_options.mode]);
-        //             close(fd);
-        //             return 7;
-        //         default:
-        //             break;
-        //     }
-        // }
-        // free(table);
+        *table = ept_read_and_report(fd, cli_options.size - offset_ept);
     }
     close(fd);
     return 0;
 }
-
-// static inline
-// int 
-// cli_early_stage(
-//     int     argc,
-//     char *  argv[]
-// ){
-//     int const r = cli_read();
-//     for (int i =0; i<argc; ++i) {
-//         printf("%d: %s\n", i, argv[i]);
-//     }
-//     return r;
-// }
 
 static inline
 int
@@ -375,6 +326,17 @@ cli_write_dtb(
         fputs("CLI write DTB: In dry-run mode, assuming success\n", stderr);
         return 0;
     }
+    int fd = open(cli_options.target, O_WRONLY);
+    if (fd < 0) {
+        fputs("CLI write DTB: Failed to open target\n", stderr);
+        return 1;
+    }
+    off_t const dtb_offset = io_seek_dtb(fd);
+    if (dtb_offset < 0) {
+        fputs("CLI write DTB: Failed to seek\n", stderr);
+        return 2;
+    }
+    close(fd);
     fputs("CLI write DTB: WIP\n", stderr);
     return 0;
 }
@@ -388,10 +350,24 @@ cli_write_ept(
         fputs("CLI write EPT: Table invalid, refuse to continue\n", stderr);
         return 1;
     }
+    if (cli_options.content == CLI_CONTENT_TYPE_DTB) {
+        fputs("CLI write EPT: Target is DTB, no need to write\n", stderr);
+    }
     if (cli_options.dry_run) {
         fputs("CLI write EPT: In dry-run mode, assuming success\n", stderr);
         return 0;
     }
+    int fd = open(cli_options.target, O_WRONLY);
+    if (fd < 0) {
+        fputs("CLI write EPT: Failed to open target\n", stderr);
+        return 1;
+    }
+    off_t const ept_offset = io_seek_ept(fd);
+    if (ept_offset < 0) {
+        fputs("CLI write EPT: Failed to seek\n", stderr);
+        return 2;
+    }
+    close(fd);
     fputs("CLI write EPT: WIP\n", stderr);
     return 0;
 }
@@ -492,6 +468,23 @@ cli_mode_etod(
 
 static inline
 int
+cli_check_parg_count(
+    int const   argc,
+    int const   max
+){
+    if (argc <= 0) {
+        fputs("CLI check PARG count: No PARG, early quit", stderr);
+        return -1;
+    }
+    if (max > 0 && argc > max) {
+        fprintf(stderr, "CLI check PARG count: Too many PARGS, only %d is allowed yet you've defined %d\n", max, argc);
+        return 1;
+    }
+    return 0;
+}
+
+static inline
+int
 cli_mode_dedit(
     struct dtb_buffer_helper const * const  bhelper,
     struct ept_table const * const          table,
@@ -499,8 +492,7 @@ cli_mode_dedit(
     char const * const * const              argv
 ){
     fputs("CLI mode dedit: Edit partitions node in DTB, and potentially create EPT from it\n", stderr);
-    if (argc <= 0) {
-        fputs("CLI mode dedit: No PARG, early quite\n", stderr);
+    if (cli_check_parg_count(argc, 0)) {
         return 0;
     }
     for (int i =0; i<argc; ++i) {
@@ -522,6 +514,21 @@ cli_mode_dedit(
 }
 
 static inline
+size_t
+cli_get_capacity(
+    struct ept_table const * const  table
+){
+    if (cli_options.content == CLI_CONTENT_TYPE_DISK) {
+        fprintf(stderr, "CLI get capacity: Using target file/block device size %zu as the capacity, since it's full disk\n", cli_options.size);
+        return cli_options.size;
+    } else {
+        size_t const capacity = ept_get_capacity(table);
+        fprintf(stderr, "CLI get capacity: Using max partition end %zu as the capacity, since target is %s and is not full disk\n", capacity, cli_content_type_strings[cli_options.content]);
+        return capacity;
+    }
+}
+
+static inline
 int
 cli_mode_eedit(
     struct ept_table const * const  table,
@@ -529,8 +536,7 @@ cli_mode_eedit(
     char const * const * const      argv
 ){
     fputs("CLI mode eedit: Edit EPT\n", stderr);
-    if (argc <= 0) {
-        fputs("CLI mode eedit: No PARG, early quite\n", stderr);
+    if (cli_check_parg_count(argc, 0)) {
         return 0;
     }
     for (int i =0; i<argc; ++i) {
@@ -647,39 +653,26 @@ cli_mode_dclone(
     char const * const * const              argv
 ){
     fputs("CLI mode dclone: Apply a snapshot taken in dsnapshot mode\n", stderr);
-    if (argc <= 0) {
-        fputs("CLI mode dclone: No PARG, early quite\n", stderr);
-        return 0;
-    }
-    if (argc > MAX_PARTITIONS_COUNT) {
-        fprintf(stderr, "CLI mode dclone: Too many PARGs, only %d is allowed yet you've defined %d\n", MAX_PARTITIONS_COUNT, argc);
-        return 1;
+    int const r = cli_check_parg_count(argc, MAX_PARTITIONS_COUNT);
+    if (r) {
+        if (r < 0) return 0; else return 1;
     }
     if (!bhelper || !bhelper->dtb_count || !bhelper->dtbs->buffer) {
         fputs("CLI mode dclone: No valid DTB, refuse to work\n", stderr);
         return 2;
     }
-    struct parg_definer_helper *dhelper = parg_parse_dclone_mode(argc, argv);
-    if (!dhelper || !dhelper->count) {
-        fputs("CLI mode dclone: Failed to parse new partitions\n", stderr);
+    struct dts_partitions_helper_simple dparts;
+    if (dts_dclone_parse(argc, argv, &dparts)) {
+        fputs("CLI mode dclone: Failed to parse PARGs\n", stderr);
         return 3;
     }
-    struct dts_partitions_helper_simple dparts = {.partitions_count = dhelper->count};
-    struct parg_definer *definer;
-    struct dts_partition_entry_simple *entry;
-    for (unsigned i = 0; i < dhelper->count; ++i) {
-        definer = dhelper->definers + i;
-        entry = dparts.partitions + i;
-        strncpy(entry->name, definer->name, MAX_PARTITION_NAME_LENGTH);
-        entry->size = definer->size;
-        entry->mask = definer->masks;
+    if (cli_write_dtb(bhelper, &dparts)) {
+        fputs("CLI mode dclone: Failed to write\n", stderr);
+        return 4;
     }
-    parg_free_definer_helper(&dhelper);
-    fputs("CLI mode dclone: New DTB partitions:\n", stderr);
-    dts_report_partitions_simple(&dparts);
-    cli_write_dtb(bhelper, &dparts);
-    if (!table) {
-        return 2;
+    if (table) {
+        fputs("CLI mode dclone: Corresponding table updated, also write it\n", stderr);
+        return 0;
     }
     return 0;
 }
@@ -692,65 +685,29 @@ cli_mode_eclone(
     char const * const * const      argv
 ){
     fputs("CLI mode eclone: Apply a snapshot taken in esnapshot mode\n", stderr);
-    if (argc <= 0) {
-        fputs("CLI mode eclone: No PARG, early quit\n", stderr);
-        return 0;
-    }
-    if (argc > MAX_PARTITIONS_COUNT) {
-        fprintf(stderr, "CLI mode eclone: Too many PARGs, only %d is allowed yet you've defined %d\n", MAX_PARTITIONS_COUNT, argc);
-        return 1;
+    int const r = cli_check_parg_count(argc, MAX_PARTITIONS_COUNT);
+    if (r) {
+        if (r < 0) return 0; else return 1;
     }
     if (!table || !ept_valid(table)) {
         fputs("CLI mode eclone: Warning, old table corrupted or not valid, continue anyway\n", stderr);
     }
-    size_t capacity;
-    if (cli_options.content == CLI_CONTENT_TYPE_DISK) {
-        capacity = cli_options.size;
-        fprintf(stderr, "CLI mode eclone: Using target file/block device size %zu as the capacity, since it's full disk\n", capacity);
-    } else {
-        capacity = ept_get_capacity(table);
-        fprintf(stderr, "CLI mode eclone: Using max partition end %zu as the capacity, since target is %s and is not full disk\n", capacity, cli_content_type_strings[cli_options.content]);
-    }
+    size_t const capacity = cli_get_capacity(table);
     if (!capacity) {
         fputs("CLI mode eclone: Cannot get valid capacity, give up\n", stderr);
         return 2;
     }
-    struct parg_definer_helper *dhelper = parg_parse_eclone_mode(argc, argv);
-    if (!dhelper) {
-        fputs("CLI mode eclone: Failed to parse PARGS\n", stderr);
-    }
-    struct ept_table table_new = ept_table_empty;
-    table_new.partitions_count = dhelper->count;
-    struct parg_definer *definer;
-    struct ept_partition *part;
-    size_t part_end;
-    for (unsigned i = 0; i < dhelper->count; ++i) {
-        definer = dhelper->definers + i;
-        part = table_new.partitions + i;
-        strncpy(part->name, definer->name, MAX_PARTITION_NAME_LENGTH);
-        part->offset = definer->offset;
-        part->size = definer->size;
-        part_end = part->offset + part->size;
-        if (part_end > capacity) {
-            part->size -= (part_end - capacity);
-            fprintf(stderr, "CLI mode eclone: Warning, part %u (%s) overflows, shrink its size to %lu\n", i, part->name, part->size);
-        }
-        part->mask_flags = definer->masks;
-    }
-    parg_free_definer_helper(&dhelper);
-    table_new.checksum = ept_checksum(table_new.partitions, table_new.partitions_count);
-    fputs("CLI mode eclone: New EPT:\n", stderr);
-    ept_report(&table_new);
-    size_t const capacity_new = ept_get_capacity(&table_new);
-    if (capacity_new > capacity) {
-        fputs("CLI mode eclone: New table max part end larger than capacity, refuse to continue:\n", stderr);
+    struct ept_table table_new;
+    if (ept_eclone_parse(argc, argv, &table_new, capacity)) {
+        fputs("CLI mode eclone: Failed to get new EPT\n", stderr);
         return 3;
-    } else if (capacity_new < capacity) {
-        fputs("CLI mode eclone: Warning, new table max part end smaller than capcity, this may result in unexpected behaviour:\n", stderr);
     }
     if (ept_compare_table(table, &table_new)) {
         fputs("CLI mode eclone: New table is different, need to write\n", stderr);
-        cli_write_ept(&table_new);
+        if (cli_write_ept(&table_new)) {
+            fputs("CLI mode eclone: Failed to write EPT\n", stderr);
+            return 4;
+        }
     } else {
         fputs("CLI mode eclone: New table is the same as old table, no need to write\n", stderr);
     }

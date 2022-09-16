@@ -47,9 +47,10 @@ struct
         char *                  target;
     };
 
-/* External */
+/* Variable */
 
 extern struct cli_options cli_options;
+extern char const         cli_mode_strings[][10];
 
 /* Function */
 

@@ -72,7 +72,7 @@ struct
 
 /* Variable */
 
-extern struct ept_table const  ept_table_empty;
+// extern struct ept_table const  ept_table_empty;
 
 /* Function */
 
@@ -92,6 +92,14 @@ struct ept_table *
     ept_complete_dtb(
         struct dts_partitions_helper const *    dhelper, 
         uint64_t                                capacity
+    );
+
+int
+    ept_eclone_parse(
+        int const                   argc,
+        char const * const * const  argv,
+        struct ept_table * const    table,
+        size_t const                capacity
     );
 
 struct ept_table *

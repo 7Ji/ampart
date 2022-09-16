@@ -9,6 +9,7 @@
 
 /* Local */
 
+#include "parg.h"
 #include "util.h"
 
 /* Definition */
@@ -37,6 +38,8 @@ struct
 
 struct dts_property dts_property = {0};
 uint8_t const       dts_partitions_node_start[DTS_PARTITIONS_NODE_START_LENGTH] = "partitions";
+struct dts_partitions_helper_simple const 
+                    dts_partitions_helper_simple_empty = {.partitions_count = 0};
 
 /* Function */
 
@@ -901,4 +904,32 @@ dts_compare_partitions(
         }
     } 
     return r + 8 * diff;
+}
+
+int
+dts_dclone_parse(
+    int const                                   argc,
+    char const * const * const                  argv,
+    struct dts_partitions_helper_simple * const dparts
+){
+    struct parg_definer_helper *dhelper = parg_parse_dclone_mode(argc, argv);
+    if (!dhelper || !dhelper->count) {
+        fputs("DTS dclone parse: Failed to parse new partitions\n", stderr);
+        return 1;
+    }
+    *dparts = dts_partitions_helper_simple_empty;
+    dparts->partitions_count = dhelper->count;
+    struct parg_definer *definer;
+    struct dts_partition_entry_simple *entry;
+    for (unsigned i = 0; i < dhelper->count; ++i) {
+        definer = dhelper->definers + i;
+        entry = dparts->partitions + i;
+        strncpy(entry->name, definer->name, MAX_PARTITION_NAME_LENGTH);
+        entry->size = definer->size;
+        entry->mask = definer->masks;
+    }
+    parg_free_definer_helper(&dhelper);
+    fputs("DTS dclone parse: New DTB partitions:\n", stderr);
+    dts_report_partitions_simple(dparts);
+    return 0;
 }

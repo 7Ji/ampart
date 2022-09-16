@@ -284,7 +284,7 @@ cli_complete_options(
 ){
     if (cli_options.mode == CLI_MODE_INVALID) {
         fputs("CLI interface: Mode not set or invalid, you must specify the mode with --mode [mode] argument\n", stderr);
-        return 1;
+        // return 1;
     }
     if (cli_options.dry_run) {
         cli_options.write = CLI_WRITE_NOTHING;

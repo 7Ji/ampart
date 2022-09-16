@@ -109,6 +109,11 @@ uint64_t
         struct ept_table const *    table
     );
 
+uint32_t
+    ept_get_minimum_block(
+        struct ept_table const *    table
+    );
+
 int
     ept_read_and_report(
         struct ept_table *  table,

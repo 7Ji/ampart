@@ -242,6 +242,10 @@ ept_report(
         last_end = part->offset + part->size;
     }
     fputs("===================================================================================\n", stderr);
+    uint32_t const block = ept_get_minimum_block(table);
+    char suffix;
+    double block_h = util_size_to_human_readable(block, &suffix);
+    fprintf(stderr, "table report: Minumum block in table: 0x%x, %u, %lf%c\n", block, block, block_h, suffix);
     return;
 }
 
@@ -651,4 +655,45 @@ ept_table_to_dts_partitions_helper(
     }
     return 0;
 }
+
+uint32_t
+ept_get_minimum_block(
+    struct ept_table const * const  table
+){
+    uint32_t block = EPT_PARTITION_BOOTLOADER_SIZE;
+    bool change;
+    struct ept_partition const *part;
+#ifdef EPT_GET_MINUMUM_BLOCK_AVOID_LAST_SIZE
+    uint32_t const parts_count = table->partitions_count - 1;
+    struct ept_partition const *const part_last = table->partitions + parts_count;
+#endif
+    while (block) {
+        change = false;
+        for (uint32_t i = 0; i < table->partitions_count; ++i) {
+            part = table->partitions + i;
+            if (part->offset % block) {
+                fprintf(stderr, "EPT get minumum block: Shift down block size from 0x%x due to part %u (%s)'s offset 0x%lx\n", block, i + 1, part->name, part->offset);
+                block >>= 1;
+                change = true;
+            }
+            if (part->size % block) {
+                fprintf(stderr, "EPT get minumum block: Shift down block size from 0x%x due to part %u (%s)'s size 0x%lx\n", block, i + 1, part->name, part->size);
+                block >>= 1;
+                change = true;
+            }
+        }
+#ifdef EPT_GET_MINUMUM_BLOCK_AVOID_LAST_SIZE
+        if (part_last->offset % block) {
+            fprintf(stderr, "EPT get minumum block: Shift down block size from 0x%x due to part %u (%s)'s offset 0x%lx\n", block, table->partitions_count, part_last->name, part_last->offset);
+            block >>= 1;
+            change = true;
+        }
+#endif
+        if (!change) {
+            break;
+        }
+    }
+    return block;
+}
+
 /* ept.c: eMMC Partition Table related functions */

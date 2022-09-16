@@ -373,4 +373,142 @@ io_seek_ept(
     return offset;
 }
 
+struct
+    io_migrate_entry{
+        uint8_t *   buffer;
+        uint32_t    target;
+        bool        finish;
+    };
+
+struct
+    io_migrate_helper{
+        struct io_migrate_entry *   entries;
+        uint32_t                    count;
+        uint32_t                    block;
+    };
+
+static inline
+int
+io_seek_and_read(
+    int const       fd,
+    off_t const     offset,
+    void * const    buffer,
+    size_t          size
+
+){
+    off_t r_seek = lseek(fd, offset, SEEK_SET);
+    if (r_seek < 0) {
+        return 1;
+    }
+    if (r_seek != offset) {
+        return 2;
+    }
+    if (io_read_till_finish(fd, buffer, size)) {
+        return 3;
+    }
+    return 0;
+}
+
+static inline
+int
+io_seek_and_write(
+    int const       fd,
+    off_t const     offset,
+    void * const    buffer,
+    size_t          size
+
+){
+    off_t r_seek = lseek(fd, offset, SEEK_SET);
+    if (r_seek < 0) {
+        return 1;
+    }
+    if (r_seek != offset) {
+        return 2;
+    }
+    if (io_write_till_finish(fd, buffer, size)) {
+        return 3;
+    }
+    return 0;
+}
+
+int
+io_migrate_recursive(
+    struct io_migrate_helper *mhelper,
+    uint32_t const id,
+    int fd
+){
+    struct io_migrate_entry *const msource = mhelper->entries + id;
+    if (!(msource->buffer = malloc(sizeof(mhelper->block)))) {
+        return 1;
+    }
+    if (io_seek_and_read(fd, mhelper->block * id, msource->buffer, mhelper->block)) {
+        free(msource->buffer);
+        return 2;
+    }
+    struct io_migrate_entry *const mtarget = mhelper->entries + msource->target;
+    if (!mtarget->buffer && io_migrate_recursive(mhelper, msource->target, fd)) {
+        free(msource->buffer);
+        return 3;
+    }
+    if (io_seek_and_write(fd, mhelper->block * msource->target, msource->buffer, mhelper->block)) {
+        free(msource->buffer);
+        return 4;
+    }
+    free(msource->buffer);
+    msource->buffer = NULL;
+    msource->finish = true;
+    return 0;
+}
+
+int
+io_migrate(
+    struct io_migrate_helper *mhelper,
+    int fd
+){
+    for (uint32_t i = 0; i < mhelper->count; ++i) {
+        if (!(mhelper->entries + i)->finish && io_migrate_recursive(mhelper, i, fd)) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+int
+io_migrate_recursive_dry_run(
+    struct io_migrate_helper *mhelper,
+    uint32_t const id,
+    int fd
+){
+    struct io_migrate_entry *const msource = mhelper->entries + id;
+    if (!(msource->buffer = malloc(sizeof(mhelper->block)))) {
+        return 1;
+    }
+    if (io_seek_and_read(fd, mhelper->block * id, msource->buffer, mhelper->block)) {
+        free(msource->buffer);
+        return 2;
+    }
+    struct io_migrate_entry *const mtarget = mhelper->entries + msource->target;
+    if (!mtarget->buffer && io_migrate_recursive(mhelper, msource->target, fd)) {
+        free(msource->buffer);
+        return 3;
+    }
+    free(msource->buffer);
+    msource->buffer = NULL;
+    msource->finish = true;
+    return 0;
+}
+
+int
+io_migrate_dry_run(
+    struct io_migrate_helper *mhelper,
+    int fd
+){
+    for (uint32_t i = 0; i < mhelper->count; ++i) {
+        if (!(mhelper->entries + i)->finish && io_migrate_recursive_dry_run(mhelper, i, fd)) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
 /* io.c: IO-related functions, type-recognition is also here */

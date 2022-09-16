@@ -73,7 +73,7 @@ struct
 /* Function */
 
 int 
-    ept_compare(
+    ept_compare_table(
         struct ept_table const *    table_a, 
         struct ept_table const *    table_b
     );
@@ -89,6 +89,11 @@ struct ept_table *
         uint8_t const * dtb,
         size_t          dtb_size,
         uint64_t        capacity
+    );
+
+int
+    ept_is_not_pedantic(
+        struct ept_table const *    table
     );
 
 uint64_t 

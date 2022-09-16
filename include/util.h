@@ -40,6 +40,12 @@ double
         char *      suffix
     );
 
+size_t
+    util_size_to_human_readable_int(
+        uint64_t const  size, 
+        char * const    suffix
+    );
+
 bool 
     util_string_is_empty (
         char const *    string

@@ -52,6 +52,23 @@ util_size_to_human_readable(
     return size_human;
 }
 
+size_t
+util_size_to_human_readable_int(
+    uint64_t const  size, 
+    char * const    suffix
+){
+    unsigned int i;
+    size_t size_human = size;
+    for (i=0; i<util_human_readable_suffixes_length; ++i) {
+        if (size_human % 1024 || size_human <= 1024) {
+            break;
+        }
+        size_human /= 1024;
+    }
+    *suffix = util_human_readable_suffixes[i];
+    return size_human;
+}
+
 int 
 util_get_base_of_integer_literal(
     char const * const  literal

@@ -331,20 +331,49 @@ ept_from_dtb(
 }
 
 int
-ept_compare(
-    struct ept_table const * const  ept_a,
-    struct ept_table const * const  ept_b
+ept_compare_partition(
+    struct ept_partition const * const  part_a,
+    struct ept_partition const * const  part_b
 ){
-    if (!ept_a || !ept_b || ept_a->magic_uint32 != EPT_HEADER_MAGIC_UINT32 || ept_b->magic_uint32 != EPT_HEADER_MAGIC_UINT32 || !ept_a->partitions_count || !ept_b->partitions_count) {
+    if (!part_a || !part_b) {
+        fputs("EPT compare partitions: Not both partitions exist\n", stderr);
+        return -1;
+    }
+    if (strncmp(part_a->name, part_b->name, MAX_PARTITION_NAME_LENGTH)) {
+        fputs("EPT compare partitions: Names different\n", stderr);
+        return 1;
+    }
+    if (part_a->offset != part_b->offset) {
+        fputs("EPT compare partitions: Offset different\n", stderr);
+        return 2;
+    }
+    if (part_a->size != part_b->size) {
+        fputs("EPT compare partitions: Size different\n", stderr);
+        return 4;
+    }
+    if (part_a->mask_flags != part_b->mask_flags) {
+        fputs("EPT compare partitions: Masks different\n", stderr);
+        return 8;
+    }
+    // fputs("EPT compare partitions: All same\n", stderr);
+    return 0;
+}
+
+int
+ept_compare_table(
+    struct ept_table const * const  table_a,
+    struct ept_table const * const  table_b
+){
+    if (!table_a || !table_b || table_a->magic_uint32 != EPT_HEADER_MAGIC_UINT32 || table_b->magic_uint32 != EPT_HEADER_MAGIC_UINT32 || !table_a->partitions_count || !table_b->partitions_count) {
         fputs("EPT compare: not both tables are valid and contain valid partitions\n", stderr);
         return -1;
     }
-    int r = 128 * (ept_a->version_uint32[0] != ept_b->version_uint32[0]) + 256 * (ept_a->version_uint32[1] != ept_b->version_uint32[1]) + 512 * (ept_a->version_uint32[2] != ept_b->version_uint32[2]) + 1024 * (ept_a->partitions_count != ept_b->partitions_count);
+    int r = 128 * (table_a->version_uint32[0] != table_b->version_uint32[0]) + 256 * (table_a->version_uint32[1] != table_b->version_uint32[1]) + 512 * (table_a->version_uint32[2] != table_b->version_uint32[2]) + 1024 * (table_a->partitions_count != table_b->partitions_count);
     struct ept_partition const *part_a, *part_b;
     for (unsigned i = 0; i < MAX_PARTITIONS_COUNT; ++i) {
-        part_a = ept_a->partitions + i;
-        part_b = ept_b->partitions + i;
-        r += !!strncmp(part_a->name, part_b->name, MAX_PARTITION_NAME_LENGTH) + 2 * (part_a->offset != part_b->offset) + 4 * (part_a->size != part_b->size) + 8 * (part_a->mask_flags != part_b->mask_flags);
+        part_a = table_a->partitions + i;
+        part_b = table_b->partitions + i;
+        r += ept_compare_partition(part_a, part_b);
     }
     return r;
 }
@@ -403,6 +432,53 @@ ept_read_and_report(
     } else {
         return NULL;
     }
+}
+
+int
+ept_is_not_pedantic(
+    struct ept_table const * const  table
+){
+    if (!table || table->partitions_count < 4) {
+        fputs("EPT is pedantic: Table invalid or partitions count too few, not pedantic\n", stderr);
+        return -1;
+    }
+    size_t const capacity = ept_get_capacity(table);
+    if (!capacity) {
+        fputs("EPT is pedantic: Failed to get capacity\n", stderr);
+        return -2;
+    }
+    struct ept_table table_pedantic = ept_table_empty;
+    if (ept_pedantic_offsets(&table_pedantic, capacity)) {
+        fputs("EPT is pedantic: Failed to create pedantic reference table\n", stderr);
+        return -3;
+    }
+    if (ept_compare_partition(table->partitions, table_pedantic.partitions)) {
+        fputs("EPT is pedantic: Part 1 does not met with the pedantic bootloader\n", stderr);
+        return 1;
+    }
+    if (ept_compare_partition(table->partitions + 1, table_pedantic.partitions + 1)) {
+        fputs("EPT is pedantic: Part 2 does not met with the pedantic reserved\n", stderr);
+        return 2;
+    }
+    if (strncmp((table->partitions + 2)->name, "cache", MAX_PARTITION_NAME_LENGTH)) {
+        fputs("EPT is pedantic: Part 3 is not cache\n", stderr);
+        return 3;
+    }
+    if (strncmp((table->partitions + 3)->name, "env", MAX_PARTITION_NAME_LENGTH)) {
+        fputs("EPT is pedantic: Part 3 is not env\n", stderr);
+        return 4;
+    }
+    size_t offset;
+    struct ept_partition const *current = table->partitions + 1;
+    for (uint32_t i = 2; i < table->partitions_count; ++i) {
+        offset = current->offset + current->size + cli_options.gap_partition;
+        current = table->partitions + i;
+        if (current->offset != offset) {
+            fprintf(stderr, "EPT is pedantic: Part %u (%s) has a non-pedantic offset\n", i, current->name);
+            return 10 + i;
+        }
+    }
+    return 0;
 }
 
 /* ept.c: eMMC Partition Table related functions */

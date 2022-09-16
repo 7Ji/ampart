@@ -391,7 +391,7 @@ cli_mode_dtoe(
         return 4;
     }
     ept_report(table_new);
-    if (table && !ept_compare(table, table_new)) {
+    if (table && !ept_compare_table(table, table_new)) {
         fputs("CLI mode dtoe: New table is the same as the old table, no need to update\n", stderr);
         free(table_new);
         return 0;
@@ -401,6 +401,25 @@ cli_mode_dtoe(
     }
     free(table_new);
     return 0;
+}
+
+static inline
+int
+cli_mode_epedantic(
+    struct ept_table const * const  table
+){
+    fputs("CLI mode epedantic: Check if EPT is pedantic\n", stderr);
+    if (!table || !table->partitions_count || ept_valid(table)) {
+        fputs("CLI mode epedantic: EPT does not exist or is invalid, refuse to work\n", stderr);
+        return -1;
+    }
+    if (ept_is_not_pedantic(table)) {
+        fputs("CLI mode epedantic: EPT is not pedantic\n", stderr);
+        return 1;
+    } else {
+        fputs("CLI mode epedantic: EPT is pedantic\n", stderr);
+        return 0;
+    }
 }
 
 static inline
@@ -415,18 +434,6 @@ cli_mode_etod(
     }
     if (!table) {
         return 2;
-    }
-    return 0;
-}
-
-static inline
-int
-cli_mode_epedantic(
-    struct ept_table const * const  table
-){
-    fputs("CLI mode epedantic: Check if EPT is pedantic\n", stderr);
-    if (!table) {
-        return 1;
     }
     return 0;
 }
@@ -484,9 +491,49 @@ cli_mode_dsnapshot(
     struct dtb_buffer_helper const * const  bhelper
 ){
     fputs("CLI mode dsnapshot: Take snapshot of partitions node in DTB\n", stderr);
-    if (!bhelper) {
+    if (!bhelper || !bhelper->dtb_count) {
+        fputs("CLI mode dsnapshot: DTB not correct or invalid\n", stderr);
         return 1;
     }
+    if (dtb_check_buffers_partitions(bhelper)) {
+        fputs("CLI mode dtoe: Not all DTB entries have partitions node and identical, refuse to work\n", stderr);
+        return 2;
+    }
+    struct dts_partition_entry const *const part_start = bhelper->dtbs->partitions->partitions;
+    struct dts_partition_entry const *part_current;
+    fputs("CLI mode dsnapshot: Machine-friendly decimal snapshot:\n", stderr);
+    for (unsigned i = 0; i < bhelper->dtbs->partitions->partitions_count; ++i) {
+        part_current = part_start + i;
+        if (part_current->size == (uint64_t)-1) {
+            printf("%s::-1:%u ", part_current->name, part_current->mask);
+        } else {
+            printf("%s::%lu:%u ", part_current->name, part_current->size, part_current->mask);
+        }
+    }
+    putc('\n', stdout);
+    fputs("CLI mode dsnapshot: Machine-friendly hex snapshot:\n", stderr);
+    for (unsigned i = 0; i < bhelper->dtbs->partitions->partitions_count; ++i) {
+        part_current = part_start + i;
+        if (part_current->size == (uint64_t)-1) {
+            printf("%s::-1:%u ", part_current->name, part_current->mask);
+        } else {
+            printf("%s::0x%lx:%u ", part_current->name, part_current->size, part_current->mask);
+        }
+    }
+    putc('\n', stdout);
+    fputs("CLI mode dsnapshot: Human-readable snapshot:\n", stderr);
+    size_t size;
+    char suffix;
+    for (unsigned i = 0; i < bhelper->dtbs->partitions->partitions_count; ++i) {
+        part_current = part_start + i;
+        if (part_current->size == (uint64_t)-1) {
+            printf("%s::-1:%u ", part_current->name, part_current->mask);
+        } else {
+            size = util_size_to_human_readable_int(part_current->size, &suffix);
+            printf("%s::%lu%c:%u ", part_current->name, size, suffix, part_current->mask);
+        }
+    }
+    putc('\n', stdout);
     return 0;
 }
 
@@ -496,9 +543,36 @@ cli_mode_esnapshot(
     struct ept_table const * const  table
 ){
     fputs("CLI mode esnapshot: Take snapshot of EPT\n", stderr);
-    if (!table) {
+    if (!table || !table->partitions_count || ept_valid(table)) {
+        fputs("CLI mode esnapshot: EPT does not exist or is invalid, refuse to work\n", stderr);
         return 1;
     }
+    struct ept_partition const *const part_start = table->partitions;
+    struct ept_partition const *part_current;
+    fputs("CLI mode esnapshot: Machine-friendly decimal snapshot:\n", stderr);
+    for (uint32_t i = 0; i < table->partitions_count; ++i) {
+        part_current = part_start + i;
+        printf("%s:%lu:%lu:%u ", part_current->name, part_current->offset, part_current->size, part_current->mask_flags);
+    }
+    fputc('\n', stdout);
+    fputs("CLI mode esnapshot: Machine-friendly hex snapshot:\n", stderr);
+    for (uint32_t i = 0; i < table->partitions_count; ++i) {
+        part_current = part_start + i;
+        printf("%s:0x%lx:0x%lx:%u ", part_current->name, part_current->offset, part_current->size, part_current->mask_flags);
+    }
+    fputc('\n', stdout);
+    fputs("CLI mode esnapshot: Human-readable snapshot:\n", stderr);
+    size_t offset;
+    char suffix_offset;
+    size_t size;
+    char suffix_size;
+    for (uint32_t i = 0; i < table->partitions_count; ++i) {
+        part_current = part_start + i;
+        offset = util_size_to_human_readable_int(part_current->offset, &suffix_offset);
+        size = util_size_to_human_readable_int(part_current->size, &suffix_size);
+        printf("%s:%lu%c:%lu%c:%u ", part_current->name, offset, suffix_offset, size, suffix_size, part_current->mask_flags);
+    }
+    fputc('\n', stdout);
     return 0;
 }
 
@@ -577,9 +651,6 @@ cli_dispatcher(
     int const                               argc,
     char *                                  argv[]
 ){
-    // for (int i =0; i<argc; ++i) {
-    //     printf("%d: %s\n", i, argv[i]);
-    // }
     if (cli_options.mode == CLI_MODE_INVALID) {
         fputs("CLI dispatcher: invalid mode\n", stderr);
         return -1;
@@ -633,10 +704,13 @@ cli_interface(
     if ((r = cli_read(&bhelper, &table))) {
         return 20 + r;
     }
-    cli_dispatcher(bhelper, table, argc - optind, argv + optind);
+    r = cli_dispatcher(bhelper, table, argc - optind, argv + optind);
     dtb_free_buffer_helper(&bhelper);
     if (table) {
         free(table);
+    }
+    if (r) {
+        return 30 + r;
     }
     return 0;
 }

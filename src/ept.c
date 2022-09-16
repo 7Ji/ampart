@@ -442,6 +442,19 @@ ept_read_and_report(
 }
 
 int
+ept_create_pedantic(
+    struct ept_table * const    table,
+    size_t const                capacity
+){
+    *table = ept_table_empty;
+    if (ept_pedantic_offsets(table, capacity)) {
+        fputs("EPT create pedantic: Failed\n", stderr);
+        return 1;
+    }
+    return 0;
+}
+
+int
 ept_is_not_pedantic(
     struct ept_table const * const  table
 ){
@@ -455,7 +468,7 @@ ept_is_not_pedantic(
         return -2;
     }
     struct ept_table table_pedantic = ept_table_empty;
-    if (ept_pedantic_offsets(&table_pedantic, capacity)) {
+    if (ept_create_pedantic(&table_pedantic, capacity)) {
         fputs("EPT is not pedantic: Failed to create pedantic reference table\n", stderr);
         return -3;
     }
@@ -532,4 +545,110 @@ ept_eclone_parse(
     return 0;
 }
 
+static inline
+void
+ept_snapshot_decimal(
+    struct ept_table const * const  table
+){
+    fputs("EPT snapshot decimal:\n", stderr);
+    struct ept_partition const *const part_start = table->partitions;
+    struct ept_partition const *part_current;
+    for (uint32_t i = 0; i < table->partitions_count; ++i) {
+        part_current = part_start + i;
+        printf("%s:%lu:%lu:%u ", part_current->name, part_current->offset, part_current->size, part_current->mask_flags);
+    }
+    fputc('\n', stdout);
+}
+
+static inline
+void
+ept_snapshot_hex(
+    struct ept_table const * const  table
+){
+    fputs("EPT snapshot hex:\n", stderr);
+    struct ept_partition const *const part_start = table->partitions;
+    struct ept_partition const *part_current;
+    for (uint32_t i = 0; i < table->partitions_count; ++i) {
+        part_current = part_start + i;
+        printf("%s:0x%lx:0x%lx:%u ", part_current->name, part_current->offset, part_current->size, part_current->mask_flags);
+    }
+    fputc('\n', stdout);
+}
+
+static inline
+void
+ept_snapshot_human(
+    struct ept_table const * const  table
+){
+    fputs("EPT snapshot human:\n", stderr);
+    struct ept_partition const *const part_start = table->partitions;
+    struct ept_partition const *part_current;
+    size_t offset;
+    char suffix_offset;
+    size_t size;
+    char suffix_size;
+    for (uint32_t i = 0; i < table->partitions_count; ++i) {
+        part_current = part_start + i;
+        offset = util_size_to_human_readable_int(part_current->offset, &suffix_offset);
+        size = util_size_to_human_readable_int(part_current->size, &suffix_size);
+        printf("%s:%lu%c:%lu%c:%u ", part_current->name, offset, suffix_offset, size, suffix_size, part_current->mask_flags);
+    }
+    fputc('\n', stdout);
+}
+
+int
+ept_snapshot(
+    struct ept_table const * const  table
+){
+    if (!table || !table->partitions_count) {
+        fputs("EPT snapshot: EPT invalid\n", stderr);
+        return 1;
+    }
+    ept_snapshot_decimal(table);
+    ept_snapshot_hex(table);
+    ept_snapshot_human(table);
+    return 0;
+}
+
+int
+ept_table_to_dts_partitions_helper(
+    struct ept_table const * const              table,
+    struct dts_partitions_helper_simple * const dparts,
+    uint64_t const                              capacity
+){
+    if (!table || !table->partitions_count || !dparts || !capacity) {
+        return 1;
+    }
+    struct ept_table table_pedantic;
+    if (ept_create_pedantic(&table_pedantic, capacity)) {
+        return 2;
+    }
+    dparts->partitions_count = 0;
+    struct ept_partition const *part_source, *part_pedantic;
+    struct dts_partition_entry_simple *dpart;
+    bool copy;
+    for (unsigned i = 0; i < table->partitions_count; ++i) {
+        part_source = table->partitions + i;
+        if (i < 4) {
+            part_pedantic = table_pedantic.partitions + i;
+            if (ept_compare_partition(part_source, part_pedantic)) {
+                copy = true;
+            } else {
+                copy = false;
+            }
+        } else {
+            copy = true;
+        }
+        if (copy) {
+            dpart = dparts->partitions + dparts->partitions_count++;
+            strncpy(dpart->name, part_source->name, MAX_PARTITION_NAME_LENGTH);
+            dpart->mask = part_source->mask_flags;
+            dpart->size = part_source->size;
+            if (part_source->offset + part_source->size >= capacity) {
+                dpart->size = (uint64_t)-1;
+            }
+        }   
+    }
+    return 0;
+}
 /* ept.c: eMMC Partition Table related functions */

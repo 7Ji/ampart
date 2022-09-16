@@ -597,13 +597,88 @@ dtb_read_into_buffer_helper_and_report(
         return 2;
     }
     for (unsigned i = 0; i < bhelper->dtb_count; ++i) {
-        fprintf(stderr, "DTB read into buffer helper and report: DTB %u of %u", i + 1, bhelper->dtb_count);
+        fprintf(stderr, "DTB read into buffer helper and report: DTB %u of %u\n", i + 1, bhelper->dtb_count);
         dts_report_partitions(&bhelper->dtbs[i].phelper);
     }
     return 0;
 }
 
 int dtb_replace_partitions() {
+    return 0;
+}
+
+static inline
+void
+dtb_snapshot_decimal(
+    struct dts_partitions_helper const * const phelper
+){
+    struct dts_partition_entry const *const part_start = phelper->partitions;
+    struct dts_partition_entry const *part_current;
+    fputs("DTB snapshot decimal:\n", stderr);
+    for (unsigned i = 0; i < phelper->partitions_count; ++i) {
+        part_current = part_start + i;
+        if (part_current->size == (uint64_t)-1) {
+            printf("%s::-1:%u ", part_current->name, part_current->mask);
+        } else {
+            printf("%s::%lu:%u ", part_current->name, part_current->size, part_current->mask);
+        }
+    }
+    putc('\n', stdout);
+}
+
+static inline
+void
+dtb_snapshot_hex(
+    struct dts_partitions_helper const * const phelper
+){
+    struct dts_partition_entry const *const part_start = phelper->partitions;
+    struct dts_partition_entry const *part_current;
+    fputs("DTB snapshot hex:\n", stderr);
+    for (unsigned i = 0; i < phelper->partitions_count; ++i) {
+        part_current = part_start + i;
+        if (part_current->size == (uint64_t)-1) {
+            printf("%s::-1:%u ", part_current->name, part_current->mask);
+        } else {
+            printf("%s::0x%lx:%u ", part_current->name, part_current->size, part_current->mask);
+        }
+    }
+    putc('\n', stdout);
+}
+
+static inline
+void
+dtb_snapshot_human(
+    struct dts_partitions_helper const * const phelper
+){
+    fputs("DTB snapshot human:\n", stderr);
+    struct dts_partition_entry const *const part_start = phelper->partitions;
+    struct dts_partition_entry const *part_current;
+    size_t size;
+    char suffix;
+    for (unsigned i = 0; i < phelper->partitions_count; ++i) {
+        part_current = part_start + i;
+        if (part_current->size == (uint64_t)-1) {
+            printf("%s::-1:%u ", part_current->name, part_current->mask);
+        } else {
+            size = util_size_to_human_readable_int(part_current->size, &suffix);
+            printf("%s::%lu%c:%u ", part_current->name, size, suffix, part_current->mask);
+        }
+    }
+    putc('\n', stdout);
+}
+
+int
+dtb_snapshot(
+    struct dtb_buffer_helper const * const  bhelper
+){
+    if (!bhelper || !bhelper->dtb_count || !bhelper->dtbs->phelper.partitions_count) {
+        fputs("DTB snapshot: DTB invalid\n", stderr);
+        return 1;
+    }
+    struct dts_partitions_helper const *const phelper = &bhelper->dtbs->phelper;
+    dtb_snapshot_decimal(phelper);
+    dtb_snapshot_hex(phelper);
+    dtb_snapshot_human(phelper);
     return 0;
 }
 

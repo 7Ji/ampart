@@ -321,6 +321,10 @@ cli_write_dtb(
         fputs("CLI write DTB: Buffer and Dparts not both valid and contain partitions, refuse to continue\n", stderr);
         return -1;
     }
+    if (cli_options.content == CLI_CONTENT_TYPE_AUTO) {
+        fputs("CLI write DTB: Target content type not recognized, this should not happen, refuse to continue\n", stderr);
+        return -2;
+    }
     if (cli_options.dry_run) {
         fputs("CLI write DTB: In dry-run mode, assuming success\n", stderr);
         return 0;
@@ -349,8 +353,15 @@ cli_write_ept(
         fputs("CLI write EPT: Table invalid, refuse to continue\n", stderr);
         return 1;
     }
-    if (cli_options.content == CLI_CONTENT_TYPE_DTB) {
-        fputs("CLI write EPT: Target is DTB, no need to write\n", stderr);
+    switch (cli_options.content) {
+        case CLI_CONTENT_TYPE_DTB:
+            fputs("CLI write EPT: Target is DTB, no need to write\n", stderr);
+            return 0;
+        case CLI_CONTENT_TYPE_AUTO:
+            fputs("CLI write EPT: Target content type not recognized, this should not happen, refuse to continue\n", stderr);
+            return 2;
+        default:
+            break;
     }
     if (cli_options.dry_run) {
         fputs("CLI write EPT: In dry-run mode, assuming success\n", stderr);
@@ -372,6 +383,21 @@ cli_write_ept(
 }
 
 static inline
+size_t
+cli_get_capacity(
+    struct ept_table const * const  table
+){
+    if (cli_options.content == CLI_CONTENT_TYPE_DISK) {
+        fprintf(stderr, "CLI get capacity: Using target file/block device size %zu as the capacity, since it's full disk\n", cli_options.size);
+        return cli_options.size;
+    } else {
+        size_t const capacity = ept_get_capacity(table);
+        fprintf(stderr, "CLI get capacity: Using max partition end %zu as the capacity, since target is %s and is not full disk\n", capacity, cli_content_type_strings[cli_options.content]);
+        return capacity;
+    }
+}
+
+static inline
 int
 cli_mode_dtoe(
     struct dtb_buffer_helper const * const  bhelper,
@@ -386,15 +412,10 @@ cli_mode_dtoe(
         fputs("CLI mode dtoe: Not all DTB entries have partitions node and identical, refuse to work\n", stderr);
         return 2;
     }
-    uint64_t capacity;
-    if (cli_options.content == CLI_CONTENT_TYPE_DISK) {
-        capacity = cli_options.size;
-    } else {
-        if (!table) {
-            fputs("CLI mode dtoe: Can't get eMMC size, since target is not a full disk (image), and EPT is not valid, refuse to work\n", stderr);
-            return 3;
-        }
-        capacity = ept_get_capacity(table);
+    uint64_t const capacity = cli_get_capacity(table);
+    if (!capacity) {
+        fputs("CLI mode dtoe: Cannot get valid capacity, give up\n", stderr);
+        return 3;
     }
     struct ept_table table_new;
     if (ept_table_from_dts_partitions_helper(&table_new, &bhelper->dtbs->phelper, capacity)) {
@@ -406,12 +427,9 @@ cli_mode_dtoe(
         fputs("CLI mode dtoe: New table is the same as the old table, no need to update\n", stderr);
         return 0;
     }
-    if (cli_options.content != CLI_CONTENT_TYPE_DTB) {
-        fputs("CLI mode dtoe: Need to write new EPT\n", stderr);
-        if (cli_write_ept(&table_new)) {
-            fputs("CLI mode dtoe: Failed to write new EPT\n", stderr);
-            return 5;
-        }
+    if (cli_write_ept(&table_new)) {
+        fputs("CLI mode dtoe: Failed to write new EPT\n", stderr);
+        return 5;
     }
     return 0;
 }
@@ -426,11 +444,11 @@ cli_mode_epedantic(
         fputs("CLI mode epedantic: EPT does not exist or is invalid, refuse to work\n", stderr);
         return -1;
     }
-    if (ept_is_not_pedantic(table)) {
-        fputs("CLI mode epedantic: EPT is not pedantic\n", stderr);
+    if (EPT_IS_PEDANTIC(table)) {
+        fputs("CLI mode epedantic: EPT is pedantic\n", stderr);
         return 1;
     } else {
-        fputs("CLI mode epedantic: EPT is pedantic\n", stderr);
+        fputs("CLI mode epedantic: EPT is not pedantic\n", stderr);
         return 0;
     }
 }
@@ -454,8 +472,17 @@ cli_mode_etod(
         fputs("CLI mode etod: Refuse to convert a non-pedantic EPT to DTB\n", stderr);
         return 1;
     }
-    struct dts_partitions_helper_simple const * const dparts = NULL;
-    if (cli_write_dtb(bhelper, dparts)) {
+    size_t const capacity = cli_get_capacity(table);
+    if (!capacity) {
+        fputs("CLI mode etod: Failed to get valid capacity\n", stderr);
+        return 2;
+    }
+    struct dts_partitions_helper_simple dparts;
+    if (ept_table_to_dts_partitions_helper(table, &dparts, capacity)) {
+        fputs("CLI mode etod: Failed to convert to DTB partitions\n", stderr);
+    }
+    dts_report_partitions_simple(&dparts);
+    if (cli_write_dtb(bhelper, &dparts)) {
         fputs("CLI mode dtoe: Failed to write DTB\n", stderr);
         return 2;
     }
@@ -510,21 +537,6 @@ cli_mode_dedit(
 }
 
 static inline
-size_t
-cli_get_capacity(
-    struct ept_table const * const  table
-){
-    if (cli_options.content == CLI_CONTENT_TYPE_DISK) {
-        fprintf(stderr, "CLI get capacity: Using target file/block device size %zu as the capacity, since it's full disk\n", cli_options.size);
-        return cli_options.size;
-    } else {
-        size_t const capacity = ept_get_capacity(table);
-        fprintf(stderr, "CLI get capacity: Using max partition end %zu as the capacity, since target is %s and is not full disk\n", capacity, cli_content_type_strings[cli_options.content]);
-        return capacity;
-    }
-}
-
-static inline
 int
 cli_mode_eedit(
     struct ept_table const * const  table,
@@ -563,41 +575,9 @@ cli_mode_dsnapshot(
         fputs("CLI mode dtoe: Not all DTB entries have partitions node and identical, refuse to work\n", stderr);
         return 2;
     }
-    struct dts_partition_entry const *const part_start = bhelper->dtbs->phelper.partitions;
-    struct dts_partition_entry const *part_current;
-    fputs("CLI mode dsnapshot: Machine-friendly decimal snapshot:\n", stderr);
-    for (unsigned i = 0; i < bhelper->dtbs->phelper.partitions_count; ++i) {
-        part_current = part_start + i;
-        if (part_current->size == (uint64_t)-1) {
-            printf("%s::-1:%u ", part_current->name, part_current->mask);
-        } else {
-            printf("%s::%lu:%u ", part_current->name, part_current->size, part_current->mask);
-        }
+    if (dtb_snapshot(bhelper)) {
+        return 3;
     }
-    putc('\n', stdout);
-    fputs("CLI mode dsnapshot: Machine-friendly hex snapshot:\n", stderr);
-    for (unsigned i = 0; i < bhelper->dtbs->phelper.partitions_count; ++i) {
-        part_current = part_start + i;
-        if (part_current->size == (uint64_t)-1) {
-            printf("%s::-1:%u ", part_current->name, part_current->mask);
-        } else {
-            printf("%s::0x%lx:%u ", part_current->name, part_current->size, part_current->mask);
-        }
-    }
-    putc('\n', stdout);
-    fputs("CLI mode dsnapshot: Human-readable snapshot:\n", stderr);
-    size_t size;
-    char suffix;
-    for (unsigned i = 0; i < bhelper->dtbs->phelper.partitions_count; ++i) {
-        part_current = part_start + i;
-        if (part_current->size == (uint64_t)-1) {
-            printf("%s::-1:%u ", part_current->name, part_current->mask);
-        } else {
-            size = util_size_to_human_readable_int(part_current->size, &suffix);
-            printf("%s::%lu%c:%u ", part_current->name, size, suffix, part_current->mask);
-        }
-    }
-    putc('\n', stdout);
     return 0;
 }
 
@@ -611,32 +591,9 @@ cli_mode_esnapshot(
         fputs("CLI mode esnapshot: EPT does not exist or is invalid, refuse to work\n", stderr);
         return 1;
     }
-    struct ept_partition const *const part_start = table->partitions;
-    struct ept_partition const *part_current;
-    fputs("CLI mode esnapshot: Machine-friendly decimal snapshot:\n", stderr);
-    for (uint32_t i = 0; i < table->partitions_count; ++i) {
-        part_current = part_start + i;
-        printf("%s:%lu:%lu:%u ", part_current->name, part_current->offset, part_current->size, part_current->mask_flags);
+    if (ept_snapshot(table)) {
+        return 2;
     }
-    fputc('\n', stdout);
-    fputs("CLI mode esnapshot: Machine-friendly hex snapshot:\n", stderr);
-    for (uint32_t i = 0; i < table->partitions_count; ++i) {
-        part_current = part_start + i;
-        printf("%s:0x%lx:0x%lx:%u ", part_current->name, part_current->offset, part_current->size, part_current->mask_flags);
-    }
-    fputc('\n', stdout);
-    fputs("CLI mode esnapshot: Human-readable snapshot:\n", stderr);
-    size_t offset;
-    char suffix_offset;
-    size_t size;
-    char suffix_size;
-    for (uint32_t i = 0; i < table->partitions_count; ++i) {
-        part_current = part_start + i;
-        offset = util_size_to_human_readable_int(part_current->offset, &suffix_offset);
-        size = util_size_to_human_readable_int(part_current->size, &suffix_size);
-        printf("%s:%lu%c:%lu%c:%u ", part_current->name, offset, suffix_offset, size, suffix_size, part_current->mask_flags);
-    }
-    fputc('\n', stdout);
     return 0;
 }
 

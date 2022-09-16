@@ -22,6 +22,9 @@
 
 #define EPT_HEADER_MAGIC_UINT32       (uint32_t)0x0054504DU
 
+/* MACRO */
+#define EPT_IS_PEDANTIC(x)  !ept_is_not_pedantic(x)
+
 /* Structure */
 
 struct 
@@ -119,6 +122,11 @@ void
     );
 
 int
+    ept_snapshot(
+        struct ept_table const *    table
+    );
+
+int
     ept_table_from_dtb(
         struct ept_table *  table,
         uint8_t const *     dtb,
@@ -130,6 +138,13 @@ int
     ept_table_from_dts_partitions_helper(
         struct ept_table * const                table,
         struct dts_partitions_helper const *    phelper, 
+        uint64_t const                          capacity
+    );
+
+int
+    ept_table_to_dts_partitions_helper(
+        struct ept_table const *                table,
+        struct dts_partitions_helper_simple *   dparts,
         uint64_t const                          capacity
     );
 

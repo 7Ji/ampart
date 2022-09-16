@@ -44,11 +44,10 @@ struct
 
 struct
     dtb_buffer_helper {
-        struct dtb_buffer_entry *dtbs;
-        unsigned dtb_count;
-        enum dtb_type type_main;
-        enum dtb_type type_sub;
-        
+        struct dtb_buffer_entry *   dtbs;
+        unsigned                    dtb_count;
+        enum dtb_type               type_main;
+        enum dtb_type               type_sub;
     };
 
 struct 
@@ -164,4 +163,10 @@ int
         size_t                      size_max, 
         bool                        should_checksum
     );
+
+int
+    dtb_snapshot(
+        struct dtb_buffer_helper const * const  bhelper
+    );
+
 #endif

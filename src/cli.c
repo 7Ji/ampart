@@ -95,8 +95,8 @@ cli_describe_options() {
 static inline
 int
 cli_read(
-    struct dtb_buffer_helper * * const  bhelper,
-    struct ept_table * * const          table
+    struct dtb_buffer_helper * const    bhelper,
+    struct ept_table * const            table
 ){
     int fd = open(cli_options.target, O_RDONLY);
     if (fd < 0) {
@@ -108,14 +108,14 @@ cli_read(
         close(fd);
         return 2;
     }
-    *bhelper = dtb_read_into_buffer_helper_and_report(fd, cli_options.size - offset_dtb, cli_options.content != CLI_CONTENT_TYPE_DTB);
+    dtb_read_into_buffer_helper_and_report(bhelper, fd, cli_options.size - offset_dtb, cli_options.content != CLI_CONTENT_TYPE_DTB);
     if (cli_options.content != CLI_CONTENT_TYPE_DTB) {
         off_t const offset_ept = io_seek_ept(fd);
         if (offset_ept < 0) {
             close(fd);
             return 3;
         }
-        *table = ept_read_and_report(fd, cli_options.size - offset_ept);
+        ept_read_and_report(table, fd, cli_options.size - offset_ept);
     }
     close(fd);
     return 0;
@@ -234,17 +234,17 @@ cli_find_disk(){
 static inline
 int
 cli_options_complete_target_info(){
-    struct io_target_type *target_type = io_identify_target_type(cli_options.target);
-    if (!target_type) {
+    struct io_target_type target_type;
+    if (io_identify_target_type(&target_type, cli_options.target)) {
         fprintf(stderr, "CLI interface: failed to identify the type of target '%s'\n", cli_options.target);
         return 1;
     }
-    cli_options.size = target_type->size;
-    io_describe_target_type(target_type, NULL);
+    cli_options.size = target_type.size;
+    io_describe_target_type(&target_type, NULL);
     bool find_disk = false;
     if (cli_options.content == CLI_CONTENT_TYPE_AUTO) {
         fputs("CLI interface: Start auto content type identification, specify target type if you don't want this\n", stderr);
-        switch (target_type->content) {
+        switch (target_type.content) {
             case IO_TARGET_TYPE_CONTENT_DISK:
                 fputs("CLI interface: Content auto identified as whole disk\n", stderr);
                 cli_options.content = CLI_CONTENT_TYPE_DISK;
@@ -261,13 +261,12 @@ cli_options_complete_target_info(){
                 fprintf(stderr, "CLI interface: failed to identify the content type of target '%s', please set its type manually\n", cli_options.target);
                 return 2;
         }
-        if (target_type->file == IO_TARGET_TYPE_FILE_BLOCKDEVICE && target_type->content != IO_TARGET_TYPE_CONTENT_DISK) {
+        if (target_type.file == IO_TARGET_TYPE_FILE_BLOCKDEVICE && target_type.content != IO_TARGET_TYPE_CONTENT_DISK) {
             find_disk = true;
         }
-    } else if (target_type->file == IO_TARGET_TYPE_FILE_BLOCKDEVICE && cli_options.content != CLI_CONTENT_TYPE_DISK) {
+    } else if (target_type.file == IO_TARGET_TYPE_FILE_BLOCKDEVICE && cli_options.content != CLI_CONTENT_TYPE_DISK) {
         find_disk = true;
     }
-    free(target_type);
     if (!cli_options.strict_device && find_disk) {
         int r = cli_find_disk();
         if (r) {
@@ -397,26 +396,23 @@ cli_mode_dtoe(
         }
         capacity = ept_get_capacity(table);
     }
-    struct ept_table *table_new = ept_complete_dtb(bhelper->dtbs->partitions, capacity);
-    if (!table_new) {
+    struct ept_table table_new;
+    if (ept_table_from_dts_partitions_helper(&table_new, &bhelper->dtbs->phelper, capacity)) {
         fputs("CLI mode dtoe: Failed to create new partition table\n", stderr);
         return 4;
     }
-    ept_report(table_new);
-    if (table && !ept_compare_table(table, table_new)) {
+    ept_report(&table_new);
+    if (table && !ept_compare_table(table, &table_new)) {
         fputs("CLI mode dtoe: New table is the same as the old table, no need to update\n", stderr);
-        free(table_new);
         return 0;
     }
     if (cli_options.content != CLI_CONTENT_TYPE_DTB) {
         fputs("CLI mode dtoe: Need to write new EPT\n", stderr);
-        if (cli_write_ept(table_new)) {
+        if (cli_write_ept(&table_new)) {
             fputs("CLI mode dtoe: Failed to write new EPT\n", stderr);
-            free(table_new);
             return 5;
         }
     }
-    free(table_new);
     return 0;
 }
 
@@ -426,7 +422,7 @@ cli_mode_epedantic(
     struct ept_table const * const  table
 ){
     fputs("CLI mode epedantic: Check if EPT is pedantic\n", stderr);
-    if (!table || !table->partitions_count || ept_valid(table)) {
+    if (!table || !table->partitions_count || ept_valid_table(table)) {
         fputs("CLI mode epedantic: EPT does not exist or is invalid, refuse to work\n", stderr);
         return -1;
     }
@@ -450,7 +446,7 @@ cli_mode_etod(
         fputs("CLI mode etod: DTB does not exist, refuse to continue\n", stderr);
         return -1;
     }
-    if (!table || !table->partitions_count || ept_valid(table)) {
+    if (!table || !table->partitions_count || ept_valid_table(table)) {
         fputs("CLI mode etod: EPT does not exist or is invalid, refuse to work\n", stderr);
         return -2;
     }
@@ -567,10 +563,10 @@ cli_mode_dsnapshot(
         fputs("CLI mode dtoe: Not all DTB entries have partitions node and identical, refuse to work\n", stderr);
         return 2;
     }
-    struct dts_partition_entry const *const part_start = bhelper->dtbs->partitions->partitions;
+    struct dts_partition_entry const *const part_start = bhelper->dtbs->phelper.partitions;
     struct dts_partition_entry const *part_current;
     fputs("CLI mode dsnapshot: Machine-friendly decimal snapshot:\n", stderr);
-    for (unsigned i = 0; i < bhelper->dtbs->partitions->partitions_count; ++i) {
+    for (unsigned i = 0; i < bhelper->dtbs->phelper.partitions_count; ++i) {
         part_current = part_start + i;
         if (part_current->size == (uint64_t)-1) {
             printf("%s::-1:%u ", part_current->name, part_current->mask);
@@ -580,7 +576,7 @@ cli_mode_dsnapshot(
     }
     putc('\n', stdout);
     fputs("CLI mode dsnapshot: Machine-friendly hex snapshot:\n", stderr);
-    for (unsigned i = 0; i < bhelper->dtbs->partitions->partitions_count; ++i) {
+    for (unsigned i = 0; i < bhelper->dtbs->phelper.partitions_count; ++i) {
         part_current = part_start + i;
         if (part_current->size == (uint64_t)-1) {
             printf("%s::-1:%u ", part_current->name, part_current->mask);
@@ -592,7 +588,7 @@ cli_mode_dsnapshot(
     fputs("CLI mode dsnapshot: Human-readable snapshot:\n", stderr);
     size_t size;
     char suffix;
-    for (unsigned i = 0; i < bhelper->dtbs->partitions->partitions_count; ++i) {
+    for (unsigned i = 0; i < bhelper->dtbs->phelper.partitions_count; ++i) {
         part_current = part_start + i;
         if (part_current->size == (uint64_t)-1) {
             printf("%s::-1:%u ", part_current->name, part_current->mask);
@@ -611,7 +607,7 @@ cli_mode_esnapshot(
     struct ept_table const * const  table
 ){
     fputs("CLI mode esnapshot: Take snapshot of EPT\n", stderr);
-    if (!table || !table->partitions_count || ept_valid(table)) {
+    if (!table || !table->partitions_count || ept_valid_table(table)) {
         fputs("CLI mode esnapshot: EPT does not exist or is invalid, refuse to work\n", stderr);
         return 1;
     }
@@ -689,7 +685,7 @@ cli_mode_eclone(
     if (r) {
         if (r < 0) return 0; else return 1;
     }
-    if (!table || !ept_valid(table)) {
+    if (!table || !ept_valid_table(table)) {
         fputs("CLI mode eclone: Warning, old table corrupted or not valid, continue anyway\n", stderr);
     }
     size_t const capacity = cli_get_capacity(table);
@@ -791,16 +787,13 @@ cli_interface(
         return 10 + r;
     }
     cli_describe_options();
-    struct dtb_buffer_helper *bhelper = NULL;
-    struct ept_table *table = NULL;
+    struct dtb_buffer_helper bhelper;
+    struct ept_table table;
     if ((r = cli_read(&bhelper, &table))) {
         return 20 + r;
     }
-    r = cli_dispatcher(bhelper, table, argc - optind, (char const * const *)(argv + optind));
+    r = cli_dispatcher(&bhelper, &table, argc - optind, (char const * const *)(argv + optind));
     dtb_free_buffer_helper(&bhelper);
-    if (table) {
-        free(table);
-    }
     if (r) {
         return 30 + r;
     }

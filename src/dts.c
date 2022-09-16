@@ -424,17 +424,17 @@ dts_parse_partitions_node_begin(
 
 ){
     if (*in_partition) {
-        fputs("DTB get partitions: encountered sub node inside partition, which is impossible\n", stderr);
+        fputs("DTS parse partitions node begin: encountered sub node inside partition, which is impossible\n", stderr);
         return 1;
     } else {
         if (phelper->partitions_count == MAX_PARTITIONS_COUNT) {
-            fputs("DTB get partitions: partitions count exceeds maximum\n", stderr);
+            fputs("DTS parse partitions node begin: partitions count exceeds maximum\n", stderr);
             return 2;
         }
         *partition = phelper->partitions + phelper->partitions_count++;
         size_t const len_node_name = strlen((const char *)(current + 1));
         if (len_node_name > 15) {
-            fprintf(stderr, "DTB get partitions: partition name '%s' too long\n", (const char *)(current + 1));
+            fprintf(stderr, "DTS parse partitions node begin: partition name '%s' too long\n", (const char *)(current + 1));
             return 3;
         }
         *i += (len_node_name + 1) / 4;
@@ -453,7 +453,7 @@ dts_parse_partitions_node_end(
     struct dts_partition_entry * const          partition
 ){
     if (partition && partition->phandle && partition->linux_phandle && partition->phandle != partition->linux_phandle) {
-        fprintf(stderr, "DTB get partitions: partition '%s' has different phandle (%"PRIu32") and linux,phandle (%"PRIu32")\n", partition->name, partition->phandle, partition->linux_phandle);
+        fprintf(stderr, "DTS parse partitions end: partition '%s' has different phandle (%"PRIu32") and linux,phandle (%"PRIu32")\n", partition->name, partition->phandle, partition->linux_phandle);
         return 1;
     }
     return 0;
@@ -479,19 +479,19 @@ dts_parse_partitions_node_prop_root(
             phelper->linux_phandle_root = bswap_32(*(current+3));
         } else {
             if (strncmp(shelper->stringblock + name_off, "part-", 5)) {
-                fprintf(stderr, "DTB get partitions: invalid propertey '%s' in partitions node\n", shelper->stringblock + name_off);
+                fprintf(stderr, "DTS parse partitions node prop root: invalid propertey '%s' in partitions node\n", shelper->stringblock + name_off);
                 return 1;
             } else {
                 unsigned long phandle_id = strtoul(shelper->stringblock + name_off + 5, NULL , 10);
                 if (phandle_id > MAX_PARTITIONS_COUNT - 1) {
-                    fprintf(stderr, "DTB get partitions: invalid part id %lu in partitions node\n", phandle_id);
+                    fprintf(stderr, "DTS parse partitions node prop root: invalid part id %lu in partitions node\n", phandle_id);
                     return 2;
                 }
                 phelper->phandles[phandle_id] = bswap_32(*(current+3));
             }
         }
     } else {
-        fprintf(stderr, "DTB get partitions: %s property of partitions node is not of length 4\n", shelper->stringblock + name_off);
+        fprintf(stderr, "DTS parse partitions node prop root: %s property of partitions node is not of length 4\n", shelper->stringblock + name_off);
         return 3;
     }
     return 0;
@@ -510,43 +510,43 @@ dts_parse_partitions_node_prop_child(
 ){
     if (name_off == offsets->pname) {
         if (len_prop > 16) {
-            fprintf(stderr, "DTB get partitions: partition name '%s' too long\n", (const char *)(current + 3));
+            fprintf(stderr, "DTS parse partitions node prop child: partition name '%s' too long\n", (const char *)(current + 3));
             return 1;
         }
         if (strcmp(partition->name, (const char *)(current + 3))) {
-            fprintf(stderr, "DTB get partitions: pname property %s different from partition node name %s\n", (const char *)(current + 3), partition->name);
+            fprintf(stderr, "DTS parse partitions node prop child: pname property %s different from partition node name %s\n", (const char *)(current + 3), partition->name);
             return 2;
         }
     } else if (name_off == offsets->size) {
         if (len_prop == 8) {
             partition->size = ((uint64_t)bswap_32(*(current+3)) << 32) | (uint64_t)bswap_32(*(current+4));
         } else {
-            fputs("DTB get partitions: partition size is not of length 8\n", stderr);
+            fputs("DTS parse partitions node prop child: partition size is not of length 8\n", stderr);
             return 3;
         }
     } else if (name_off == offsets->mask) {
         if (len_prop == 4) {
             partition->mask = bswap_32(*(current+3));
         } else {
-            fputs("DTB get partitions: partition mask is not of length 4\n", stderr);
+            fputs("DTS parse partitions node prop child: partition mask is not of length 4\n", stderr);
             return 4;
         }
     } else if (name_off == offsets->phandle) {
         if (len_prop == 4) {
             partition->phandle = bswap_32(*(current+3));
         } else {
-            fputs("DTB get partitions: partition phandle is not of length 4\n", stderr);
+            fputs("DTS parse partitions node prop child: partition phandle is not of length 4\n", stderr);
             return 5;
         }
     } else if (name_off == offsets->linux_phandle) {
         if (len_prop == 4) {
             partition->linux_phandle = bswap_32(*(current+3));
         } else {
-            fputs("DTB get partitions: partition phandle is not of length 4\n", stderr);
+            fputs("DTS parse partitions node prop child: partition phandle is not of length 4\n", stderr);
             return 6;
         }
     } else {
-        fprintf(stderr, "DTB get partitions: invalid property for partition, ignored: %s\n", shelper->stringblock+name_off);
+        fprintf(stderr, "DTS parse partitions node prop child: invalid property for partition, ignored: %s\n", shelper->stringblock+name_off);
         free(phelper);
         return 7;
     }
@@ -574,23 +574,19 @@ dts_parse_partitions_node_prop(
     }
 }
 
-struct dts_partitions_helper *
+int
 dts_get_partitions_from_node(
+    struct dts_partitions_helper *          phelper,
     uint8_t const * const                   node,
     struct stringblock_helper const * const shelper
 ){
     if (memcmp(node, dts_partitions_node_start, DTS_PARTITIONS_NODE_START_LENGTH)) {
-        fputs("DTB get partitions: node does not start properly\n", stderr);
-        return NULL;
+        fputs("DTS get partitions from node: node does not start properly\n", stderr);
+        return 1;
     }
     struct dts_stringblock_essential_offsets offsets;
     if (dts_get_partitions_get_essential_offsets(&offsets, shelper)) {
-        return NULL;
-    }
-    struct dts_partitions_helper *const phelper = malloc(sizeof(struct dts_partitions_helper));
-    if (!phelper) {
-        fputs("DTB get partitions: failed to allocate memory for partitions helper\n", stderr);
-        return NULL;
+        return 2;
     }
     memset(phelper, 0, sizeof(struct dts_partitions_helper));
     uint32_t const * const start = (const uint32_t *)(node + DTS_PARTITIONS_NODE_START_LENGTH);
@@ -602,33 +598,29 @@ dts_get_partitions_from_node(
         switch (*current) {
             case DTS_BEGIN_NODE_ACTUAL:
                 if (dts_parse_partitions_node_begin(phelper, &in_partition, &partition, current, &i)) {
-                    free(phelper);
-                    return NULL;
+                    return 3;
                 }
                 break;
             case DTS_END_NODE_ACTUAL:
                 if (in_partition) {
                     if (dts_parse_partitions_node_end(partition)) {
-                        free(phelper);
-                        return NULL;
+                        return 4;
                     }
                     in_partition = false;
                 } else {
-                    return phelper;
+                    return 0;
                 }
                 break;
             case DTS_PROP_ACTUAL:
                 if (dts_parse_partitions_node_prop(current, &i, in_partition, &offsets, partition, phelper, shelper)) {
-                    free(phelper);
-                    return NULL;
+                    return 5;
                 }
                 break;
             case DTS_NOP_ACTUAL:
                 break;
             default:
                 fprintf(stderr, "DTB get partitions: invalid token 0x%08x\n", bswap_32(*current));
-                free(phelper);
-                return NULL;
+                return 6;
         }
     }
 }

@@ -32,67 +32,70 @@
 
 /* Variable */
 
-uint32_t const          ept_header_version_uint32[] = {
-    EPT_HEADER_VERSION_UINT32_0,
-    EPT_HEADER_VERSION_UINT32_1,
-    EPT_HEADER_VERSION_UINT32_2
-};
+uint32_t const
+    ept_header_version_uint32[] = {
+        EPT_HEADER_VERSION_UINT32_0,
+        EPT_HEADER_VERSION_UINT32_1,
+        EPT_HEADER_VERSION_UINT32_2
+    };
 
-struct ept_table const  ept_table_empty = {
-    {
-        {
-            { .magic_uint32 = EPT_HEADER_MAGIC_UINT32 },
-            { .version_uint32 = {EPT_HEADER_VERSION_UINT32_0, EPT_HEADER_VERSION_UINT32_1, EPT_HEADER_VERSION_UINT32_2} },
-            4U,
-            0U
-        }
-    },
-    {
+struct ept_table const 
+    ept_table_empty = {
         {
             {
-                EPT_PARTITION_BOOTLOADER_NAME,
-                EPT_PARTITION_BOOTLOADER_SIZE,
-                0U,
-                0U,
+                { .magic_uint32 = EPT_HEADER_MAGIC_UINT32 },
+                { .version_uint32 = {EPT_HEADER_VERSION_UINT32_0, EPT_HEADER_VERSION_UINT32_1, EPT_HEADER_VERSION_UINT32_2} },
+                4U,
                 0U
-            },
-            /*
-            Layout of reserved partition:
-            0x000000 - 0x003fff: partition table
-            0x004000 - 0x03ffff: storage key area	(16k offset & 256k size)
-            0x400000 - 0x47ffff: dtb area  (4M offset & 512k size)
-            0x480000 - 64MBytes: resv for other usage.
-            */
+            }
+        },
+        {
             {
-                EPT_PARTITION_RESERVED_NAME,
-                EPT_PARTITION_RESERVED_SIZE,
-                0U,
-                0U,
-                0U
-            },
-            {
-                EPT_PARTITION_CACHE_NAME,
-                EPT_PARTITION_CACHE_SIZE,
-                0U,
-                0U,
-                0U
-            },
-            {
-                EPT_PARTITION_ENV_NAME,
-                EPT_PARTITION_ENV_SIZE,
-                0U,
-                0U,
-                0U
-            },
-            {{0U},0U,0U,0U,0U}
+                {
+                    EPT_PARTITION_BOOTLOADER_NAME,
+                    EPT_PARTITION_BOOTLOADER_SIZE,
+                    0U,
+                    0U,
+                    0U
+                },
+                /*
+                Layout of reserved partition:
+                0x000000 - 0x003fff: partition table
+                0x004000 - 0x03ffff: storage key area	(16k offset & 256k size)
+                0x400000 - 0x47ffff: dtb area  (4M offset & 512k size)
+                0x480000 - 64MBytes: resv for other usage.
+                */
+                {
+                    EPT_PARTITION_RESERVED_NAME,
+                    EPT_PARTITION_RESERVED_SIZE,
+                    0U,
+                    0U,
+                    0U
+                },
+                {
+                    EPT_PARTITION_CACHE_NAME,
+                    EPT_PARTITION_CACHE_SIZE,
+                    0U,
+                    0U,
+                    0U
+                },
+                {
+                    EPT_PARTITION_ENV_NAME,
+                    EPT_PARTITION_ENV_SIZE,
+                    0U,
+                    0U,
+                    0U
+                },
+                {{0U},0U,0U,0U,0U}
+            }
         }
-    }
-};
+    };
 
 /* Function */
 
+static inline
 uint32_t
-ept_checksum(
+ept_checksum_partitions(
     struct ept_partition const * const  partitions, 
     int const                           partitions_count
 ){
@@ -106,6 +109,13 @@ ept_checksum(
         }
     }
     return checksum;
+}
+
+void
+ept_checksum_table(
+    struct ept_table * const    table
+){
+    table->checksum = ept_checksum_partitions(table->partitions, table->partitions_count);
 }
 
 int
@@ -133,7 +143,7 @@ ept_valid_header(
         ret += 1;
     }
     if (header->partitions_count < 32) { // If it's corrupted it may be too large
-        const uint32_t checksum = ept_checksum(((const struct ept_table *)header)->partitions, header->partitions_count);
+        const uint32_t checksum = ept_checksum_partitions(((const struct ept_table *)header)->partitions, header->partitions_count);
         if (header->checksum != checksum) {
             fprintf(stderr, "EPT valid header: Checksum mismatch, calculated: %"PRIx32", actual: %"PRIx32"\n", checksum, header->checksum);
             ret += 1;
@@ -192,7 +202,7 @@ ept_valid_partition(
 }
 
 int 
-ept_valid(
+ept_valid_table(
     struct ept_table const * const  table
 ){
     int ret = ept_valid_header((const struct ept_header *)table);
@@ -207,6 +217,9 @@ void
 ept_report(
     struct ept_table const * const  table
 ){
+    if (!table) {
+        return;
+    }
     fprintf(stderr, "table report: %d partitions in the table:\n===================================================================================\nID| name            |          offset|(   human)|            size|(   human)| masks\n-----------------------------------------------------------------------------------\n", table->partitions_count);
     const struct ept_partition *part;
     double num_offset, num_size;
@@ -266,24 +279,22 @@ ept_pedantic_offsets(
     return 0;
 }
 
-struct ept_table *
-ept_complete_dtb(
-    struct dts_partitions_helper const * const  dhelper, 
+int
+ept_table_from_dts_partitions_helper(
+    struct ept_table * const                    table,
+    struct dts_partitions_helper const * const  phelper, 
     uint64_t const                              capacity
 ){
-    if (!dhelper) {
-        return NULL;
-    }
-    struct ept_table *const table = malloc(sizeof(struct ept_table));
-    if (!table) {
-        return NULL;
+    if (!phelper || !phelper->partitions_count) {
+        fputs("EPT table from DTS partitions helper: Helper invalid or does not contain valid partitions\n", stderr);
+        return 1;
     }
     memcpy(table, &ept_table_empty, sizeof(struct ept_table));
     const struct dts_partition_entry *part_dtb;
     struct ept_partition *part_table;
     bool replace;
-    for (uint32_t i=0; i<dhelper->partitions_count; ++i) {
-        part_dtb = dhelper->partitions + i;
+    for (uint32_t i=0; i<phelper->partitions_count; ++i) {
+        part_dtb = phelper->partitions + i;
         replace = false;
         for (uint32_t j=0; j<table->partitions_count; ++j) {
             part_table = table->partitions + j;
@@ -302,33 +313,28 @@ ept_complete_dtb(
         }
     }
     if (ept_pedantic_offsets(table, capacity)) {
-        free(table);
-        return NULL;
+        fputs("EPT table from DTS partitions helper: Failed to fill in offsets\n", stderr);
+        return 2;
     }
-    table->checksum = ept_checksum(table->partitions, table->partitions_count);
-    return table;
+    ept_checksum_table(table);
+    return 0;
 }
 
-struct ept_table *
-ept_from_dtb(
-    uint8_t const * const   dtb,
-    size_t const            dtb_size,
-    uint64_t const          capacity
+int
+ept_table_from_dtb(
+    struct ept_table * const    table,
+    uint8_t const * const       dtb,
+    size_t const                dtb_size,
+    uint64_t const              capacity
 ){
-    struct dts_partitions_helper *const dhelper = dtb_get_partitions(dtb, dtb_size);
-    if (!dhelper) {
-        return NULL;
+    struct dts_partitions_helper phelper;
+    if (!dtb_get_partitions(&phelper, dtb, dtb_size)) {
+        return 1;
     }
-    // dtb_report_partitions(dhelper);
-    struct ept_table *const table = ept_complete_dtb(dhelper, capacity);
-    free(dhelper);
-    if (!table) {
-        return NULL;
+    if (ept_table_from_dts_partitions_helper(table, &phelper, capacity)) {
+        return 2;
     }
-    // table->checksum = ept_checksum(table->partitions, table->partitions_count);
-    // ept_report(table);
-    // printf("%d\n", ept_valid(table));
-    return table;
+    return 0;
 }
 
 int
@@ -399,40 +405,40 @@ ept_get_capacity(
     return capacity;
 }
 
-struct ept_table *
+int
 ept_read(
-    int const       fd,
-    size_t const    size
+    struct ept_table *  table,
+    int const           fd,
+    size_t const        size
 ){
+    if (!table) {
+        return 1;
+    }
     if (size < sizeof(struct ept_table)) {
         fputs("EPT read: Input size too small\n", stderr);
-        return NULL;
-    }
-    struct ept_table *table = malloc(sizeof(struct ept_table));
-    if (table == NULL) {
-        fputs("EPT read: Failed to allocate memory for partition table\n", stderr);
-        return NULL;
+        return 2;
     }
     if (io_read_till_finish(fd, table, sizeof(struct ept_table))) {
         fputs("EPT read: Failed to read into buffer", stderr);
-        free(table);
-        return NULL;
+        return 3;
     }
-    return table;
+    return 0;
 }
 
-struct ept_table *
+int
 ept_read_and_report(
-    int const       fd,
-    size_t const    size
+    struct ept_table * const    table,
+    int const                   fd,
+    size_t const                size
 ){
-    struct ept_table *table = ept_read(fd, size);
-    if (table) {
-        ept_report(table);
-        return table;
-    } else {
-        return NULL;
+    if (!table) {
+        return 1;
     }
+    if (ept_read(table, fd, size)) {
+        return 2;
+    }
+    ept_report(table);
+    return 0;
 }
 
 int
@@ -440,33 +446,33 @@ ept_is_not_pedantic(
     struct ept_table const * const  table
 ){
     if (!table || table->partitions_count < 4) {
-        fputs("EPT is pedantic: Table invalid or partitions count too few, not pedantic\n", stderr);
+        fputs("EPT is not pedantic: Table invalid or partitions count too few, not pedantic\n", stderr);
         return -1;
     }
     size_t const capacity = ept_get_capacity(table);
     if (!capacity) {
-        fputs("EPT is pedantic: Failed to get capacity\n", stderr);
+        fputs("EPT is not pedantic: Failed to get capacity\n", stderr);
         return -2;
     }
     struct ept_table table_pedantic = ept_table_empty;
     if (ept_pedantic_offsets(&table_pedantic, capacity)) {
-        fputs("EPT is pedantic: Failed to create pedantic reference table\n", stderr);
+        fputs("EPT is not pedantic: Failed to create pedantic reference table\n", stderr);
         return -3;
     }
     if (ept_compare_partition(table->partitions, table_pedantic.partitions)) {
-        fputs("EPT is pedantic: Part 1 does not met with the pedantic bootloader\n", stderr);
+        fputs("EPT is not pedantic: Part 1 does not met with the pedantic bootloader\n", stderr);
         return 1;
     }
     if (ept_compare_partition(table->partitions + 1, table_pedantic.partitions + 1)) {
-        fputs("EPT is pedantic: Part 2 does not met with the pedantic reserved\n", stderr);
+        fputs("EPT is not pedantic: Part 2 does not met with the pedantic reserved\n", stderr);
         return 2;
     }
     if (strncmp((table->partitions + 2)->name, "cache", MAX_PARTITION_NAME_LENGTH)) {
-        fputs("EPT is pedantic: Part 3 is not cache\n", stderr);
+        fputs("EPT is not pedantic: Part 3 is not cache\n", stderr);
         return 3;
     }
     if (strncmp((table->partitions + 3)->name, "env", MAX_PARTITION_NAME_LENGTH)) {
-        fputs("EPT is pedantic: Part 3 is not env\n", stderr);
+        fputs("EPT is not pedantic: Part 3 is not env\n", stderr);
         return 4;
     }
     size_t offset;
@@ -475,7 +481,7 @@ ept_is_not_pedantic(
         offset = current->offset + current->size + cli_options.gap_partition;
         current = table->partitions + i;
         if (current->offset != offset) {
-            fprintf(stderr, "EPT is pedantic: Part %u (%s) has a non-pedantic offset\n", i, current->name);
+            fprintf(stderr, "EPT is not pedantic: Part %u (%s) has a non-pedantic offset\n", i, current->name);
             return 10 + i;
         }
     }
@@ -513,7 +519,7 @@ ept_eclone_parse(
         part->mask_flags = definer->masks;
     }
     parg_free_definer_helper(&dhelper);
-    table->checksum = ept_checksum(table->partitions, table->partitions_count);
+    ept_checksum_table(table);
     fputs("EPT eclone parse: New EPT:\n", stderr);
     ept_report(table);
     size_t const capacity_new = ept_get_capacity(table);

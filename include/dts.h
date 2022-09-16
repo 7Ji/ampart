@@ -80,8 +80,9 @@ uint8_t *
         size_t          len_path
     );
 
-struct dts_partitions_helper *
+int
     dts_get_partitions_from_node(
+        struct dts_partitions_helper *          phelper,
         uint8_t const *                     node,
         struct stringblock_helper const *   shelper
     );

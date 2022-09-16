@@ -299,30 +299,27 @@ io_identify_target_type_guess_content(
     }
 }
 
-struct io_target_type *
+int
 io_identify_target_type(
-    char const * const  path
+    struct io_target_type * const   type,
+    char const * const              path
 ){
+    if (!type) {
+        return 1;
+    }
     int fd = open(path, O_RDONLY);
     if (fd < 0) {
         fprintf(stderr, "IO identify target type: Failed to open '%s' as read-only\n", path);
-        return NULL;
-    }
-    struct io_target_type *type = malloc(sizeof(struct io_target_type));
-    if (!type) {
-        fputs("IO identify target type: Failed to allocate memory for type helper\n", stderr);
-        close(fd);
-        return NULL;
+        return 2;
     }
     memset(type, 0, sizeof(struct io_target_type));
     if (io_identify_target_type_get_basic_stat(type, fd, path)) {
-        free(type);
         close(fd);
-        return NULL;
+        return 3;
     }
     io_identify_target_type_guess_content(type, fd);
     close(fd);
-    return type;
+    return 0;
 }
 
 off_t

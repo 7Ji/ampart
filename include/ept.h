@@ -76,22 +76,16 @@ struct
 
 /* Function */
 
-uint32_t
-    ept_checksum(
-        struct ept_partition const * const  partitions, 
-        int const                           partitions_count
-    );
+// uint32_t
+//     ept_checksum(
+//         struct ept_partition const * const  partitions, 
+//         int const                           partitions_count
+//     );
 
 int 
     ept_compare_table(
         struct ept_table const *    table_a, 
         struct ept_table const *    table_b
-    );
-
-struct ept_table *
-    ept_complete_dtb(
-        struct dts_partitions_helper const *    dhelper, 
-        uint64_t                                capacity
     );
 
 int
@@ -100,13 +94,6 @@ int
         char const * const * const  argv,
         struct ept_table * const    table,
         size_t const                capacity
-    );
-
-struct ept_table *
-    ept_from_dtb(
-        uint8_t const * dtb,
-        size_t          dtb_size,
-        uint64_t        capacity
     );
 
 int
@@ -119,10 +106,11 @@ uint64_t
         struct ept_table const *    table
     );
 
-struct ept_table *
+int
     ept_read_and_report(
-        int     fd,
-        size_t  size
+        struct ept_table *  table,
+        int                 fd,
+        size_t              size
     );
 
 void 
@@ -130,8 +118,23 @@ void
         struct ept_table const *    table
     );
 
+int
+    ept_table_from_dtb(
+        struct ept_table *  table,
+        uint8_t const *     dtb,
+        size_t              dtb_size,
+        uint64_t            capacity
+    );
+
+int
+    ept_table_from_dts_partitions_helper(
+        struct ept_table * const                table,
+        struct dts_partitions_helper const *    phelper, 
+        uint64_t const                          capacity
+    );
+
 int 
-    ept_valid(
+    ept_valid_table(
         struct ept_table const *    table
     );
 

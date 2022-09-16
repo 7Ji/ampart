@@ -50,9 +50,10 @@ char *
         char const *    path
     );
 
-struct io_target_type *
+int
     io_identify_target_type(
-        char const *    path
+        struct io_target_type * type,
+        char const *            path
     );
     
 int 

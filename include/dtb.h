@@ -2,6 +2,10 @@
 #define HAVE_DTB_H
 #include "common.h"
 
+/* Local */
+
+#include "dts.h"
+
 /* Definition */
 
 #define DTB_MAGIC_MULTI     0x5F4C4D41U
@@ -31,7 +35,7 @@ struct
     dtb_buffer_entry {
         uint8_t *                       buffer;
         size_t                          size;
-        struct dts_partitions_helper *  partitions;
+        struct dts_partitions_helper    phelper;
         char                            target[36];
         char                            soc[12];
         char                            platform[12];
@@ -113,18 +117,19 @@ uint32_t
 
 int
     dtb_check_buffers_partitions(
-        struct dtb_buffer_helper const * const  bhelper
+        struct dtb_buffer_helper const *    bhelper
     );
 
 void
     dtb_free_buffer_helper(
-        struct dtb_buffer_helper * *    bhelper
+        struct dtb_buffer_helper *  bhelper
     );
 
-struct dts_partitions_helper *
+int
     dtb_get_partitions(
-        uint8_t const * dtb, 
-        size_t          size
+        struct dts_partitions_helper *  phelper,
+        uint8_t const *                 dtb, 
+        size_t                          size
     );
 
 struct dts_phandle_list *
@@ -138,22 +143,25 @@ enum dtb_type
         uint8_t const * dtb
     );
 
-struct dtb_multi_entries_helper *
+int
     dtb_parse_multi_entries(
-        uint8_t const * dtb
+        struct dtb_multi_entries_helper *   mhelper,
+        uint8_t const *                     dtb
     );
 
-struct dtb_buffer_helper *
+int
     dtb_read_into_buffer_helper(
-        int const       fd,
-        size_t const    size_max,
-        bool const      should_checksum
+        struct dtb_buffer_helper *  bhelper,
+        int                         fd,
+        size_t                      size_max,
+        bool                        should_checksum
     );
 
-struct dtb_buffer_helper *
+int
     dtb_read_into_buffer_helper_and_report(
-        int     fd, 
-        size_t  size_max, 
-        bool    checksum
+        struct dtb_buffer_helper *  bhelper,
+        int                         fd, 
+        size_t                      size_max, 
+        bool                        should_checksum
     );
 #endif

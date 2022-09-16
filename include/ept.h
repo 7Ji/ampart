@@ -70,7 +70,17 @@ struct
     };
 }; // 1304
 
+/* Variable */
+
+extern struct ept_table const  ept_table_empty;
+
 /* Function */
+
+uint32_t
+    ept_checksum(
+        struct ept_partition const * const  partitions, 
+        int const                           partitions_count
+    );
 
 int 
     ept_compare_table(

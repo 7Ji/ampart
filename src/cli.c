@@ -15,6 +15,7 @@
 #include "ept.h"
 #include "gzip.h"
 #include "io.h"
+#include "parg.h"
 #include "util.h"
 
 /* Definition */
@@ -200,8 +201,8 @@ cli_parse_content(){
 static inline
 int
 cli_parse_options(
-    int const * const   argc,
-    char *              argv[]
+    int const * const       argc,
+    char * const * const    argv
 ){
     int c, option_index = 0;
     struct option const long_options[] = {
@@ -328,8 +329,8 @@ cli_options_complete_target_info(){
 static inline
 int
 cli_complete_options(
-    int const   argc,
-    char *      argv[]
+    int const               argc,
+    char * const * const    argv
 ){
     if (cli_options.mode == CLI_MODE_INVALID) {
         fputs("CLI interface: Mode not set or invalid, you must specify the mode with --mode [mode] argument\n", stderr);
@@ -357,6 +358,41 @@ cli_complete_options(
         fputs("CLI interface: Content type not identified, give up, try setting it manually\n", stderr);
         return 5;
     }
+    return 0;
+}
+
+static inline
+int
+cli_write_dtb(
+    struct dtb_buffer_helper const * const              bhelper,
+    struct dts_partitions_helper_simple const * const   dparts
+){
+    if (!bhelper || !dparts || !bhelper->dtb_count || !dparts->partitions_count) {
+        fputs("CLI write DTB: Buffer and Dparts not both valid and contain partitions, refuse to continue\n", stderr);
+        return -1;
+    }
+    if (cli_options.dry_run) {
+        fputs("CLI write DTB: In dry-run mode, assuming success\n", stderr);
+        return 0;
+    }
+    fputs("CLI write DTB: WIP\n", stderr);
+    return 0;
+}
+
+static inline
+int
+cli_write_ept(
+    struct ept_table const * const  table
+) {
+    if (!table) {
+        fputs("CLI write EPT: Table invalid, refuse to continue\n", stderr);
+        return 1;
+    }
+    if (cli_options.dry_run) {
+        fputs("CLI write EPT: In dry-run mode, assuming success\n", stderr);
+        return 0;
+    }
+    fputs("CLI write EPT: WIP\n", stderr);
     return 0;
 }
 
@@ -397,7 +433,12 @@ cli_mode_dtoe(
         return 0;
     }
     if (cli_options.content != CLI_CONTENT_TYPE_DTB) {
-        // Write
+        fputs("CLI mode dtoe: Need to write new EPT\n", stderr);
+        if (cli_write_ept(table_new)) {
+            fputs("CLI mode dtoe: Failed to write new EPT\n", stderr);
+            free(table_new);
+            return 5;
+        }
     }
     free(table_new);
     return 0;
@@ -430,9 +471,20 @@ cli_mode_etod(
 ){
     fputs("CLI mode etod: Recreate partitions node in DTB from EPT\n", stderr);
     if (!bhelper) {
+        fputs("CLI mode etod: DTB does not exist, refuse to continue\n", stderr);
+        return -1;
+    }
+    if (!table || !table->partitions_count || ept_valid(table)) {
+        fputs("CLI mode etod: EPT does not exist or is invalid, refuse to work\n", stderr);
+        return -2;
+    }
+    if (ept_is_not_pedantic(table)) {
+        fputs("CLI mode etod: Refuse to convert a non-pedantic EPT to DTB\n", stderr);
         return 1;
     }
-    if (!table) {
+    struct dts_partitions_helper_simple const * const dparts = NULL;
+    if (cli_write_dtb(bhelper, dparts)) {
+        fputs("CLI mode dtoe: Failed to write DTB\n", stderr);
         return 2;
     }
     return 0;
@@ -444,7 +496,7 @@ cli_mode_dedit(
     struct dtb_buffer_helper const * const  bhelper,
     struct ept_table const * const          table,
     int const                               argc,
-    char *                                  argv[]
+    char const * const * const              argv
 ){
     fputs("CLI mode dedit: Edit partitions node in DTB, and potentially create EPT from it\n", stderr);
     if (argc <= 0) {
@@ -456,6 +508,11 @@ cli_mode_dedit(
     }
     if (!bhelper) {
         return 1;
+    }
+    struct dts_partitions_helper_simple const * const dparts = NULL;
+    if (cli_write_dtb(bhelper, dparts)) {
+        fputs("CLI mode dedit: Failed to write DTB\n", stderr);
+        return 2;
     }
     if (!table) {
         return 2;
@@ -469,7 +526,7 @@ int
 cli_mode_eedit(
     struct ept_table const * const  table,
     int const                       argc,
-    char *                          argv[]
+    char const * const * const      argv
 ){
     fputs("CLI mode eedit: Edit EPT\n", stderr);
     if (argc <= 0) {
@@ -481,6 +538,11 @@ cli_mode_eedit(
     }
     if (!table) {
         return 1;
+    }
+    struct ept_table *table_new = NULL;
+    if (cli_write_ept(table_new)) {
+        fputs("CLI mode edit: Failed to write new EPT\n", stderr);
+        return 2;
     }
     return 0;
 }
@@ -582,19 +644,40 @@ cli_mode_dclone(
     struct dtb_buffer_helper const * const  bhelper,
     struct ept_table const * const          table,
     int const                               argc,
-    char *                                  argv[]
+    char const * const * const              argv
 ){
     fputs("CLI mode dclone: Apply a snapshot taken in dsnapshot mode\n", stderr);
     if (argc <= 0) {
         fputs("CLI mode dclone: No PARG, early quite\n", stderr);
         return 0;
     }
-    for (int i =0; i<argc; ++i) {
-        printf("%d: %s\n", i, argv[i]);
-    }
-    if (!bhelper) {
+    if (argc > MAX_PARTITIONS_COUNT) {
+        fprintf(stderr, "CLI mode dclone: Too many PARGs, only %d is allowed yet you've defined %d\n", MAX_PARTITIONS_COUNT, argc);
         return 1;
     }
+    if (!bhelper || !bhelper->dtb_count || !bhelper->dtbs->buffer) {
+        fputs("CLI mode dclone: No valid DTB, refuse to work\n", stderr);
+        return 2;
+    }
+    struct parg_definer_helper *dhelper = parg_parse_dclone_mode(argc, argv);
+    if (!dhelper || !dhelper->count) {
+        fputs("CLI mode dclone: Failed to parse new partitions\n", stderr);
+        return 3;
+    }
+    struct dts_partitions_helper_simple dparts = {.partitions_count = dhelper->count};
+    struct parg_definer *definer;
+    struct dts_partition_entry_simple *entry;
+    for (unsigned i = 0; i < dhelper->count; ++i) {
+        definer = dhelper->definers + i;
+        entry = dparts.partitions + i;
+        strncpy(entry->name, definer->name, MAX_PARTITION_NAME_LENGTH);
+        entry->size = definer->size;
+        entry->mask = definer->masks;
+    }
+    parg_free_definer_helper(&dhelper);
+    fputs("CLI mode dclone: New DTB partitions:\n", stderr);
+    dts_report_partitions_simple(&dparts);
+    cli_write_dtb(bhelper, &dparts);
     if (!table) {
         return 2;
     }
@@ -606,18 +689,70 @@ int
 cli_mode_eclone(
     struct ept_table const * const  table,
     int const                       argc,
-    char *                          argv[]
+    char const * const * const      argv
 ){
     fputs("CLI mode eclone: Apply a snapshot taken in esnapshot mode\n", stderr);
     if (argc <= 0) {
         fputs("CLI mode eclone: No PARG, early quit\n", stderr);
         return 0;
     }
-    for (int i =0; i<argc; ++i) {
-        printf("%d: %s\n", i, argv[i]);
-    }
-    if (!table) {
+    if (argc > MAX_PARTITIONS_COUNT) {
+        fprintf(stderr, "CLI mode eclone: Too many PARGs, only %d is allowed yet you've defined %d\n", MAX_PARTITIONS_COUNT, argc);
         return 1;
+    }
+    if (!table || !ept_valid(table)) {
+        fputs("CLI mode eclone: Warning, old table corrupted or not valid, continue anyway\n", stderr);
+    }
+    size_t capacity;
+    if (cli_options.content == CLI_CONTENT_TYPE_DISK) {
+        capacity = cli_options.size;
+        fprintf(stderr, "CLI mode eclone: Using target file/block device size %zu as the capacity, since it's full disk\n", capacity);
+    } else {
+        capacity = ept_get_capacity(table);
+        fprintf(stderr, "CLI mode eclone: Using max partition end %zu as the capacity, since target is %s and is not full disk\n", capacity, cli_content_type_strings[cli_options.content]);
+    }
+    if (!capacity) {
+        fputs("CLI mode eclone: Cannot get valid capacity, give up\n", stderr);
+        return 2;
+    }
+    struct parg_definer_helper *dhelper = parg_parse_eclone_mode(argc, argv);
+    if (!dhelper) {
+        fputs("CLI mode eclone: Failed to parse PARGS\n", stderr);
+    }
+    struct ept_table table_new = ept_table_empty;
+    table_new.partitions_count = dhelper->count;
+    struct parg_definer *definer;
+    struct ept_partition *part;
+    size_t part_end;
+    for (unsigned i = 0; i < dhelper->count; ++i) {
+        definer = dhelper->definers + i;
+        part = table_new.partitions + i;
+        strncpy(part->name, definer->name, MAX_PARTITION_NAME_LENGTH);
+        part->offset = definer->offset;
+        part->size = definer->size;
+        part_end = part->offset + part->size;
+        if (part_end > capacity) {
+            part->size -= (part_end - capacity);
+            fprintf(stderr, "CLI mode eclone: Warning, part %u (%s) overflows, shrink its size to %lu\n", i, part->name, part->size);
+        }
+        part->mask_flags = definer->masks;
+    }
+    parg_free_definer_helper(&dhelper);
+    table_new.checksum = ept_checksum(table_new.partitions, table_new.partitions_count);
+    fputs("CLI mode eclone: New EPT:\n", stderr);
+    ept_report(&table_new);
+    size_t const capacity_new = ept_get_capacity(&table_new);
+    if (capacity_new > capacity) {
+        fputs("CLI mode eclone: New table max part end larger than capacity, refuse to continue:\n", stderr);
+        return 3;
+    } else if (capacity_new < capacity) {
+        fputs("CLI mode eclone: Warning, new table max part end smaller than capcity, this may result in unexpected behaviour:\n", stderr);
+    }
+    if (ept_compare_table(table, &table_new)) {
+        fputs("CLI mode eclone: New table is different, need to write\n", stderr);
+        cli_write_ept(&table_new);
+    } else {
+        fputs("CLI mode eclone: New table is the same as old table, no need to write\n", stderr);
     }
     return 0;
 }
@@ -627,7 +762,7 @@ int
 cli_mode_ecreate(
     struct ept_table const * const  table,
     int const                       argc,
-    char *                          argv[]
+    char const * const * const      argv
 ){
     fputs("CLI mode ecreate: Create EPT in a YOLO way\n", stderr);
     if (argc <= 0) {
@@ -649,7 +784,7 @@ cli_dispatcher(
     struct dtb_buffer_helper const * const  bhelper,
     struct ept_table const * const          table,
     int const                               argc,
-    char *                                  argv[]
+    char const * const * const              argv
 ){
     if (cli_options.mode == CLI_MODE_INVALID) {
         fputs("CLI dispatcher: invalid mode\n", stderr);
@@ -686,8 +821,8 @@ cli_dispatcher(
 
 int 
 cli_interface(
-    int const   argc,
-    char *      argv[]
+    int const               argc,
+    char * const * const    argv
 ){
     int r = cli_parse_options(&argc, argv);
     if (r < 0) {
@@ -704,7 +839,7 @@ cli_interface(
     if ((r = cli_read(&bhelper, &table))) {
         return 20 + r;
     }
-    r = cli_dispatcher(bhelper, table, argc - optind, argv + optind);
+    r = cli_dispatcher(bhelper, table, argc - optind, (char const * const *)(argv + optind));
     dtb_free_buffer_helper(&bhelper);
     if (table) {
         free(table);
@@ -714,3 +849,5 @@ cli_interface(
     }
     return 0;
 }
+
+/* cli.c: Actual CLI API implementation of ampart */

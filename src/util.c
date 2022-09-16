@@ -143,9 +143,9 @@ util_string_is_empty(
     char const * const  string
 ){
     if (string && string[0]) {
-        return true;
-    } else {
         return false;
+    } else {
+        return true;
     }
 }
 

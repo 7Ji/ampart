@@ -70,7 +70,7 @@ struct cli_partition_updater *
 
 int 
     cli_interface(
-        int     argc, 
-        char *  argv[]
+        int             argc, 
+        char * const    argv[]
     );
 #endif

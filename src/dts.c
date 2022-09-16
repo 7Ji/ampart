@@ -680,6 +680,28 @@ dts_report_partitions(
     return;
 }
 
+
+void
+dts_report_partitions_simple(
+    struct dts_partitions_helper_simple const * phelper
+){
+    fprintf(stderr, "DTS report partitions: %u partitions in the DTB:\n=======================================================\nID| name            |            size|(   human)| masks\n-------------------------------------------------------\n", phelper->partitions_count);
+    const struct dts_partition_entry_simple *part;
+    double num_size;
+    char suffix_size;
+    for (uint32_t i=0; i<phelper->partitions_count; ++i) {
+        part = phelper->partitions + i;
+        if (part->size == (uint64_t)-1) {
+            fprintf(stderr, "%2d: %-16s                  (AUTOFILL) %6"PRIu32"\n", i, part->name, part->mask);
+        } else {
+            num_size = util_size_to_human_readable(part->size, &suffix_size);
+            fprintf(stderr, "%2d: %-16s %16"PRIx64" (%7.2lf%c) %6"PRIu32"\n", i, part->name, part->size, num_size, suffix_size, part->mask);
+        }
+    }
+    fputs("=======================================================\n", stderr);
+    return;
+}
+
 static inline
 int
 dts_get_phandles_recursive_parse_prop(

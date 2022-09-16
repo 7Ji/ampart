@@ -56,6 +56,12 @@ struct
         bool        set_masks;
     };
 
+struct
+    parg_definer_helper {
+        struct parg_definer *   definers;
+        unsigned int            count;
+    };
+
 struct 
     parg_modifier {
         enum parg_select_method         select;
@@ -82,5 +88,24 @@ struct
             struct parg_modifier   modifier;
         };
     };
+
+/* Function */
+
+void
+    parg_free_definer_helper(
+        struct parg_definer_helper * * const    dhelper
+    );
+
+struct parg_definer_helper *
+    parg_parse_dclone_mode(
+        int                     argc,
+        char const * const *    argv
+    );
+
+struct parg_definer_helper *
+    parg_parse_eclone_mode(
+        int                     argc,
+        char const * const *    argv
+    );
 
 #endif

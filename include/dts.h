@@ -42,6 +42,19 @@ struct
     };
 
 struct 
+    dts_partition_entry_simple {
+        char        name[MAX_PARTITION_NAME_LENGTH];
+        uint64_t    size;
+        uint32_t    mask;
+    };
+
+struct 
+    dts_partitions_helper_simple {
+        struct dts_partition_entry_simple   partitions[MAX_PARTITIONS_COUNT];
+        uint32_t                            partitions_count;
+    };
+
+struct 
     dts_phandle_list {
         uint8_t *   phandles;
         uint32_t    min_phandle;
@@ -91,6 +104,11 @@ int
 void
     dts_report_partitions(
         struct dts_partitions_helper const *    phelper
+    );
+
+void
+    dts_report_partitions_simple(
+        struct dts_partitions_helper_simple const * phelper
     );
 
 int

@@ -31,7 +31,7 @@
         PARG_ANY \
     )
 
-#define PARG_PARSE_CLONE_MODE(arg) \
+#define PARG_PARSE_ECLONE_MODE(arg) \
     parg_parse_definer( \
         arg, \
         PARG_REQUIRED, \
@@ -40,7 +40,7 @@
         PARG_REQUIRED \
     )
 
-#define PARG_PARSE_SAFE_MODE(arg) \
+#define PARG_PARSE_DCLONE_MODE(arg) \
     parg_parse_definer( \
         arg, \
         PARG_REQUIRED, \
@@ -148,8 +148,8 @@ parg_parse_u64_adjustor(
 static inline
 int
 parg_parse_get_seperators(
-    const char * * const    seperators,
-    const char * const      arg
+    char const * * const    seperators,
+    char const * const      arg
 ) {
     unsigned int seperator_id = 0;
     for (const char *c = arg; *c; ++c) {
@@ -418,7 +418,7 @@ static inline
 int
 parg_parse_modifier_dispatcher(
     struct parg_modifier * const    modifier,
-    char const *                    arg
+    char const * const              arg
 ) {
     switch (modifier->modify_part) {
         case PARG_MODIFY_PART_ADJUST:
@@ -486,7 +486,7 @@ parg_parse_modifier(
 
 struct parg_editor *
 parg_parse_editor(
-    char const *    arg
+    char const * const  arg
 ){
     if (util_string_is_empty(arg)) {
         fputs("PARG parse editor: Only non-empty string is accepted\n", stderr);
@@ -520,5 +520,87 @@ parg_parse_editor(
         return editor;
     }
 }
+
+void
+parg_free_definer_helper(
+    struct parg_definer_helper * * const    dhelper
+){
+    if (*dhelper) {
+        free((*dhelper)->definers);
+        free(*dhelper);
+        *dhelper = NULL;
+    }
+}
+
+struct parg_definer_helper *
+parg_parse_dclone_mode(
+    int const       argc,
+    char const * const * const   argv
+){
+    if (argc <= 0 || argc > MAX_PARTITIONS_COUNT) {
+        fputs("PARG parse dclone mode: Illegal argument counts\n", stderr);
+        return NULL;
+    }
+    struct parg_definer_helper *dhelper = malloc(sizeof(struct parg_definer_helper));
+    if (!dhelper) {
+        fputs("PARG parse dclone mode: Failed to allocate memory for definer helper\n", stderr);
+        return NULL;
+    }
+    dhelper->definers = malloc(sizeof(struct parg_definer) * argc);
+    if (!dhelper->definers) {
+        fputs("PARG parse dclone mode: Failed to allocate memroy for definers\n", stderr);
+        return NULL;
+    }
+    dhelper->count = argc;
+    struct parg_definer *definer;
+    for (int i = 0; i < argc; ++i) {
+        definer = PARG_PARSE_DCLONE_MODE(argv[i]);
+        if (!definer) {
+            fprintf(stderr, "PARG parse dclone mode: Failed to parse argument: %s\n", argv[i]);
+            free(dhelper->definers);
+            free(dhelper);
+            return NULL;
+        }
+        dhelper->definers[i] = *definer;
+        free(definer);
+    }
+    return dhelper;
+}
+
+struct parg_definer_helper *
+parg_parse_eclone_mode(
+    int const       argc,
+    char const * const * const   argv
+){
+    if (argc <= 0 || argc > MAX_PARTITIONS_COUNT) {
+        fputs("PARG parse eclone mode: Illegal argument counts\n", stderr);
+        return NULL;
+    }
+    struct parg_definer_helper *dhelper = malloc(sizeof(struct parg_definer_helper));
+    if (!dhelper) {
+        fputs("PARG parse eclone mode: Failed to allocate memory for definer helper\n", stderr);
+        return NULL;
+    }
+    dhelper->definers = malloc(sizeof(struct parg_definer) * argc);
+    if (!dhelper->definers) {
+        fputs("PARG parse eclone mode: Failed to allocate memroy for definers\n", stderr);
+        return NULL;
+    }
+    dhelper->count = argc;
+    struct parg_definer *definer;
+    for (int i = 0; i < argc; ++i) {
+        definer = PARG_PARSE_ECLONE_MODE(argv[i]);
+        if (!definer) {
+            fprintf(stderr, "PARG parse dclone mode: Failed to parse argument: %s\n", argv[i]);
+            free(dhelper->definers);
+            free(dhelper);
+            return NULL;
+        }
+        dhelper->definers[i] = *definer;
+        free(definer);
+    }
+    return dhelper;
+}
+
 
 /* parg.c: Processing partition arguments */

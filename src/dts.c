@@ -14,9 +14,30 @@
 
 /* Definition */
 
+#define DTS_BE_4                            0x04000000U
+#define DTS_BE_8                            0x08000000U
 #define DTS_PARTITIONS_NODE_START_LENGTH    12U
 
+/* Enumerable */
+
+#define DTS_ESSENTIAL_OFFSET_PARTS          0
+#define DTS_ESSENTIAL_OFFSET_PNAME          1
+#define DTS_ESSENTIAL_OFFSET_SIZE           2
+#define DTS_ESSENTIAL_OFFSET_MASK           3
+#define DTS_ESSENTIAL_OFFSET_PHANDLE        4
+#define DTS_ESSENTIAL_OFFSET_LINUX_PHANDLE  5
+
 /* Structure */
+
+struct 
+    dts_compose_partition_helper {
+        size_t      len_name;
+        size_t      len_pname;
+        size_t      len_node_name;
+        off_t       offset_partn;
+        uint32_t    phandle;
+        uint32_t    phandle_be32;
+    };
 
 struct 
     dts_property {
@@ -1045,13 +1066,19 @@ dts_assign_available_phanle(
     }
 }
 
-struct dts_compose_partition_helper {
-    size_t      len_name;
-    size_t      len_pname;
-    size_t      len_node_name;
-    off_t       offset_partn;
-    uint32_t    phandle;
-};
+void
+dts_add_property_be32(
+    uint32_t * * const  current,
+    uint32_t const  name_off_be32,
+    uint32_t const  value_be32
+){
+    *((*current)++) = DTS_PROP_ACTUAL;
+    *((*current)++) = DTS_BE_4;
+    *((*current)++) = name_off_be32;
+    *((*current)++) = value_be32;
+    
+}
+
 
 int
 dts_compose_partitions_node(
@@ -1063,61 +1090,90 @@ dts_compose_partitions_node(
     off_t const                                         offset_phandle,
     off_t const                                         offset_linux_phandle
 ){
-    if (!node || !length || !plist || !phelper || !plist->phandles || !plist->allocated_count || !phelper->partitions_count) {
+    if (!node || !length || !plist || !phelper || !shelper || !plist->phandles || !plist->allocated_count || !phelper->partitions_count || offset_phandle < 0 || (plist->have_linux_phandle && offset_linux_phandle < 0)) {
         fputs("DTS compose partitions node: Illegal arguments\n", stderr);
         return -1;
     }
     *node = NULL;
-    off_t const offset_parts = stringblock_append_string_safely(shelper, "parts", 0);
-    off_t const offset_pname = stringblock_append_string_safely(shelper, "pname", 0);
-    off_t const offset_size = stringblock_append_string_safely(shelper, "size", 0);
-    off_t const offset_mask = stringblock_append_string_safely(shelper, "mask", 0);
+    uint32_t const offsets[6] = {
+        stringblock_append_string_safely(shelper, "parts", 0),
+        stringblock_append_string_safely(shelper, "pname", 0),
+        stringblock_append_string_safely(shelper, "size", 0),
+        stringblock_append_string_safely(shelper, "mask", 0),
+        offset_phandle,
+        offset_linux_phandle
+    };
+    uint32_t const offsets_be32[6] = {
+        bswap_32(offsets[0]),
+        bswap_32(offsets[1]),
+        bswap_32(offsets[2]),
+        bswap_32(offsets[3]),
+        bswap_32(offsets[4]),
+        bswap_32(offsets[5])
+    };
     struct dts_compose_partition_helper chelpers[MAX_PARTITION_NAME_LENGTH] = {0};
     struct dts_compose_partition_helper *chelper;
-    struct dts_partition_entry *dentry;
+    struct dts_partition_entry_simple const *dentry;
     char partn[] = "part-NN";
+    // Basic length of the node, excluding the start BEGIN_NODE and end END_NODE, 12 for partitions\0\0\0 as name, len 16 property (4 PROP_NODE, 4 len_prop, 4 name_off, 4 u32 value) for: 1 for parts, 1 for each part-N (storing phandle), 1 for phandle, optional 1 for linux,phandle. Then basic length of the partition sub-node, 8 (4 BEGIN_NODE + 4 END_NODE) + 12 (4 PROP_NODE, 4 len_prop, 4 name_off) for 4 or 5 props (pname, size, mask, phandle, optionally linux,phandle) + 8 for u64 size + 4 for u32 mask + 4 for u32 phandle + 4 optionally for u32 linux,phandle
+    size_t len_node = 12 + 16 * (1 + phelper->partitions_count + 1 + plist->have_linux_phandle) + (8 + 12 * (4 + plist->have_linux_phandle) + 8 + 4 + 4 + 4 * plist->have_linux_phandle);
     for (uint32_t i = 0; i < phelper->partitions_count; ++i) {
         dentry = phelper->partitions + i;
-        snprintf(partn + 5, 3, "%u", dentry->name);
+        memset(partn + 5, 0, 3);
+        snprintf(partn + 5, 3, "%2u", i % 100);
         chelper = chelpers + i;
-        chelper->len_name = strlen(dentry);
+        chelper->len_name = strlen(dentry->name);
         chelper->len_pname = chelper->len_name + 1;
         chelper->len_node_name = util_nearest_upper_bound_ulong(chelper->len_pname, 4, 1);
         chelper->offset_partn = stringblock_append_string_safely(shelper, partn, 0);
         chelper->phandle = dts_assign_available_phanle(plist);
+        chelper->phandle_be32 = bswap_32(chelper->phandle);
+        len_node += 2 * chelper->len_node_name;
     }
-    uint32_t phandle_root = dts_assign_available_phanle(plist);
-    uint8_t phandle_step;
+    uint32_t const phandle_root = dts_assign_available_phanle(plist);
+    uint32_t const phandle_root_be32 = bswap_32(phandle_root);
+    *node = malloc(len_node); // Excluding the beginning BEGIN_NODE and endding END_NODE
+    if (!*node) {
+        return 1;
+    }
+    memcpy(*node, dts_partitions_node_start, DTS_PARTITIONS_NODE_START_LENGTH);
+    uint32_t *current = (uint32_t *)(*node + DTS_PARTITIONS_NODE_START_LENGTH);
+    dts_add_property_be32(&current, offsets_be32[DTS_ESSENTIAL_OFFSET_PARTS], bswap_32(phelper->partitions_count));
+    for (uint32_t i = 0; i < phelper->partitions_count; ++i) {
+        chelper = chelpers + i;
+        dts_add_property_be32(&current, bswap_32(chelper->offset_partn), bswap_32(chelper->phandle));
+    }
+    dts_add_property_be32(&current, offsets_be32[DTS_ESSENTIAL_OFFSET_PHANDLE], phandle_root_be32);
     if (plist->have_linux_phandle) {
-        phandle_step = 2;
-    } else {
-        phandle_step = 1;
+        dts_add_property_be32(&current, offsets_be32[DTS_ESSENTIAL_OFFSET_LINUX_PHANDLE], phandle_root_be32);
     }
-    uint8_t *buffer = malloc(64);
-    memcpy(buffer, dts_partitions_node_start, DTS_PARTITIONS_NODE_START_LENGTH);
-    uint32_t *current = (uint32_t *)(buffer + DTS_PARTITIONS_NODE_START_LENGTH);
-    *(current++) = DTS_PROP_ACTUAL;
-    *(current++) = 4;
-    *(current++) = offset_parts;
-    *(current++) = phelper->partitions_count;
     for (uint32_t i = 0; i < phelper->partitions_count; ++i) {
         dentry = phelper->partitions + i;
         chelper = chelpers + i;
         strncpy((char *)current, dentry->name, chelper->len_pname);
         current = (uint32_t *)((uint8_t *)current + chelper->len_node_name);
         *(current++) = DTS_BEGIN_NODE_ACTUAL;
-        
-
+        // pname
+        *(current++) = DTS_PROP_ACTUAL;
+        *(current++) = bswap_32(chelper->len_pname);
+        *(current++) = offsets_be32[DTS_ESSENTIAL_OFFSET_PNAME];
+        strncpy((char *)current, dentry->name, chelper->len_pname);
+        current = (uint32_t *)((uint8_t *)current + chelper->len_node_name);
+        // size
+        *(current++) = DTS_PROP_ACTUAL;
+        *(current++) = DTS_BE_8;
+        *(current++) = offsets_be32[DTS_ESSENTIAL_OFFSET_SIZE];
+        *(current++) = bswap_32(dentry->size); // Force cut 
+        *(current++) = bswap_32(dentry->size >> 32);
+        // mask
+        dts_add_property_be32(&current, offsets_be32[DTS_ESSENTIAL_OFFSET_MASK], bswap_32(dentry->mask));
+        // phandle
+        dts_add_property_be32(&current, offsets_be32[DTS_ESSENTIAL_OFFSET_PHANDLE], chelper->phandle_be32);
+        // linux,phandle
+        if (plist->have_linux_phandle) {
+            dts_add_property_be32(&current, offsets_be32[DTS_ESSENTIAL_OFFSET_LINUX_PHANDLE], chelper->phandle_be32);
+        }
         *(current++) = DTS_END_NODE_ACTUAL;
     }
-    *(current++) = DTS_PROP_ACTUAL;
-    *(current++) = 4;
-    *(current++) = offset_phandle;
-    *(current++) = phandle_root;
-    for (uint32_t i = 0; i < phelper->partitions_count; ++i) {
-
-    }
-
-
-
+    return 0;
 }

@@ -5,6 +5,7 @@
 /* Local */
 
 #include "dts.h"
+#include "io.h"
 
 /* Definition */
 
@@ -112,6 +113,14 @@ uint64_t
 uint32_t
     ept_get_minimum_block(
         struct ept_table const *    table
+    );
+
+int
+    ept_migrate_plan(
+        struct io_migrate_helper *  mhelper,
+        struct ept_table const *    source,
+        struct ept_table const *    target,
+        bool                        all
     );
 
 int

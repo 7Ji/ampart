@@ -347,9 +347,10 @@ cli_write_dtb(
 static inline
 int
 cli_write_ept(
-    struct ept_table const * const  table
+    struct ept_table const * const  old,
+    struct ept_table const * const  new
 ) {
-    if (!table) {
+    if (!new) {
         fputs("CLI write EPT: Table invalid, refuse to continue\n", stderr);
         return 1;
     }
@@ -367,10 +368,17 @@ cli_write_ept(
         fputs("CLI write EPT: In dry-run mode, assuming success\n", stderr);
         return 0;
     }
-    int fd = open(cli_options.target, O_WRONLY);
+    int fd = open(cli_options.target, old ? O_RDWR : O_WRONLY);
     if (fd < 0) {
         fputs("CLI write EPT: Failed to open target\n", stderr);
         return 1;
+    }
+    if (old) {
+        struct io_migrate_helper mhelper;
+        if (!ept_migrate_plan(&mhelper, old, new, true)) {
+            io_migrate(&mhelper, fd, true);
+            free(mhelper.entries);
+        }
     }
     off_t const ept_offset = io_seek_ept(fd);
     if (ept_offset < 0) {
@@ -427,7 +435,7 @@ cli_mode_dtoe(
         fputs("CLI mode dtoe: New table is the same as the old table, no need to update\n", stderr);
         return 0;
     }
-    if (cli_write_ept(&table_new)) {
+    if (cli_write_ept(table, &table_new)) {
         fputs("CLI mode dtoe: Failed to write new EPT\n", stderr);
         return 5;
     }
@@ -554,7 +562,7 @@ cli_mode_eedit(
         return 1;
     }
     struct ept_table *table_new = NULL;
-    if (cli_write_ept(table_new)) {
+    if (cli_write_ept(table, table_new)) {
         fputs("CLI mode edit: Failed to write new EPT\n", stderr);
         return 2;
     }
@@ -657,7 +665,7 @@ cli_mode_eclone(
     }
     if (ept_compare_table(table, &table_new)) {
         fputs("CLI mode eclone: New table is different, need to write\n", stderr);
-        if (cli_write_ept(&table_new)) {
+        if (cli_write_ept(table, &table_new)) {
             fputs("CLI mode eclone: Failed to write EPT\n", stderr);
             return 4;
         }

@@ -29,6 +29,21 @@ enum
 
 /* Structure */
 
+
+struct
+    io_migrate_entry{
+        uint8_t *   buffer;
+        uint32_t    target;
+        bool        pending;
+    };
+
+struct
+    io_migrate_helper{
+        struct io_migrate_entry *   entries;
+        uint32_t                    count;
+        uint32_t                    block;
+    };
+
 struct 
     io_target_type {
         enum io_target_type_content content;
@@ -42,7 +57,7 @@ struct
 void 
     io_describe_target_type(
         struct io_target_type * type,
-        char const * const      path
+        char const *            path
     );
 
 char *
@@ -55,6 +70,13 @@ int
         struct io_target_type * type,
         char const *            path
     );
+
+int
+    io_migrate(
+        struct io_migrate_helper *  mhelper,
+        int                         fd,
+        bool                        dry_run
+    );
     
 int 
     io_read_till_finish(
@@ -65,12 +87,12 @@ int
 
 off_t
     io_seek_dtb(
-        int const   fd
+        int fd
     );
 
 off_t
     io_seek_ept(
-        int const   fd
+        int fd
     );
 
 int 

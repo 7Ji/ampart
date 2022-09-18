@@ -696,4 +696,118 @@ ept_get_minimum_block(
     return block;
 }
 
+#define EPT_PARTITION_ESSENTIAL_COUNT 8
+char const ept_partition_essential_names[EPT_PARTITION_ESSENTIAL_COUNT][MAX_PARTITION_NAME_LENGTH] = {
+    EPT_PARTITION_BOOTLOADER_NAME,
+    EPT_PARTITION_RESERVED_NAME,
+    EPT_PARTITION_ENV_NAME,
+    "logo",
+    "misc",
+    "dtb",
+    "dtbo",
+    "dtb_a"
+};
+
+bool
+ept_is_partition_essential(
+    struct ept_partition const * const  part
+){
+    if (!part) {
+        return false;
+    }
+    for (unsigned i = 0; i < EPT_PARTITION_ESSENTIAL_COUNT; ++i) {
+        if (!strncmp(part->name, ept_partition_essential_names[i], MAX_PARTITION_NAME_LENGTH)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+int
+ept_migrate_plan(
+    struct io_migrate_helper *      mhelper,
+    struct ept_table const * const  source,
+    struct ept_table const * const  target,
+    bool const                      all
+){
+    if (!mhelper || !source || !target || !source->partitions_count || !target->partitions_count) {
+        return -1;
+    }
+    size_t const block_source = ept_get_minimum_block(source);
+    size_t const block_target = ept_get_minimum_block(target);
+    if (!block_source || !block_target) {
+        return 1;
+    }
+    mhelper->block = (block_source > block_target) ? block_target : block_source;
+    size_t const capacity_source = ept_get_capacity(source);
+    size_t const capacity_target = ept_get_capacity(target);
+    size_t const capacity = (capacity_source > capacity_target) ? capacity_source : capacity_target;
+    if (capacity % mhelper->block) {
+        return 2;
+    }
+    mhelper->count = capacity / mhelper->block;
+    size_t const block_max_source = capacity_source / mhelper->block;
+    size_t const block_max_target = capacity_target / mhelper->block;
+    size_t const size_entries = sizeof(struct io_migrate_entry) * mhelper->count;
+    mhelper->entries = malloc(size_entries);
+    if (!mhelper->entries) {
+        return 3;
+    }
+    memset(mhelper->entries, 0, size_entries);
+    uint32_t i, j, k;
+    struct ept_partition const *part_source, *part_target;
+    uint32_t entry_start, entry_count, entry_end, target_start;
+    struct io_migrate_entry *mentry;
+    uint32_t blocks = 0;
+    fprintf(stderr, "EPT migrate plan: Start planning, using block size 0x%x (source 0x%lx, target 0x%lx), count %u\n", mhelper->block, block_source, block_target, mhelper->count);
+    for (i = 0; i < source->partitions_count; ++i){
+        part_source = source->partitions + i;
+        if (all || (!all && ept_is_partition_essential(part_source))) {
+            for (j = 0; j < target->partitions_count; ++j) {
+                part_target = target->partitions + j;
+                // fprintf(stderr, "EPT migrate plan: Checking source %s against target %s\n", part_source->name, part_target->name);
+                if (!strncmp(part_source->name, part_target->name, MAX_PARTITION_NAME_LENGTH) && part_source->offset != part_target->offset) {
+                    entry_start = part_source->offset / mhelper->block;
+                    entry_count = ((part_source->size > part_target->size) ? part_target->size : part_source->size) / mhelper->block;
+                    entry_end = entry_start + entry_count;
+                    if (entry_end > block_max_source) {
+                        entry_end = block_max_source;
+                        if (entry_end <= entry_start) {
+                            continue;
+                        }
+                        entry_count = entry_end - entry_start;
+                        fprintf(stderr, "EPT migrate plan: Warning, expected migrate end point of part %s exceeds the capacity of source drive, shrinked migrate block count, this may result in partition damaged since it will be incomplete\n", part_source->name);
+                    }
+                    target_start = part_target->offset / mhelper->block;
+                    // printf("%08x, %08x, %08x\n", entry_start, entry_count, entry_end);
+                    fprintf(stderr, "EPT migrate plan: Part %s (%u of %u in old table, %u of %u in new table) should be migrated, from offset 0x%lx(block %u) to 0x%lx(block %u), block count %u\n", part_source->name, i + 1, source->partitions_count, j + 1, target->partitions_count, part_source->offset, entry_start, part_target->offset, target_start, entry_count);
+                    for (k = entry_start; k < entry_end; ++k) {
+                        // puts("1");
+                        mentry = mhelper->entries + k;
+                        mentry->target = target_start + k;
+                        if (mentry->target > block_max_target - 1) {
+                            fprintf(stderr, "EPT migrate plan: Warning, expected migrate end point of part %s exceeds the capacity of target drive, shrinked migrate block count, this may result in partition damaged since it will be incomplete\n", part_target->name);
+                            mentry->target = 0;
+                            break;
+                        }
+                        mentry->pending = true;
+                    }
+                    blocks += entry_count;
+                }
+            }
+        }
+    }
+    // for (uint32_t i = 0; i < mhelper->count; ++i) {
+    //     if ((mhelper->entries + i)->pending) {
+    //         printf("%u\n", i);
+    //     }
+    // }
+    char suffix_each, suffix_total;
+    double const size_each_d = util_size_to_human_readable(mhelper->block, &suffix_each);
+    size_t const size_total = (size_t)blocks * (size_t)mhelper->block;
+    double const size_total_d = util_size_to_human_readable(size_total, &suffix_total);
+    fprintf(stderr, "EPT migrate plan: %u blocks should be migrated, each size 0x%x (%lf%c), total size 0x%lx (%lf%c). In the worst scenario you will need the SAME amount of memory for the migration. If you are using migartion=all mode, consider changing it to migrate=essential, or migarate=no\n", blocks, mhelper->block, size_each_d, suffix_each, size_total, size_total_d, suffix_total);
+    return 0;
+}
+
 /* ept.c: eMMC Partition Table related functions */

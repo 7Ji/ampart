@@ -373,20 +373,6 @@ io_seek_ept(
     return offset;
 }
 
-struct
-    io_migrate_entry{
-        uint8_t *   buffer;
-        uint32_t    target;
-        bool        finish;
-    };
-
-struct
-    io_migrate_helper{
-        struct io_migrate_entry *   entries;
-        uint32_t                    count;
-        uint32_t                    block;
-    };
-
 static inline
 int
 io_seek_and_read(
@@ -396,14 +382,18 @@ io_seek_and_read(
     size_t          size
 
 ){
+    // fprintf(stderr, "IO seek and read: Trying to seek to 0x%lx to read 0x%lx\n", offset, size);
     off_t r_seek = lseek(fd, offset, SEEK_SET);
     if (r_seek < 0) {
+        fputs("IO seek and read: Failed to seek\n", stderr);
         return 1;
     }
     if (r_seek != offset) {
+        fprintf(stderr, "IO seek and read: Seeked offset different from expected: Result 0x%lx, expected 0x%lx\n", r_seek, offset);
         return 2;
     }
     if (io_read_till_finish(fd, buffer, size)) {
+        fputs("IO seek and read: Failed to read\n", stderr);
         return 3;
     }
     return 0;
@@ -438,38 +428,27 @@ io_migrate_recursive(
     int fd
 ){
     struct io_migrate_entry *const msource = mhelper->entries + id;
-    if (!(msource->buffer = malloc(sizeof(mhelper->block)))) {
+    fprintf(stderr, "IO migrate recursive dry-run: %u => %u\n", id, msource->target);
+    if (!(msource->buffer = malloc(sizeof(uint8_t) * mhelper->block))) {
+        fputs("IO migrate recursive dry-run: Failed to allocate memory\n", stderr);
         return 1;
     }
-    if (io_seek_and_read(fd, mhelper->block * id, msource->buffer, mhelper->block)) {
+    if (io_seek_and_read(fd, (off_t)mhelper->block * (off_t)id, msource->buffer, sizeof(uint8_t) * mhelper->block)) {
         free(msource->buffer);
         return 2;
     }
     struct io_migrate_entry *const mtarget = mhelper->entries + msource->target;
-    if (!mtarget->buffer && io_migrate_recursive(mhelper, msource->target, fd)) {
+    if (mtarget->pending && !mtarget->buffer && io_migrate_recursive(mhelper, msource->target, fd)) {
         free(msource->buffer);
         return 3;
     }
-    if (io_seek_and_write(fd, mhelper->block * msource->target, msource->buffer, mhelper->block)) {
+    if (io_seek_and_write(fd, (off_t)mhelper->block * (off_t)msource->target, msource->buffer, sizeof(uint8_t) * mhelper->block)) {
         free(msource->buffer);
         return 4;
     }
     free(msource->buffer);
     msource->buffer = NULL;
-    msource->finish = true;
-    return 0;
-}
-
-int
-io_migrate(
-    struct io_migrate_helper *mhelper,
-    int fd
-){
-    for (uint32_t i = 0; i < mhelper->count; ++i) {
-        if (!(mhelper->entries + i)->finish && io_migrate_recursive(mhelper, i, fd)) {
-            return 1;
-        }
-    }
+    msource->pending = false;
     return 0;
 }
 
@@ -480,32 +459,42 @@ io_migrate_recursive_dry_run(
     int fd
 ){
     struct io_migrate_entry *const msource = mhelper->entries + id;
-    if (!(msource->buffer = malloc(sizeof(mhelper->block)))) {
+    fprintf(stderr, "IO migrate recursive dry-run: %u => %u\n", id, msource->target);
+    if (!(msource->buffer = malloc(sizeof(uint8_t) * mhelper->block))) {
+        fputs("IO migrate recursive dry-run: Failed to allocate memory\n", stderr);
         return 1;
     }
-    if (io_seek_and_read(fd, mhelper->block * id, msource->buffer, mhelper->block)) {
+    if (io_seek_and_read(fd, (off_t)mhelper->block * (off_t)id, msource->buffer, sizeof(uint8_t) * mhelper->block)) {
         free(msource->buffer);
         return 2;
     }
     struct io_migrate_entry *const mtarget = mhelper->entries + msource->target;
-    if (!mtarget->buffer && io_migrate_recursive(mhelper, msource->target, fd)) {
+    if (mtarget->pending && !mtarget->buffer && io_migrate_recursive_dry_run(mhelper, msource->target, fd)) {
         free(msource->buffer);
         return 3;
     }
     free(msource->buffer);
     msource->buffer = NULL;
-    msource->finish = true;
+    msource->pending = false;
     return 0;
 }
 
 int
-io_migrate_dry_run(
-    struct io_migrate_helper *mhelper,
-    int fd
+io_migrate(
+    struct io_migrate_helper *const mhelper,
+    int const fd,
+    bool const dry_run
 ){
+    fprintf(stderr, "IO migrate: Start migrating, block size 0x%x, total blocks %u\n", mhelper->block, mhelper->count);
+    int (*const func)(struct io_migrate_helper *, uint32_t, int) = dry_run ? &io_migrate_recursive_dry_run : io_migrate_recursive;
     for (uint32_t i = 0; i < mhelper->count; ++i) {
-        if (!(mhelper->entries + i)->finish && io_migrate_recursive_dry_run(mhelper, i, fd)) {
-            return 1;
+        // printf("%d\n", mhelper->entries[i].pending);
+        if ((mhelper->entries + i)->pending){
+            fprintf(stderr, "IO migrate: Migrating block %u\n", i);
+            if (func(mhelper, i, fd)) {
+                fprintf(stderr, "IO migrate: Failed to migrate block %u\n", i);
+                return 1;
+            }
         }
     }
     return 0;

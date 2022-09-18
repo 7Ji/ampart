@@ -243,7 +243,7 @@ cli_options_complete_target_info(){
     io_describe_target_type(&target_type, NULL);
     bool find_disk = false;
     if (cli_options.content == CLI_CONTENT_TYPE_AUTO) {
-        fputs("CLI interface: Start auto content type identification, specify target type if you don't want this\n", stderr);
+        fputs("CLI interface: Content type set as auto, will use the type identified earlier as type\n", stderr);
         switch (target_type.content) {
             case IO_TARGET_TYPE_CONTENT_DISK:
                 fputs("CLI interface: Content auto identified as whole disk\n", stderr);

@@ -400,7 +400,7 @@ cli_write_ept(
         return 2;
     }
     if (can_migrate) {
-        if (io_migrate(&mhelper, fd, true)) {
+        if (io_migrate(&mhelper, fd, false)) {
             fputs("CLI write EPT: Failed to migrate\n", stderr);
             close(fd);
             free(mhelper.entries);

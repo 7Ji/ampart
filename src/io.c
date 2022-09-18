@@ -442,11 +442,11 @@ io_migrate_is_circle(
 
 int
 io_migrate_plain_recursive(
-    struct io_migrate_helper *mhelper,
+    struct io_migrate_helper *const mhelper,
     struct io_migrate_entry *const msource,
     uint32_t const id,
-    int fd,
-    bool dry_run
+    int const fd,
+    bool const dry_run
 ){
     fprintf(stderr, "IO migrate plain recursive: %u => %u\n", id, msource->target);
     struct io_migrate_entry *const mtarget = mhelper->entries + msource->target;
@@ -459,13 +459,13 @@ io_migrate_plain_recursive(
         fputs("IO migrate plain recursive: Failed to allocate memory\n", stderr);
         return 2;
     }
-    fprintf(stderr, "IO migrate plain recursive: Read block %u\n", id);
+    fprintf(stderr, "IO migrate plain recursive: Block %u reading\n", id);
     if (io_seek_and_read(fd, (off_t)mhelper->block * (off_t)id, buffer, mhelper->block * sizeof *buffer)) {
         fputs("IO migrate plain recursive: Failed to seek and read\n", stderr);
         free(buffer);
         return 3;
     }
-    fprintf(stderr, "IO migrate plain recursive: Write block %u\n", msource->target);
+    fprintf(stderr, "IO migrate plain recursive: Block %u writing to %u\n", id, msource->target);
     if (dry_run) {
         fputs("IO migrate plain recursive: Dry-run, skipped writing\n", stderr);
     } else if (io_seek_and_write(fd, (off_t)mhelper->block * (off_t)msource->target, buffer, mhelper->block * sizeof *buffer)) {
@@ -480,18 +480,18 @@ io_migrate_plain_recursive(
 
 int
 io_migrate_circle_recursive(
-    struct io_migrate_helper *mhelper,
+    struct io_migrate_helper *const mhelper,
     struct io_migrate_entry *const msource,
     uint32_t const id,
-    int fd,
-    bool dry_run
+    int const fd,
+    bool const dry_run
 ){
     fprintf(stderr, "IO migrate circle recursive: %u => %u\n", id, msource->target);
     if (!(msource->buffer = malloc(mhelper->block * sizeof *msource->buffer))) {
         fputs("IO migrate circle recursive: Failed to allocate memory\n", stderr);
         return 1;
     }
-    fprintf(stderr, "IO migrate circle recursive: Read block %u\n", id);
+    fprintf(stderr, "IO migrate circle recursive: Block %u reading\n", id);
     if (io_seek_and_read(fd, (off_t)mhelper->block * (off_t)id, msource->buffer, mhelper->block * sizeof *msource->buffer)) {
         fputs("IO migrate circle recursive: Failed to seek and read\n", stderr);
         free(msource->buffer);
@@ -503,7 +503,7 @@ io_migrate_circle_recursive(
         free(msource->buffer);
         return 3;
     }
-    fprintf(stderr, "IO migrate circle recursive: Write block %u\n", msource->target);
+    fprintf(stderr, "IO migrate circle recursive: Block %u writing to %u\n", id, msource->target);
     if (dry_run) {
         fputs("IO migrate circle recursive: Dry-run, skipped writing\n", stderr);
     } else if (io_seek_and_write(fd, (off_t)mhelper->block * (off_t)msource->target, msource->buffer, mhelper->block * sizeof *msource->buffer)) {

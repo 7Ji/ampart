@@ -37,11 +37,14 @@ The least common multiple <=4M for all partitions in both EPTs' offsets and size
 
 ## Routine
 For each block that needs to be migrated (marked as pending), the following steps are executed:
- - Read into buffer
- - If the target block is in pending status, and its buffer is not read yet, call its routine
-   - If failed, halt the migration
- - Write to target block
- - Unmark as pending
- - Free buffer and set it to NULL
-
+ - Check if the migration is circle (If its target's target's ....'s target, is itself)
+   - If circle
+     - Read into buffer
+     - If the target block is in pending status, and its buffer is not read yet, call its routine
+       - If failed, halt the migration
+     - Write to target block
+     - Unmark as pending
+     - Free buffer and set it to NULL
+   - Plain
+   
 Two important status marks (pending, buffer) are checked here. The pending mark is set to true for all blocks that need to be migrated during planning. The buffer is checked so that a circle migration chain won't get into dead-lock

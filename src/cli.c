@@ -358,7 +358,7 @@ cli_write_ept(
         return 1;
     }
     struct io_migrate_helper mhelper;
-    bool const can_migrate = old && !ept_migrate_plan(&mhelper, old, new, true);
+    bool const can_migrate = old && !ept_migrate_plan(&mhelper, old, new, true) && cli_options.content == CLI_CONTENT_TYPE_DISK;
     switch (cli_options.content) {
         case CLI_CONTENT_TYPE_DTB:
             fputs("CLI write EPT: Target is DTB, no need to write\n", stderr);

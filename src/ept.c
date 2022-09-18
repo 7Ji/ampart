@@ -30,6 +30,9 @@
 #define EPT_HEADER_VERSION_UINT32_1     (uint32_t)0x30302E30U
 #define EPT_HEADER_VERSION_UINT32_2     (uint32_t)0x00000000U
 
+/* Macro */
+#define EPT_IS_PARTITION_ESSENTIAL(part) !ept_is_partition_not_essential(part)
+
 /* Variable */
 
 uint32_t const
@@ -708,19 +711,19 @@ char const ept_partition_essential_names[EPT_PARTITION_ESSENTIAL_COUNT][MAX_PART
     "dtb_a"
 };
 
-bool
-ept_is_partition_essential(
+int
+ept_is_partition_not_essential(
     struct ept_partition const * const  part
 ){
     if (!part) {
-        return false;
+        return -1;
     }
     for (unsigned i = 0; i < EPT_PARTITION_ESSENTIAL_COUNT; ++i) {
         if (!strncmp(part->name, ept_partition_essential_names[i], MAX_PARTITION_NAME_LENGTH)) {
-            return true;
+            return 0;
         }
     }
-    return false;
+    return 1;
 }
 
 int
@@ -731,65 +734,87 @@ ept_migrate_plan(
     bool const                      all
 ){
     if (!mhelper || !source || !target || !source->partitions_count || !target->partitions_count) {
+        fputs("EPT migrate plan: Illegal arguments\n", stderr);
         return -1;
     }
     size_t const block_source = ept_get_minimum_block(source);
     size_t const block_target = ept_get_minimum_block(target);
-    if (!block_source || !block_target) {
+    if (!(mhelper->block = block_source > block_target ? block_target : block_source)) {
+        fputs("EPT migrate plan: Failed to get minumum blocks\n", stderr);
         return 1;
     }
-    mhelper->block = (block_source > block_target) ? block_target : block_source;
     size_t const capacity_source = ept_get_capacity(source);
     size_t const capacity_target = ept_get_capacity(target);
-    size_t const capacity = (capacity_source > capacity_target) ? capacity_source : capacity_target;
-    if (capacity % mhelper->block) {
+    if (!capacity_source || !capacity_target) {
+        fputs("EPT migrate plan: Failed to get capacity\n", stderr);
         return 2;
     }
-    mhelper->count = capacity / mhelper->block;
-    size_t const block_max_source = capacity_source / mhelper->block;
-    size_t const block_max_target = capacity_target / mhelper->block;
-    size_t const size_entries = mhelper->count * sizeof *mhelper->entries;
-    mhelper->entries = malloc(size_entries);
-    if (!mhelper->entries) {
+    if (capacity_source % mhelper->block || capacity_target %mhelper->block) {
+        fputs("EPT migrate plan: Capcity not multiply of minumum blocks\n", stderr);
         return 3;
+    }
+    mhelper->count = (capacity_source > capacity_target ? capacity_source : capacity_target) / mhelper->block;
+    size_t const block_total_source = capacity_source / mhelper->block;
+    size_t const block_total_target = capacity_target / mhelper->block;
+    if (!block_total_source || !block_total_target) {
+        fputs("EPT migrate plan: Block total count illegal, can not be 0\n", stderr);
+        return 4;
+    }
+    size_t const block_id_max_source = block_total_source - 1;
+    size_t const block_id_max_target = block_total_target - 1;
+    size_t const size_entries = mhelper->count * sizeof *mhelper->entries;
+    if (!(mhelper->entries = malloc(size_entries))) {
+        fputs("EPT migrate plan: Failed to allocate memory for entries\n", stderr);
+        return 5;
     }
     memset(mhelper->entries, 0, size_entries);
     uint32_t i, j, k;
     struct ept_partition const *part_source, *part_target;
-    uint32_t entry_start, entry_count, entry_end, target_start;
+    uint32_t entry_start, entry_count, entry_end, target_start, target_end;
     struct io_migrate_entry *mentry;
     uint32_t blocks = 0;
     fprintf(stderr, "EPT migrate plan: Start planning, using block size 0x%x (source 0x%lx, target 0x%lx), count %u\n", mhelper->block, block_source, block_target, mhelper->count);
     for (i = 0; i < source->partitions_count; ++i){
         part_source = source->partitions + i;
-        if (all || (!all && ept_is_partition_essential(part_source))) {
+        if (all || (!all && EPT_IS_PARTITION_ESSENTIAL(part_source))) {
             for (j = 0; j < target->partitions_count; ++j) {
                 part_target = target->partitions + j;
                 // fprintf(stderr, "EPT migrate plan: Checking source %s against target %s\n", part_source->name, part_target->name);
                 if (!strncmp(part_source->name, part_target->name, MAX_PARTITION_NAME_LENGTH) && part_source->offset != part_target->offset) {
-                    entry_start = part_source->offset / mhelper->block;
-                    entry_count = ((part_source->size > part_target->size) ? part_target->size : part_source->size) / mhelper->block;
+                    if ((entry_start = part_source->offset / mhelper->block) > block_id_max_source || ((target_start = part_target->offset / mhelper->block) > block_id_max_target)) {
+                        fputs("EPT migrate plan: Block ID overflows!\n", stderr);
+                        free(mhelper->entries);
+                        return 6;
+                    }
+                    entry_count = (part_source->size > part_target->size ? part_target->size : part_source->size) / mhelper->block;
                     entry_end = entry_start + entry_count;
-                    if (entry_end > block_max_source) {
-                        entry_end = block_max_source;
+                    if (entry_end > block_total_source) { // No need, but anyway
+                        entry_end = block_total_source;
                         if (entry_end <= entry_start) {
                             continue;
                         }
                         entry_count = entry_end - entry_start;
                         fprintf(stderr, "EPT migrate plan: Warning, expected migrate end point of part %s exceeds the capacity of source drive, shrinked migrate block count, this may result in partition damaged since it will be incomplete\n", part_source->name);
                     }
-                    target_start = part_target->offset / mhelper->block;
+                    target_end = target_start + entry_count;
+                    if (target_end > block_total_target) {
+                        entry_end -= target_end - block_total_target;
+                        if (entry_end <= entry_start) {
+                            continue;
+                        }
+                        entry_count = entry_end - target_start;
+                        fprintf(stderr, "EPT migrate plan: Warning, expected migrate end point of part %s exceeds the capacity of target drive, shrinked migrate block count, this may result in partition damaged since it will be incomplete\n", part_source->name);
+                    }
                     // printf("%08x, %08x, %08x\n", entry_start, entry_count, entry_end);
                     fprintf(stderr, "EPT migrate plan: Part %s (%u of %u in old table, %u of %u in new table) should be migrated, from offset 0x%lx(block %u) to 0x%lx(block %u), block count %u\n", part_source->name, i + 1, source->partitions_count, j + 1, target->partitions_count, part_source->offset, entry_start, part_target->offset, target_start, entry_count);
-                    for (k = entry_start; k < entry_end; ++k) {
-                        // puts("1");
-                        mentry = mhelper->entries + k;
+                    for (k = 0; k < entry_count; ++k) {
+                        mentry = mhelper->entries + entry_start + k;
                         mentry->target = target_start + k;
-                        if (mentry->target > block_max_target - 1) {
-                            fprintf(stderr, "EPT migrate plan: Warning, expected migrate end point of part %s exceeds the capacity of target drive, shrinked migrate block count, this may result in partition damaged since it will be incomplete\n", part_target->name);
-                            mentry->target = 0;
-                            break;
-                        }
+                        // if ((mentry->target = target_start + k) > block_id_max_target) {
+                        //     fprintf(stderr, "EPT migrate plan: Warning, expected migrate end point of part %s exceeds the capacity of target drive, shrinked migrate block count, this may result in partition damaged since it will be incomplete\n", part_target->name);
+                        //     mentry->target = 0;
+                        //     break;
+                        // }
                         mentry->pending = true;
                     }
                     blocks += entry_count;
@@ -797,11 +822,6 @@ ept_migrate_plan(
             }
         }
     }
-    // for (uint32_t i = 0; i < mhelper->count; ++i) {
-    //     if ((mhelper->entries + i)->pending) {
-    //         printf("%u\n", i);
-    //     }
-    // }
     char suffix_each, suffix_total;
     double const size_each_d = util_size_to_human_readable(mhelper->block, &suffix_each);
     size_t const size_total = (size_t)blocks * (size_t)mhelper->block;

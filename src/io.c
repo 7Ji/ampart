@@ -421,28 +421,93 @@ io_seek_and_write(
     return 0;
 }
 
-int
-io_migrate_recursive(
-    struct io_migrate_helper *mhelper,
-    uint32_t const id,
-    int fd
+bool
+io_migrate_is_circle(
+    struct io_migrate_helper const *mhelper,
+    bool * const             chain,
+    uint32_t const id
 ){
-    struct io_migrate_entry *const msource = mhelper->entries + id;
-    fprintf(stderr, "IO migrate recursive dry-run: %u => %u\n", id, msource->target);
-    if (!(msource->buffer = malloc(mhelper->block * sizeof *msource->buffer))) {
-        fputs("IO migrate recursive dry-run: Failed to allocate memory\n", stderr);
+    memset(chain, 0, mhelper->count * sizeof *chain);
+    struct io_migrate_entry const *mentry = mhelper->entries + id;
+    chain[id] = true;
+    while (mentry->pending && mentry->target) {
+        if (chain[mentry->target]) {
+            fprintf(stderr, "IO migrate is circle: Block %u has circle migration dependency, this will result in heavy memory footprint\n", id);
+            return true;
+        }
+        mentry = mhelper->entries + mentry->target;
+    }
+    return false;
+}
+
+int
+io_migrate_plain_recursive(
+    struct io_migrate_helper *mhelper,
+    struct io_migrate_entry *const msource,
+    uint32_t const id,
+    int fd,
+    bool dry_run
+){
+    fprintf(stderr, "IO migrate plain recursive: %u => %u\n", id, msource->target);
+    struct io_migrate_entry *const mtarget = mhelper->entries + msource->target;
+    if (mtarget->pending && io_migrate_plain_recursive(mhelper, mtarget, msource->target, fd, dry_run)) {
+        fputs("IO migrate plain recursive: Failed to recursively migrate\n", stderr);
         return 1;
     }
+    uint8_t *buffer = malloc(mhelper->block * sizeof *buffer);
+    if (!buffer) {
+        fputs("IO migrate plain recursive: Failed to allocate memory\n", stderr);
+        return 2;
+    }
+    fprintf(stderr, "IO migrate plain recursive: Read block %u\n", id);
+    if (io_seek_and_read(fd, (off_t)mhelper->block * (off_t)id, buffer, mhelper->block * sizeof *buffer)) {
+        fputs("IO migrate plain recursive: Failed to seek and read\n", stderr);
+        free(buffer);
+        return 3;
+    }
+    fprintf(stderr, "IO migrate plain recursive: Write block %u\n", msource->target);
+    if (dry_run) {
+        fputs("IO migrate plain recursive: Dry-run, skipped writing\n", stderr);
+    } else if (io_seek_and_write(fd, (off_t)mhelper->block * (off_t)msource->target, buffer, mhelper->block * sizeof *buffer)) {
+        fputs("IO migrate plain recursive: Failed to seek and write\n", stderr);
+        free(buffer);
+        return 4;
+    }
+    free(buffer);
+    msource->pending = false;
+    return 0;
+}
+
+int
+io_migrate_circle_recursive(
+    struct io_migrate_helper *mhelper,
+    struct io_migrate_entry *const msource,
+    uint32_t const id,
+    int fd,
+    bool dry_run
+){
+    fprintf(stderr, "IO migrate circle recursive: %u => %u\n", id, msource->target);
+    if (!(msource->buffer = malloc(mhelper->block * sizeof *msource->buffer))) {
+        fputs("IO migrate circle recursive: Failed to allocate memory\n", stderr);
+        return 1;
+    }
+    fprintf(stderr, "IO migrate circle recursive: Read block %u\n", id);
     if (io_seek_and_read(fd, (off_t)mhelper->block * (off_t)id, msource->buffer, mhelper->block * sizeof *msource->buffer)) {
+        fputs("IO migrate circle recursive: Failed to seek and read\n", stderr);
         free(msource->buffer);
         return 2;
     }
     struct io_migrate_entry *const mtarget = mhelper->entries + msource->target;
-    if (mtarget->pending && !mtarget->buffer && io_migrate_recursive(mhelper, msource->target, fd)) {
+    if (mtarget->pending && !mtarget->buffer && io_migrate_circle_recursive(mhelper, mtarget, msource->target, fd, dry_run)) {
+        fputs("IO migrate circle recursive: Failed to recursively migrate\n", stderr);
         free(msource->buffer);
         return 3;
     }
-    if (io_seek_and_write(fd, (off_t)mhelper->block * (off_t)msource->target, msource->buffer, mhelper->block * sizeof *msource->buffer)) {
+    fprintf(stderr, "IO migrate circle recursive: Write block %u\n", msource->target);
+    if (dry_run) {
+        fputs("IO migrate circle recursive: Dry-run, skipped writing\n", stderr);
+    } else if (io_seek_and_write(fd, (off_t)mhelper->block * (off_t)msource->target, msource->buffer, mhelper->block * sizeof *msource->buffer)) {
+        fputs("IO migrate circle recursive: Failed to seek and write\n", stderr);
         free(msource->buffer);
         return 4;
     }
@@ -452,32 +517,33 @@ io_migrate_recursive(
     return 0;
 }
 
-int
-io_migrate_recursive_dry_run(
-    struct io_migrate_helper *mhelper,
-    uint32_t const id,
-    int fd
-){
-    struct io_migrate_entry *const msource = mhelper->entries + id;
-    fprintf(stderr, "IO migrate recursive dry-run: %u => %u\n", id, msource->target);
-    if (!(msource->buffer = malloc(mhelper->block * sizeof *msource->buffer))) {
-        fputs("IO migrate recursive dry-run: Failed to allocate memory\n", stderr);
-        return 1;
-    }
-    if (io_seek_and_read(fd, (off_t)mhelper->block * (off_t)id, msource->buffer, mhelper->block * sizeof *msource->buffer)) {
-        free(msource->buffer);
-        return 2;
-    }
-    struct io_migrate_entry *const mtarget = mhelper->entries + msource->target;
-    if (mtarget->pending && !mtarget->buffer && io_migrate_recursive_dry_run(mhelper, msource->target, fd)) {
-        free(msource->buffer);
-        return 3;
-    }
-    free(msource->buffer);
-    msource->buffer = NULL;
-    msource->pending = false;
-    return 0;
-}
+// int
+// io_migrate_circle_recursive_dry_run(
+//     struct io_migrate_helper *mhelper,
+//     struct io_migrate_entry *const msource,
+//     uint32_t const id,
+//     int fd
+// ){
+//     fprintf(stderr, "IO migrate recursive dry-run: %u => %u\n", id, msource->target);
+
+//     if (!(msource->buffer = malloc(mhelper->block * sizeof *msource->buffer))) {
+//         fputs("IO migrate recursive dry-run: Failed to allocate memory\n", stderr);
+//         return 1;
+//     }
+//     if (io_seek_and_read(fd, (off_t)mhelper->block * (off_t)id, msource->buffer, mhelper->block * sizeof *msource->buffer)) {
+//         free(msource->buffer);
+//         return 2;
+//     }
+//     struct io_migrate_entry *const mtarget = mhelper->entries + msource->target;
+//     if (mtarget->pending && !mtarget->buffer && io_migrate_recursive_dry_run(mhelper, msource->target, fd)) {
+//         free(msource->buffer);
+//         return 3;
+//     }
+//     free(msource->buffer);
+//     msource->buffer = NULL;
+//     msource->pending = false;
+//     return 0;
+// }
 
 int
 io_migrate(
@@ -485,18 +551,29 @@ io_migrate(
     int const fd,
     bool const dry_run
 ){
+    if (!mhelper || !mhelper->count || fd < 0) {
+        return -1;
+    }
     fprintf(stderr, "IO migrate: Start migrating, block size 0x%x, total blocks %u\n", mhelper->block, mhelper->count);
-    int (*const func)(struct io_migrate_helper *, uint32_t, int) = dry_run ? &io_migrate_recursive_dry_run : io_migrate_recursive;
+    // int (*plain)(struct io_migrate_helper *, struct io_migrate_entry *, uint32_t, int, bool) = &io_migrate_plain_recursive;
+    // int (*circle)(struct io_migrate_helper *, struct io_migrate_entry *, uint32_t, int, bool) = &io_migrate_circle_recursive;
+    int (*func)(struct io_migrate_helper *, struct io_migrate_entry *, uint32_t, int, bool);
+    bool *chain = malloc(mhelper->count * sizeof *chain);
+    if (!chain) {
+        return 1;
+    }
     for (uint32_t i = 0; i < mhelper->count; ++i) {
-        // printf("%d\n", mhelper->entries[i].pending);
         if ((mhelper->entries + i)->pending){
             fprintf(stderr, "IO migrate: Migrating block %u\n", i);
-            if (func(mhelper, i, fd)) {
+            func = io_migrate_is_circle(mhelper, chain, i) ? &io_migrate_circle_recursive : &io_migrate_plain_recursive;
+            if ((*func)(mhelper, mhelper->entries + i, i, fd, dry_run)) {
                 fprintf(stderr, "IO migrate: Failed to migrate block %u\n", i);
-                return 1;
+                free(chain);
+                return 2;
             }
         }
     }
+    free(chain);
     return 0;
 }
 

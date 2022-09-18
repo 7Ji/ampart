@@ -144,7 +144,7 @@ dts_report_invalid_token(
     const char * const      name,
     const uint32_t * const  current
 ){
-    fprintf(stderr, "DTS %s: Invalid token %"PRIu32"\n", name, bswap_32(*current));
+    fprintf(stderr, "DTS %s: Invalid token %"PRIu32" (address %p)\n", name, bswap_32(*current), current);
 }
 
 static inline
@@ -155,6 +155,13 @@ dts_report_not_properly_end(
     fprintf(stderr, "DTS %s: Node not properly ended\n", name);
 }
 
+/**
+ * @brief Skip the node and return the steps needed to skip the node
+ * 
+ * @param node 
+ * @param max_offset 
+ * @return uint32_t The length of the node, excluding the BEGIN_NODE and END_NODE token, measured in 4-byte steps
+ */
 static inline
 uint32_t
 dts_skip_node(
@@ -170,6 +177,7 @@ dts_skip_node(
     uint32_t offset_child;
     for (uint32_t i = 0; i < count; ++i) {
         current = start + i;
+        // printf("0x%08x\n", bswap_32(*current));
         switch (*current) {
             case DTS_BEGIN_NODE_ACTUAL:
                 offset_child = dts_skip_node((const uint8_t *)(current + 1), max_offset - 4*i);
@@ -221,6 +229,7 @@ dts_get_node(
     uint32_t offset_child;
     for (uint32_t i = 0; i < count; ++i) {
         current = start + i;
+        // printf("0x%08x\n", bswap_32(*current));
         switch (*current) {
             case DTS_BEGIN_NODE_ACTUAL:
                 offset_child = dts_get_node((uint8_t const *)(current + 1), max_offset - 4*i, name + len_name, layers - 1, target);
@@ -649,6 +658,7 @@ dts_get_partitions_from_node(
                     }
                     in_partition = false;
                 } else {
+                    phelper->node = (uint8_t *)node;
                     return 0;
                 }
                 break;
@@ -953,6 +963,75 @@ dts_compare_partitions(
     return r + 8 * diff;
 }
 
+uint32_t 
+dts_compare_partitions_simple(
+    struct dts_partitions_helper_simple const * const  phelper_a, 
+    struct dts_partitions_helper_simple const * const  phelper_b
+){
+    uint32_t r = 0;
+    uint32_t compare_partitions;
+    uint32_t diff;
+    if (phelper_a->partitions_count > phelper_b->partitions_count) {
+        compare_partitions = phelper_b->partitions_count;
+        diff = phelper_a->partitions_count - phelper_b->partitions_count;
+    } else {
+        compare_partitions = phelper_b->partitions_count;
+        diff = phelper_b->partitions_count - phelper_a->partitions_count;
+    }
+    if (compare_partitions) {
+        struct dts_partition_entry_simple const *part_a, *part_b;
+        for (uint32_t i = 0; i < compare_partitions; ++i) {
+            part_a = phelper_a->partitions + i;
+            part_b = phelper_b->partitions + i;
+            if (strncmp(part_a->name, part_b->name, MAX_PARTITION_NAME_LENGTH)) {
+                r += 1;
+            }
+            if (part_a->size != part_b->size) {
+                r += 2;
+            }
+            if (part_a->mask != part_b->mask) {
+                r += 4;
+            }
+        }
+    } 
+    return r + 8 * diff;
+}
+
+uint32_t 
+dts_compare_partitions_mixed(
+    struct dts_partitions_helper const * const  phelper_a, 
+    struct dts_partitions_helper_simple const * const  phelper_b
+){
+    uint32_t r = 0;
+    uint32_t compare_partitions;
+    uint32_t diff;
+    if (phelper_a->partitions_count > phelper_b->partitions_count) {
+        compare_partitions = phelper_b->partitions_count;
+        diff = phelper_a->partitions_count - phelper_b->partitions_count;
+    } else {
+        compare_partitions = phelper_b->partitions_count;
+        diff = phelper_b->partitions_count - phelper_a->partitions_count;
+    }
+    if (compare_partitions) {
+        struct dts_partition_entry const *part_a;
+        struct dts_partition_entry_simple const *part_b;
+        for (uint32_t i = 0; i < compare_partitions; ++i) {
+            part_a = phelper_a->partitions + i;
+            part_b = phelper_b->partitions + i;
+            if (strncmp(part_a->name, part_b->name, MAX_PARTITION_NAME_LENGTH)) {
+                r += 1;
+            }
+            if (part_a->size != part_b->size) {
+                r += 2;
+            }
+            if (part_a->mask != part_b->mask) {
+                r += 4;
+            }
+        }
+    } 
+    return r + 8 * diff;
+}
+
 int
 dts_dclone_parse(
     int const                                   argc,
@@ -1000,12 +1079,16 @@ dts_get_phandles(
         fputs("DTS get phandles: Failed to allocate memory for phandle list\n", stderr);
         return 1;
     }
+    memset(plist->phandles, 0, 128 * sizeof *plist->phandles);
     plist->allocated_count = 128;
     if (!dts_get_phandles_recursive(plist, start + 4, max_offset - (start - dts) - 4, offset_phandle, offset_linux_phandle)) {
         free(plist->phandles);
         fputs("DTS get phandles: Failed to get phandle list\n", stderr);
         return 2;
     }
+    // for (unsigned i = 0; i < plist->allocated_count; ++i) {
+    //     printf("phandle %u: %u\n", i, plist->phandles[i]);
+    // }
     if (dts_phandle_list_finish(plist)) {
         free(plist->phandles);
         fputs("DTS get phandles: Failed to finish phandle list\n", stderr);
@@ -1075,22 +1158,21 @@ dts_add_property_be32(
     *((*current)++) = DTS_PROP_ACTUAL;
     *((*current)++) = DTS_BE_4;
     *((*current)++) = name_off_be32;
-    *((*current)++) = value_be32;
-    
+    *((*current)++) = value_be32;   
 }
 
 
 int
 dts_compose_partitions_node(
     uint8_t * * const                                   node,
-    size_t * const                                      length,
+    size_t * const                                      len_node,
     struct dts_phandle_list * const                     plist,
     struct dts_partitions_helper_simple const * const   phelper,
     struct stringblock_helper * const                   shelper,
     off_t const                                         offset_phandle,
     off_t const                                         offset_linux_phandle
 ){
-    if (!node || !length || !plist || !phelper || !shelper || !plist->phandles || !plist->allocated_count || !phelper->partitions_count || offset_phandle < 0 || (plist->have_linux_phandle && offset_linux_phandle < 0)) {
+    if (!node || !len_node || !plist || !phelper || !shelper || !plist->phandles || !plist->allocated_count || !phelper->partitions_count || offset_phandle < 0 || (plist->have_linux_phandle && offset_linux_phandle < 0)) {
         fputs("DTS compose partitions node: Illegal arguments\n", stderr);
         return -1;
     }
@@ -1111,16 +1193,16 @@ dts_compose_partitions_node(
         bswap_32(offsets[4]),
         bswap_32(offsets[5])
     };
-    struct dts_compose_partition_helper chelpers[MAX_PARTITION_NAME_LENGTH] = {0};
+    struct dts_compose_partition_helper chelpers[MAX_PARTITIONS_COUNT] = {0};
     struct dts_compose_partition_helper *chelper;
     struct dts_partition_entry_simple const *dentry;
     char partn[] = "part-NN";
     // Basic length of the node, excluding the start BEGIN_NODE and end END_NODE, 12 for partitions\0\0\0 as name, len 16 property (4 PROP_NODE, 4 len_prop, 4 name_off, 4 u32 value) for: 1 for parts, 1 for each part-N (storing phandle), 1 for phandle, optional 1 for linux,phandle. Then basic length of the partition sub-node, 8 (4 BEGIN_NODE + 4 END_NODE) + 12 (4 PROP_NODE, 4 len_prop, 4 name_off) for 4 or 5 props (pname, size, mask, phandle, optionally linux,phandle) + 8 for u64 size + 4 for u32 mask + 4 for u32 phandle + 4 optionally for u32 linux,phandle
-    size_t len_node = 12 + 16 * (1 + phelper->partitions_count + 1 + plist->have_linux_phandle) + (8 + 12 * (4 + plist->have_linux_phandle) + 8 + 4 + 4 + 4 * plist->have_linux_phandle);
+    *len_node = 12 + 16 * (1 + phelper->partitions_count + 1 + plist->have_linux_phandle) + phelper->partitions_count * (8 + 12 * (4 + plist->have_linux_phandle) + 8 + 4 + 4 + 4 * plist->have_linux_phandle);
     for (uint32_t i = 0; i < phelper->partitions_count; ++i) {
         dentry = phelper->partitions + i;
         memset(partn + 5, 0, 3);
-        snprintf(partn + 5, 3, "%2u", i % 100);
+        snprintf(partn + 5, 3, "%u", i % 100);
         chelper = chelpers + i;
         chelper->len_name = strlen(dentry->name);
         chelper->len_pname = chelper->len_name + 1;
@@ -1128,11 +1210,11 @@ dts_compose_partitions_node(
         chelper->offset_partn = stringblock_append_string_safely(shelper, partn, 0);
         chelper->phandle = dts_assign_available_phanle(plist);
         chelper->phandle_be32 = bswap_32(chelper->phandle);
-        len_node += 2 * chelper->len_node_name;
+        *len_node += 2 * chelper->len_node_name;
     }
     uint32_t const phandle_root = dts_assign_available_phanle(plist);
     uint32_t const phandle_root_be32 = bswap_32(phandle_root);
-    *node = malloc(len_node); // Excluding the beginning BEGIN_NODE and endding END_NODE
+    *node = malloc(*len_node); // Excluding the beginning BEGIN_NODE and endding END_NODE
     if (!*node) {
         return 1;
     }
@@ -1150,9 +1232,10 @@ dts_compose_partitions_node(
     for (uint32_t i = 0; i < phelper->partitions_count; ++i) {
         dentry = phelper->partitions + i;
         chelper = chelpers + i;
+        // node
+        *(current++) = DTS_BEGIN_NODE_ACTUAL;
         strncpy((char *)current, dentry->name, chelper->len_pname);
         current = (uint32_t *)((uint8_t *)current + chelper->len_node_name);
-        *(current++) = DTS_BEGIN_NODE_ACTUAL;
         // pname
         *(current++) = DTS_PROP_ACTUAL;
         *(current++) = bswap_32(chelper->len_pname);
@@ -1163,8 +1246,8 @@ dts_compose_partitions_node(
         *(current++) = DTS_PROP_ACTUAL;
         *(current++) = DTS_BE_8;
         *(current++) = offsets_be32[DTS_ESSENTIAL_OFFSET_SIZE];
-        *(current++) = bswap_32(dentry->size); // Force cut 
-        *(current++) = bswap_32(dentry->size >> 32);
+        *(current++) = bswap_32(dentry->size >> 32); // Force cut 
+        *(current++) = bswap_32(dentry->size);
         // mask
         dts_add_property_be32(&current, offsets_be32[DTS_ESSENTIAL_OFFSET_MASK], bswap_32(dentry->mask));
         // phandle
@@ -1175,5 +1258,21 @@ dts_compose_partitions_node(
         }
         *(current++) = DTS_END_NODE_ACTUAL;
     }
+    // printf("Start: %p, length %lx, current %p\n", *node, *len_node, current);
     return 0;
+}
+
+size_t
+dts_get_node_full_length(
+    uint8_t const * const node,
+    uint32_t const         max_offset
+){
+    if (!node) {
+        return 0;
+    }
+    uint32_t const offset_child = dts_skip_node(node, max_offset);
+    if (!offset_child) {
+        return 0;
+    }
+    return 4 * (offset_child + 2);
 }

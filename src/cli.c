@@ -326,8 +326,10 @@ cli_write_dtb(
         return -2;
     }
     struct dtb_buffer_helper bhelper_new;
-    dtb_buffer_helper_implement_partitions(&bhelper_new, bhelper, dparts);
-
+    if (dtb_buffer_helper_implement_partitions(&bhelper_new, bhelper, dparts)) {
+        fputs("CLI write DTB: Failed to generate new DTBs\n", stderr);
+        return 1;
+    }
     if (cli_options.dry_run) {
         fputs("CLI write DTB: In dry-run mode, assuming success\n", stderr);
         return 0;
@@ -341,6 +343,10 @@ cli_write_dtb(
     if (dtb_offset < 0) {
         fputs("CLI write DTB: Failed to seek\n", stderr);
         return 2;
+    }
+    for (unsigned i = 0; i < bhelper_new.dtb_count; ++i) {
+        fputs("CLI write DTB: freeing\n", stderr);
+        free(bhelper_new.dtbs[i].buffer);
     }
     close(fd);
     fputs("CLI write DTB: WIP\n", stderr);
@@ -382,7 +388,7 @@ cli_write_ept(
         }
         return 0;
     }
-    int const fd = open(cli_options.target, can_migrate ? O_RDWR : O_WRONLY);
+    int const fd = open(cli_options.target, (can_migrate ? O_RDWR : O_WRONLY) | O_DSYNC);
     if (fd < 0) {
         fputs("CLI write EPT: Failed to open target\n", stderr);
         if (can_migrate) {

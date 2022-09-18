@@ -160,7 +160,7 @@ dtb_get_partitions(
     struct dtb_header dh = dtb_header_swapbytes((struct dtb_header *)dtb);
     if (dh.off_dt_strings + dh.size_dt_strings > size) {
         fputs("DTB get partitions: dtb end point overflows\n", stderr);
-        printf("End: %u, Size: %zu\n", dh.off_dt_strings + dh.size_dt_strings, size);
+        printf("End: 0x%x, Size: 0x%lx\n", dh.off_dt_strings + dh.size_dt_strings, size);
         return 2;
     }
     const uint8_t *const node = DTB_GET_PARTITIONS_NODE_FROM_DTS(dtb + dh.off_dt_struct, dh.size_dt_struct);
@@ -686,8 +686,6 @@ dtb_snapshot(
     return 0;
 }
 
- 
-
 int
 dtb_buffer_entry_implement_partitions(
     struct dtb_buffer_entry * const                     new,
@@ -715,6 +713,7 @@ dtb_buffer_entry_implement_partitions(
         // Warning
     }
     struct dts_phandle_list plist;
+    // printf("phandle: %lx, linux,phandle: %lx\n", offset_phandle, offset_linux_phandle);
     if (dts_get_phandles(&plist, old->buffer + dh.off_dt_struct, dh.size_dt_struct, offset_phandle, offset_linux_phandle)) {
         fputs("DTB buffer entry implement partitions: Failed to get phandles\n", stderr);
         return 3;
@@ -724,7 +723,100 @@ dtb_buffer_entry_implement_partitions(
         free(plist.phandles);
         return 4;
     }
+    shelper.allocated_length = util_nearest_upper_bound_long(shelper.length, 0x1000, 2);
+    char *const buffer = malloc(shelper.allocated_length * sizeof *buffer);
+    if (!buffer) {
+        free(plist.phandles);
+        return 5;
+    }
+    memcpy(buffer, shelper.stringblock, shelper.length * sizeof *shelper.stringblock);
+    memset(buffer + shelper.length, 0, (shelper.allocated_length - shelper.length) * sizeof *buffer);
+    shelper.stringblock = buffer;
+    uint8_t *node = NULL;
+    size_t len_node = 0;
+    if (dts_compose_partitions_node(&node, &len_node, &plist, phelper, &shelper, offset_phandle, offset_linux_phandle) || !node) {
+        fputs("DTB buffer entry implement partitions: Failed to compose new partitions node\n", stderr);
+        free(shelper.stringblock);
+        free(plist.phandles);
+        return 5;
+    }
+    uint8_t *node_start, *end_start;
+    size_t len_existing_node;
+    if (old->phelper.node) {
+        node_start = old->phelper.node - 4; // For the sake of DTS calling, it starts at the node's name instead of the BEGIN_NODE token, we get that 4 byte back here
+        len_existing_node = dts_get_node_full_length(old->phelper.node, dh.size_dt_struct);
+        end_start = node_start + len_existing_node;
+    } else {
+        node_start = old->buffer + dh.off_dt_struct + dh.size_dt_struct - 8; 
+        // e.g. 0x38 start, 0x11368 size, then start + size is 0x113a0, this address is after the acutal end (essentially the start of DT sting, so we need to go backwards by 8 (pass 4 for END, pass 4 for END_NODE))
+        if (*(uint32_t*)node_start != DTS_END_NODE_ACTUAL || *(uint32_t *)(node_start + 4) != DTS_END_ACTUAL) {
+            free(node);
+            free(shelper.stringblock);
+            free(plist.phandles);
+            return 6;
+        }
+        len_existing_node = 0;
+        end_start = node_start;
+        /* Now we are at the last END_NODE, this is the END_NODE for the root node, as partitions is a direct child node under the root node, our START_NODE...END_NODE should write to here, and pushing the exising data starting with this END_NODE to the further beyond
+        | - - - - | - - - - | - - - - | - - - - |
+          . . . .   . . . .   END_ROOT     END
+                                 ^
+                                 |node_start
+                                 v
+
+        | - - - - | - - - - | - - - - | - - - - | - - - - | - - - - | - - - - |
+          . . . .   . . . .  [BEGIN_NODE . . . .  END_NODE] END_ROOT    END
+        */
+    }
+    size_t const size_before = node_start - old->buffer; // Before the new BEGIN_NODE token
+    size_t const size_after = old->buffer + dh.off_dt_struct + dh.size_dt_struct - end_start;
+    size_t const size_dt_struct = size_before - dh.off_dt_struct + size_after + len_node + 8;
+    size_t const offset_dt_strings = dh.off_dt_strings + size_dt_struct - dh.size_dt_struct; 
+    size_t const size_new = util_nearest_upper_bound_ulong(old->size - dh.size_dt_struct + size_dt_struct - dh.size_dt_strings + shelper.length, 4, 1);
+    fprintf(stderr, "DTB buffer entry implement partitions: Old DTB size 0x%lx, existing partitions node in it size is 0x%lx, DT struct offset 0x%x, size 0x%x. New node size 0x%lx, will insert between %p (off 0x%lx) and %p (off 0x%lx), size before insertion is 0x%lx, size after insertion is 0x%lx, size of new DT struct is 0x%lx, new DT strings offset 0x%lx, size 0x%lx. Total size of new DTB is 0x%lx\n", old->size, len_existing_node, dh.off_dt_struct, dh.size_dt_struct, len_node, node_start, node_start - old->buffer, end_start, end_start - old->buffer, size_before, size_after, size_dt_struct, offset_dt_strings, shelper.length, size_new);
+    if (!(new->buffer = malloc(size_new * sizeof *new->buffer))) {
+        free(node);
+        free(shelper.stringblock);
+        free(plist.phandles);
+        return 7;
+    }
+    // puts("Allocate success\n");
+    memset(new->buffer, 0, size_new * sizeof *new->buffer);
+    uint8_t *offset_hot = new->buffer;
+    memcpy(offset_hot, old->buffer, size_before);
+    *(uint32_t *)(offset_hot += size_before) = DTS_BEGIN_NODE_ACTUAL;
+    memcpy((offset_hot += 4), node, len_node);
+    *(uint32_t *)(offset_hot += len_node) = DTS_END_NODE_ACTUAL;
+    memcpy((offset_hot += 4), end_start, size_after);
+    memcpy((offset_hot += size_after), shelper.stringblock, shelper.length);
+    // fprintf(stderr, "Calculated offset of DT string: 0x%lx, Actual offset: 0x%lx\n", offset_dt_strings, offset_hot - new->buffer);
+    struct dtb_header *dh_new = (struct dtb_header *)new->buffer;
+    dh_new->totalsize = bswap_32(size_new);
+    dh_new->size_dt_struct = bswap_32(size_dt_struct);
+    dh_new->off_dt_strings = bswap_32(offset_dt_strings);
+    dh_new->size_dt_strings = bswap_32(shelper.length);
+    new->size = size_new;
+    free(node);
+    free(shelper.stringblock);
     free(plist.phandles);
+    // int a = open("cache.dtb", O_WRONLY);
+    // write(a, new->buffer, size_new);
+    // close(a);
+    struct dts_partitions_helper phelper_new;
+    printf("%p\n", new->buffer);
+    if (dtb_get_partitions(&phelper_new, new->buffer, new->size)) {
+        fputs("DTB buffer entry implement partitions: Failed to extract partitions from new DTB for varification\n", stderr);
+        free(new->buffer);
+        new->buffer = NULL;
+        return 8;
+    }
+    if (dts_compare_partitions_mixed(&phelper_new, phelper)) {
+        fputs("DTB buffer entry implement partitions: Reconstructed DTB yeilds different partitions:\n", stderr);
+        dts_report_partitions(&phelper_new);
+        free(new->buffer);
+        new->buffer = NULL;
+        return 9;
+    }
     return 0;
 }
 
@@ -750,7 +842,10 @@ dtb_buffer_helper_implement_partitions(
         struct dtb_buffer_entry *const entry_new = new->dtbs + i;
         if (dtb_buffer_entry_implement_partitions(entry_new, entry_old, phelper)) {
             fprintf(stderr, "DTB buffer helper implement partitions: Failed to implement new partitions into DTB %u of %u\n", i + 1, new->dtb_count);
-            return 1;
+            for (unsigned j = 0; j < i; ++j) {
+                free((new->dtbs + j)->buffer);
+            }
+            return 2;
         }
     }
     return 0;

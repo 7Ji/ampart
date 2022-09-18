@@ -34,6 +34,7 @@ struct
 struct 
     dts_partitions_helper {
         struct dts_partition_entry  partitions[MAX_PARTITIONS_COUNT];
+        uint8_t *                   node;
         uint32_t                    phandle_root;
         uint32_t                    linux_phandle_root;
         uint32_t                    phandles[MAX_PARTITIONS_COUNT];
@@ -65,6 +66,23 @@ struct
 
 /* Function */
 
+uint32_t 
+    dts_compare_partitions_mixed(
+        struct dts_partitions_helper const *        phelper_a, 
+        struct dts_partitions_helper_simple const * phelper_b
+    );
+
+int
+    dts_compose_partitions_node(
+        uint8_t * *                                 node,
+        size_t *                                    length,
+        struct dts_phandle_list *                   plist,
+        struct dts_partitions_helper_simple const * phelper,
+        struct stringblock_helper *                 shelper,
+        off_t                                       offset_phandle,
+        off_t                                       offset_linux_phandle
+    );
+
 int
     dts_dclone_parse(
         int const                                   argc,
@@ -84,6 +102,12 @@ uint8_t *
         uint32_t        max_offset,
         char const *    path,
         size_t          len_path
+    );
+
+size_t
+    dts_get_node_full_length(
+        uint8_t const * node,
+        uint32_t        max_offset
     );
 
 int

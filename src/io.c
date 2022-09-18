@@ -448,7 +448,7 @@ io_migrate_plain_recursive(
     int const fd,
     bool const dry_run
 ){
-    fprintf(stderr, "IO migrate plain recursive: %u => %u\n", id, msource->target);
+    // fprintf(stderr, "IO migrate plain recursive: %u => %u\n", id, msource->target);
     struct io_migrate_entry *const mtarget = mhelper->entries + msource->target;
     if (mtarget->pending && io_migrate_plain_recursive(mhelper, mtarget, msource->target, fd, dry_run)) {
         fputs("IO migrate plain recursive: Failed to recursively migrate\n", stderr);
@@ -486,7 +486,7 @@ io_migrate_circle_recursive(
     int const fd,
     bool const dry_run
 ){
-    fprintf(stderr, "IO migrate circle recursive: %u => %u\n", id, msource->target);
+    // fprintf(stderr, "IO migrate circle recursive: %u => %u\n", id, msource->target);
     if (!(msource->buffer = malloc(mhelper->block * sizeof *msource->buffer))) {
         fputs("IO migrate circle recursive: Failed to allocate memory\n", stderr);
         return 1;

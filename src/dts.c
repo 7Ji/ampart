@@ -717,6 +717,25 @@ dts_report_partitions_simple(
     return;
 }
 
+int
+dts_phandle_list_realloc(
+    struct dts_phandle_list * const plist
+){
+    if (!plist || !plist->phandles || !plist->allocated_count) {
+        return -1;
+    }
+    uint8_t *buffer = realloc(plist->phandles, plist->allocated_count * 2 * sizeof *buffer);
+    if (buffer) {
+        memset(buffer + plist->allocated_count, 0, plist->allocated_count * sizeof *buffer);
+        plist->phandles = buffer;
+    } else {
+        fputs("DTS phandle list realloc: Failed to re-allocate memory\n", stderr);
+        return 1;
+    }
+    plist->allocated_count *= 2;
+    return 0;
+}
+
 static inline
 int
 dts_get_phandles_recursive_parse_prop(
@@ -733,15 +752,10 @@ dts_get_phandles_recursive_parse_prop(
         if (len_prop == 4) {
             uint32_t const phandle = bswap_32(*(current+3));
             while (phandle >= plist->allocated_count) {
-                uint8_t *buffer = realloc(plist->phandles, plist->allocated_count * 2 * sizeof *buffer);
-                if (buffer) {
-                    memset(buffer + plist->allocated_count, 0, plist->allocated_count * sizeof *buffer);
-                    plist->phandles = buffer;
-                } else {
+                if (dts_phandle_list_realloc(plist)) {
                     fputs("DTS get phandles recursive: Failed to re-allocate memory\n", stderr);
                     return 1;
                 }
-                plist->allocated_count *= 2;
             }
             ++(plist->phandles[phandle]);
         } else {
@@ -966,7 +980,7 @@ dts_get_phandles(
         return 1;
     }
     plist->allocated_count = 128;
-    if (dts_get_phandles_recursive(plist, start + 4, max_offset - (start - dts) - 4, offset_phandle, offset_linux_phandle)) {
+    if (!dts_get_phandles_recursive(plist, start + 4, max_offset - (start - dts) - 4, offset_phandle, offset_linux_phandle)) {
         free(plist->phandles);
         fputs("DTS get phandles: Failed to get phandle list\n", stderr);
         return 2;
@@ -977,4 +991,133 @@ dts_get_phandles(
         return 3;
     }
     return 0;
+}
+
+int
+dts_drop_partitions_phandles(
+    struct dts_phandle_list * const             plist,
+    struct dts_partitions_helper const * const  phelper
+){
+    if (!plist || !phelper || !plist->phandles) {
+        return -1;
+    }
+    uint8_t const step = plist->have_linux_phandle ? 2 : 1;
+    struct dts_partition_entry const *dts_part;
+    uint32_t phandle;
+    for (uint32_t i = 0; i < phelper->partitions_count; ++i) {
+        dts_part = phelper->partitions + i;
+        phandle = dts_part->phandle;
+        plist->phandles[phandle] -= step;
+        if (plist->phandles[phandle]) {
+            fprintf(stderr, "DTS drop partitions phandles: Phandle 0x%x still used after droping it from partition %s, this is impossile, give up\n", phandle, dts_part->name);
+            return 1;
+        }
+        fprintf(stderr, "DTS drop partitions phandles: Phandle 0x%x previously used by partition %s can be used now\n", phandle, dts_part->name);
+    }
+    phandle = phelper->phandle_root;
+    plist->phandles[phandle] -= step;
+    if (plist->phandles[phandle]) {
+        fprintf(stderr, "DTS drop partitions phandles: Phandle 0x%x still used after dropping it from partitions root node, this is impossile, give up\n", phandle);
+        return 5;
+    }
+    fprintf(stderr, "DTS drop partitions phandles: Phandle 0x%x previously used by partitions root node can be used now\n", phandle);
+    return 0;
+}
+
+uint32_t
+dts_assign_available_phanle(
+    struct dts_phandle_list * const plist
+){
+    if (!plist || !plist->phandles || !plist->allocated_count) {
+        return 0;
+    }
+    for (uint32_t i = 1;; ++i){
+        while (i >= plist->allocated_count) {
+            if (dts_phandle_list_realloc(plist)) {
+                fputs("DTS assign available phandle: Failed to re-allocate memory\n", stderr);
+                return 0;
+            }
+        }
+        if (!plist->phandles[i]) {
+            plist->phandles[i] += (plist->have_linux_phandle) ? 2 : 1;
+            return i;
+        }
+    }
+}
+
+struct dts_compose_partition_helper {
+    size_t      len_name;
+    size_t      len_pname;
+    size_t      len_node_name;
+    off_t       offset_partn;
+    uint32_t    phandle;
+};
+
+int
+dts_compose_partitions_node(
+    uint8_t * * const                                   node,
+    size_t * const                                      length,
+    struct dts_phandle_list * const                     plist,
+    struct dts_partitions_helper_simple const * const   phelper,
+    struct stringblock_helper * const                   shelper,
+    off_t const                                         offset_phandle,
+    off_t const                                         offset_linux_phandle
+){
+    if (!node || !length || !plist || !phelper || !plist->phandles || !plist->allocated_count || !phelper->partitions_count) {
+        fputs("DTS compose partitions node: Illegal arguments\n", stderr);
+        return -1;
+    }
+    *node = NULL;
+    off_t const offset_parts = stringblock_append_string_safely(shelper, "parts", 0);
+    off_t const offset_pname = stringblock_append_string_safely(shelper, "pname", 0);
+    off_t const offset_size = stringblock_append_string_safely(shelper, "size", 0);
+    off_t const offset_mask = stringblock_append_string_safely(shelper, "mask", 0);
+    struct dts_compose_partition_helper chelpers[MAX_PARTITION_NAME_LENGTH] = {0};
+    struct dts_compose_partition_helper *chelper;
+    struct dts_partition_entry *dentry;
+    char partn[] = "part-NN";
+    for (uint32_t i = 0; i < phelper->partitions_count; ++i) {
+        dentry = phelper->partitions + i;
+        snprintf(partn + 5, 3, "%u", dentry->name);
+        chelper = chelpers + i;
+        chelper->len_name = strlen(dentry);
+        chelper->len_pname = chelper->len_name + 1;
+        chelper->len_node_name = util_nearest_upper_bound_ulong(chelper->len_pname, 4, 1);
+        chelper->offset_partn = stringblock_append_string_safely(shelper, partn, 0);
+        chelper->phandle = dts_assign_available_phanle(plist);
+    }
+    uint32_t phandle_root = dts_assign_available_phanle(plist);
+    uint8_t phandle_step;
+    if (plist->have_linux_phandle) {
+        phandle_step = 2;
+    } else {
+        phandle_step = 1;
+    }
+    uint8_t *buffer = malloc(64);
+    memcpy(buffer, dts_partitions_node_start, DTS_PARTITIONS_NODE_START_LENGTH);
+    uint32_t *current = (uint32_t *)(buffer + DTS_PARTITIONS_NODE_START_LENGTH);
+    *(current++) = DTS_PROP_ACTUAL;
+    *(current++) = 4;
+    *(current++) = offset_parts;
+    *(current++) = phelper->partitions_count;
+    for (uint32_t i = 0; i < phelper->partitions_count; ++i) {
+        dentry = phelper->partitions + i;
+        chelper = chelpers + i;
+        strncpy((char *)current, dentry->name, chelper->len_pname);
+        current = (uint32_t *)((uint8_t *)current + chelper->len_node_name);
+        *(current++) = DTS_BEGIN_NODE_ACTUAL;
+        
+
+        *(current++) = DTS_END_NODE_ACTUAL;
+    }
+    *(current++) = DTS_PROP_ACTUAL;
+    *(current++) = 4;
+    *(current++) = offset_phandle;
+    *(current++) = phandle_root;
+    for (uint32_t i = 0; i < phelper->partitions_count; ++i) {
+
+    }
+
+
+
 }

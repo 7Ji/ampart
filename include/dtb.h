@@ -109,6 +109,12 @@ struct
     };
 
 /* Function */
+int
+    dtb_buffer_helper_implement_partitions(
+        struct dtb_buffer_helper *                  new,
+        struct dtb_buffer_helper const *            old,
+        struct dts_partitions_helper_simple const * phelper
+    );
 
 uint32_t 
     dtb_checksum(

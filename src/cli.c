@@ -325,6 +325,9 @@ cli_write_dtb(
         fputs("CLI write DTB: Target content type not recognized, this should not happen, refuse to continue\n", stderr);
         return -2;
     }
+    struct dtb_buffer_helper bhelper_new;
+    dtb_buffer_helper_implement_partitions(&bhelper_new, bhelper, dparts);
+
     if (cli_options.dry_run) {
         fputs("CLI write DTB: In dry-run mode, assuming success\n", stderr);
         return 0;

@@ -686,6 +686,8 @@ dtb_snapshot(
     return 0;
 }
 
+ 
+
 int
 dtb_buffer_entry_implement_partitions(
     struct dtb_buffer_entry * const                     new,
@@ -693,6 +695,7 @@ dtb_buffer_entry_implement_partitions(
     struct dts_partitions_helper_simple const * const   phelper
 ){
     if (!old || !new || !phelper || !old->buffer || !phelper->partitions_count) {
+        fputs("DTB buffer entry implement partitions: Invalid arguments\n", stderr);
         return -1;
     }
     struct dtb_header const dh = dtb_header_swapbytes((struct dtb_header *)old->buffer);
@@ -703,24 +706,25 @@ dtb_buffer_entry_implement_partitions(
     };
     off_t const offset_phandle = stringblock_find_string(&shelper, "phandle");
     if (offset_phandle < 0) {
+        fputs("DTB buffer entry implement partitions: Failed to get offset of phandle\n", stderr);
         return 2;
     }
     off_t const offset_linux_phandle = stringblock_find_string(&shelper, "linux,phandle");
     if (offset_linux_phandle < 0) {
+        fputs("DTB buffer entry implement partitions: Warning: Failed to get offset of linux,phandle\n", stderr);
         // Warning
     }
     struct dts_phandle_list plist;
     if (dts_get_phandles(&plist, old->buffer + dh.off_dt_struct, dh.size_dt_struct, offset_phandle, offset_linux_phandle)) {
+        fputs("DTB buffer entry implement partitions: Failed to get phandles\n", stderr);
         return 3;
     }
-    
-
-    
-
-    
-    
-
-
+    if (old->has_partitions && dts_drop_partitions_phandles(&plist, &old->phelper)) {
+        fputs("DTB buffer entry implement partitions: Failed to drop phandles occupied by partitions node\n", stderr);
+        free(plist.phandles);
+        return 4;
+    }
+    free(plist.phandles);
     return 0;
 }
 
@@ -731,18 +735,23 @@ dtb_buffer_helper_implement_partitions(
     struct dts_partitions_helper_simple const * const   phelper
 ){
     if (!old || !new || !phelper || !old->dtb_count || !old->dtbs->buffer || !phelper->partitions_count) {
+        fputs("DTB buffer helper implement partitions: Invalid arguments\n", stderr);
         return -1;
     }
     new->dtb_count = old->dtb_count;
+    if (!(new->dtbs = malloc(new->dtb_count * sizeof *new->dtbs))) {
+        fputs("DTB buffer helper implement partitions: Failed to allocate memory for entries\n", stderr);
+        return 1;
+    }
     new->type_main = old->type_main;
     new->type_sub = old->type_sub;
     for (unsigned i = 0; i < new->dtb_count; ++i) {
         struct dtb_buffer_entry const *const entry_old = old->dtbs + i;
         struct dtb_buffer_entry *const entry_new = new->dtbs + i;
         if (dtb_buffer_entry_implement_partitions(entry_new, entry_old, phelper)) {
+            fprintf(stderr, "DTB buffer helper implement partitions: Failed to implement new partitions into DTB %u of %u\n", i + 1, new->dtb_count);
             return 1;
         }
-        
     }
     return 0;
 }

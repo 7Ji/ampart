@@ -72,6 +72,12 @@ int
         struct dts_partitions_helper_simple * const dparts
     );
 
+int
+    dts_drop_partitions_phandles(
+        struct dts_phandle_list *               plist,
+        struct dts_partitions_helper const *    phelper
+    );
+
 uint8_t *
     dts_get_node_from_path(
         uint8_t const * dts, 

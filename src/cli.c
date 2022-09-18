@@ -354,36 +354,56 @@ cli_write_ept(
         fputs("CLI write EPT: Table invalid, refuse to continue\n", stderr);
         return 1;
     }
+    struct io_migrate_helper mhelper;
+    bool const can_migrate = old && !ept_migrate_plan(&mhelper, old, new, true);
     switch (cli_options.content) {
         case CLI_CONTENT_TYPE_DTB:
             fputs("CLI write EPT: Target is DTB, no need to write\n", stderr);
+            if (can_migrate) {
+                free(mhelper.entries);
+            }
             return 0;
         case CLI_CONTENT_TYPE_AUTO:
             fputs("CLI write EPT: Target content type not recognized, this should not happen, refuse to continue\n", stderr);
+            if (can_migrate) {
+                free(mhelper.entries);
+            }
             return 2;
         default:
             break;
     }
     if (cli_options.dry_run) {
         fputs("CLI write EPT: In dry-run mode, assuming success\n", stderr);
-        return 0;
-    }
-    int fd = open(cli_options.target, old ? O_RDWR : O_WRONLY);
-    if (fd < 0) {
-        fputs("CLI write EPT: Failed to open target\n", stderr);
-        return 1;
-    }
-    if (old) {
-        struct io_migrate_helper mhelper;
-        if (!ept_migrate_plan(&mhelper, old, new, true)) {
-            io_migrate(&mhelper, fd, true);
+        if (can_migrate) {
             free(mhelper.entries);
         }
+        return 0;
+    }
+    int const fd = open(cli_options.target, can_migrate ? O_RDWR : O_WRONLY);
+    if (fd < 0) {
+        fputs("CLI write EPT: Failed to open target\n", stderr);
+        if (can_migrate) {
+            free(mhelper.entries);
+        }
+        return 1;
     }
     off_t const ept_offset = io_seek_ept(fd);
     if (ept_offset < 0) {
         fputs("CLI write EPT: Failed to seek\n", stderr);
+        if (can_migrate) {
+            free(mhelper.entries);
+        }
+        close(fd);
         return 2;
+    }
+    if (can_migrate) {
+        if (io_migrate(&mhelper, fd, true)) {
+            fputs("CLI write EPT: Failed to migrate\n", stderr);
+            close(fd);
+            free(mhelper.entries);
+            return 3;
+        }
+        free(mhelper.entries);
     }
     close(fd);
     fputs("CLI write EPT: WIP\n", stderr);

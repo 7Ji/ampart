@@ -36,6 +36,7 @@ struct
         uint8_t *                       buffer;
         size_t                          size;
         struct dts_partitions_helper    phelper;
+        bool                            has_partitions;
         char                            target[36];
         char                            soc[12];
         char                            platform[12];

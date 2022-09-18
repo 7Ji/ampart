@@ -172,7 +172,7 @@ dtb_get_partitions(
     shelper.length = dh.size_dt_strings;
     shelper.allocated_length = dh.size_dt_strings;
     shelper.stringblock = (char *)(dtb + dh.off_dt_strings);
-    if (!dts_get_partitions_from_node(phelper, node, &shelper)) {
+    if (dts_get_partitions_from_node(phelper, node, &shelper)) {
         fputs("DTB get partitions: failed to get partitions\n", stderr);
         return 4;
     }
@@ -412,10 +412,12 @@ dtb_parse_entry(
     if (dtb_entry_split_target_string(entry)) {
         return 3;
     }
-    if (!dtb_get_partitions(&(entry->phelper), entry->buffer, entry->size)) {
+    if (dtb_get_partitions(&(entry->phelper), entry->buffer, entry->size)) {
+        entry->has_partitions = false;
         // free(entry->buffer);
         return -1;
     }
+    entry->has_partitions = true;
     return 0;
 }
 
@@ -598,7 +600,9 @@ dtb_read_into_buffer_helper_and_report(
     }
     for (unsigned i = 0; i < bhelper->dtb_count; ++i) {
         fprintf(stderr, "DTB read into buffer helper and report: DTB %u of %u\n", i + 1, bhelper->dtb_count);
-        dts_report_partitions(&bhelper->dtbs[i].phelper);
+        if (bhelper->dtbs[i].has_partitions) {
+            dts_report_partitions(&bhelper->dtbs[i].phelper);
+        }
     }
     return 0;
 }

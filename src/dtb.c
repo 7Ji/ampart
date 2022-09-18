@@ -137,7 +137,7 @@ dtb_parse_multi_entries(
     }
     mhelper->version = header->version;
     mhelper->entry_count = header->entry_count;
-    mhelper->entries = malloc(sizeof(struct dtb_multi_entry) * mhelper->entry_count);
+    mhelper->entries = malloc(mhelper->entry_count * sizeof *mhelper->entries);
     if (!mhelper->entries) {
         fputs("DTB parse multi entries: failed to allocate memory for entries\n", stderr);
         return 4;
@@ -198,55 +198,55 @@ dtb_identify_type(
     }
 }
 
-struct dts_phandle_list *
-dtb_get_phandles(
-    uint8_t const * const   dtb,
-    size_t const            size
-){
-    struct dtb_header dh = dtb_header_swapbytes((struct dtb_header *)dtb);
-    if (dh.totalsize > size) {
-        return NULL;
-    }
-    uint32_t const *current = (uint32_t const*)(dtb + dh.off_dt_struct);
-    uint32_t max_offset = dh.size_dt_struct;
-    while (*current == DTS_NOP_ACTUAL) {
-        ++current;
-        max_offset -= 4;
-    }
-    if (*current != DTS_BEGIN_NODE_ACTUAL) {
-        fputs("DTS get phandles: Root node does not start properly", stderr);
-        return NULL;
-    }
-    off_t const offset_phandle = stringblock_find_string_raw((const char*)dtb + dh.off_dt_strings, dh.size_dt_strings, "phandle");
-    if (offset_phandle < 0) {
-        return NULL;
-    }
-    off_t const offset_linux_phandle = stringblock_find_string_raw((const char*)dtb + dh.off_dt_strings, dh.size_dt_strings, "linux,phandle");
-    struct dts_phandle_list *plist = malloc(sizeof(struct dts_phandle_list));
-    if (!plist) {
-        return NULL;
-    }
-    plist->phandles = malloc(sizeof(uint8_t) * 16);
-    if (!plist->phandles) {
-        free(plist);
-        return NULL;
-    }
-    memset(plist->phandles, 0, sizeof(uint8_t) * 16);
-    plist->allocated_count = 16;
-    plist->have_linux_phandle = false;
-    if (!dts_get_phandles_recursive(
-        (const uint8_t *)(current + 1), 
-        max_offset, 
-        (offset_phandle <= INT32_MAX) ? (uint32_t) offset_phandle : UINT32_MAX, // It's impossible to be smaller than 0
-        (offset_linux_phandle >= 0 && offset_linux_phandle <= INT32_MAX) ? (uint32_t) offset_linux_phandle : UINT32_MAX,
-        plist
-    ) || dts_phandle_list_finish(plist)) {
-        free(plist->phandles);
-        free(plist);
-        return NULL;
-    }
-    return plist;
-}
+// struct dts_phandle_list *
+// dtb_get_phandles(
+//     uint8_t const * const   dtb,
+//     size_t const            size
+// ){
+//     struct dtb_header dh = dtb_header_swapbytes((struct dtb_header *)dtb);
+//     if (dh.totalsize > size) {
+//         return NULL;
+//     }
+//     uint32_t const *current = (uint32_t const*)(dtb + dh.off_dt_struct);
+//     uint32_t max_offset = dh.size_dt_struct;
+//     while (*current == DTS_NOP_ACTUAL) {
+//         ++current;
+//         max_offset -= 4;
+//     }
+//     if (*current != DTS_BEGIN_NODE_ACTUAL) {
+//         fputs("DTS get phandles: Root node does not start properly", stderr);
+//         return NULL;
+//     }
+//     off_t const offset_phandle = stringblock_find_string_raw((const char*)dtb + dh.off_dt_strings, dh.size_dt_strings, "phandle");
+//     if (offset_phandle < 0) {
+//         return NULL;
+//     }
+//     off_t const offset_linux_phandle = stringblock_find_string_raw((const char*)dtb + dh.off_dt_strings, dh.size_dt_strings, "linux,phandle");
+//     struct dts_phandle_list *plist = malloc(sizeof(struct dts_phandle_list));
+//     if (!plist) {
+//         return NULL;
+//     }
+//     plist->phandles = malloc(sizeof(uint8_t) * 16);
+//     if (!plist->phandles) {
+//         free(plist);
+//         return NULL;
+//     }
+//     memset(plist->phandles, 0, sizeof(uint8_t) * 16);
+//     plist->allocated_count = 16;
+//     plist->have_linux_phandle = false;
+//     if (!dts_get_phandles_recursive(
+//         (const uint8_t *)(current + 1), 
+//         max_offset, 
+//         (offset_phandle <= INT32_MAX) ? (uint32_t) offset_phandle : UINT32_MAX, // It's impossible to be smaller than 0
+//         (offset_linux_phandle >= 0 && offset_linux_phandle <= INT32_MAX) ? (uint32_t) offset_linux_phandle : UINT32_MAX,
+//         plist
+//     ) || dts_phandle_list_finish(plist)) {
+//         free(plist->phandles);
+//         free(plist);
+//         return NULL;
+//     }
+//     return plist;
+// }
 
 uint8_t *
 dtb_partition_choose_correct(
@@ -469,7 +469,7 @@ dtb_read_into_buffer_helper(
     if (!bhelper) {
         return 1;
     }
-    memset(bhelper, 0, sizeof(struct dtb_buffer_helper));
+    memset(bhelper, 0, sizeof *bhelper);
     size_t size_read, size_dtb;
     if (dtb_get_read_size(should_checksum, size_max, &size_read, &size_dtb)) {
         fputs("DTB read into buffer helper: Failed to get size to read\n", stderr);
@@ -499,7 +499,7 @@ dtb_read_into_buffer_helper(
             return 6;
         }
         bhelper->dtb_count = mhelper.entry_count;
-        if (!(bhelper->dtbs = malloc(sizeof(struct dtb_buffer_entry) * bhelper->dtb_count))) {
+        if (!(bhelper->dtbs = malloc(bhelper->dtb_count * sizeof *bhelper->dtbs))) {
             fputs("DTB read into buffer helper: Failed to allocate memory for multi DTBs\n", stderr);
             free(buffer_read);
             return 7;
@@ -526,7 +526,7 @@ dtb_read_into_buffer_helper(
         }
     } else {
         bhelper->dtb_count = 1;
-        if (!(bhelper->dtbs = malloc(sizeof(struct dtb_buffer_entry)))) {
+        if (!(bhelper->dtbs = malloc(sizeof *bhelper->dtbs))) {
             fputs("DTB read into buffer helper: Failed to allocate memory for DTB\n", stderr);
             free(buffer_read);
             return 10;
@@ -683,6 +683,67 @@ dtb_snapshot(
     dtb_snapshot_decimal(phelper);
     dtb_snapshot_hex(phelper);
     dtb_snapshot_human(phelper);
+    return 0;
+}
+
+int
+dtb_buffer_entry_implement_partitions(
+    struct dtb_buffer_entry * const                     new,
+    struct dtb_buffer_entry const * const               old,
+    struct dts_partitions_helper_simple const * const   phelper
+){
+    if (!old || !new || !phelper || !old->buffer || !phelper->partitions_count) {
+        return -1;
+    }
+    struct dtb_header const dh = dtb_header_swapbytes((struct dtb_header *)old->buffer);
+    struct stringblock_helper shelper = {
+        .stringblock = (char *)old->buffer + dh.off_dt_strings,
+        .length = dh.size_dt_strings,
+        .allocated_length = dh.size_dt_strings
+    };
+    off_t const offset_phandle = stringblock_find_string(&shelper, "phandle");
+    if (offset_phandle < 0) {
+        return 2;
+    }
+    off_t const offset_linux_phandle = stringblock_find_string(&shelper, "linux,phandle");
+    if (offset_linux_phandle < 0) {
+        // Warning
+    }
+    struct dts_phandle_list plist;
+    if (dts_get_phandles(&plist, old->buffer + dh.off_dt_struct, dh.size_dt_struct, offset_phandle, offset_linux_phandle)) {
+        return 3;
+    }
+    
+
+    
+
+    
+    
+
+
+    return 0;
+}
+
+int
+dtb_buffer_helper_implement_partitions(
+    struct dtb_buffer_helper * const                    new,
+    struct dtb_buffer_helper const * const              old,
+    struct dts_partitions_helper_simple const * const   phelper
+){
+    if (!old || !new || !phelper || !old->dtb_count || !old->dtbs->buffer || !phelper->partitions_count) {
+        return -1;
+    }
+    new->dtb_count = old->dtb_count;
+    new->type_main = old->type_main;
+    new->type_sub = old->type_sub;
+    for (unsigned i = 0; i < new->dtb_count; ++i) {
+        struct dtb_buffer_entry const *const entry_old = old->dtbs + i;
+        struct dtb_buffer_entry *const entry_new = new->dtbs + i;
+        if (dtb_buffer_entry_implement_partitions(entry_new, entry_old, phelper)) {
+            return 1;
+        }
+        
+    }
     return 0;
 }
 

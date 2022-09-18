@@ -332,6 +332,21 @@ dts_get_path_layers(
 }
 
 uint8_t *
+dts_skip_nop(
+    uint8_t const * const   dts
+){
+    uint32_t const *start = (uint32_t const *)dts;
+    while (*start == DTS_NOP_ACTUAL) {
+        ++start;
+    }
+    if (*start != DTS_BEGIN_NODE_ACTUAL) {
+        fputs("DTS skip NOP: Node does not start properly", stderr);
+        return NULL;
+    }
+    return (uint8_t *)start;
+}
+
+uint8_t *
 dts_get_node_from_path(
     uint8_t const * const   dts,
     uint32_t const          max_offset,
@@ -347,17 +362,22 @@ dts_get_node_from_path(
             return NULL;
         }
     }
-    uint32_t const *current = (uint32_t const *)dts;
-    while (*current == DTS_NOP_ACTUAL) {
-        ++current;
-    }
-    if (*current != DTS_BEGIN_NODE_ACTUAL) {
+    uint8_t const *const start = dts_skip_nop(dts);
+    if (!start) {
         fputs("DTS get node from path: Node does not start properly", stderr);
         return NULL;
     }
+    // uint32_t const *current = (uint32_t const *)dts;
+    // while (*current == DTS_NOP_ACTUAL) {
+    //     ++current;
+    // }
+    // if (*current != DTS_BEGIN_NODE_ACTUAL) {
+    //     fputs("DTS get node from path: Node does not start properly", stderr);
+    //     return NULL;
+    // }
     if (len_path == 1) {
         fputs("DTS get node from path: Early quit for root node\n", stderr);
-        return (uint8_t *)(current + 1);
+        return (uint8_t *)start + 4;
     }
     char *const path_actual = strdup(path);
     if (!path_actual) {
@@ -370,7 +390,7 @@ dts_get_node_from_path(
         return NULL;
     }
     uint8_t *target = NULL;
-    uint32_t r = dts_get_node((uint8_t const *)(current + 1), max_offset - 4, path_actual, layers, (uint8_t const **)&target);
+    uint32_t r = dts_get_node(start + 4, max_offset - (start - dts) - 4, path_actual, layers, (uint8_t const **)&target);
     free(path_actual);
     if (r) {
         return target;
@@ -588,7 +608,7 @@ dts_get_partitions_from_node(
     if (dts_get_partitions_get_essential_offsets(&offsets, shelper)) {
         return 2;
     }
-    memset(phelper, 0, sizeof(struct dts_partitions_helper));
+    memset(phelper, 0, sizeof *phelper);
     uint32_t const * const start = (const uint32_t *)(node + DTS_PARTITIONS_NODE_START_LENGTH);
     uint32_t const *current;
     bool in_partition = false;
@@ -713,9 +733,9 @@ dts_get_phandles_recursive_parse_prop(
         if (len_prop == 4) {
             uint32_t const phandle = bswap_32(*(current+3));
             while (phandle >= plist->allocated_count) {
-                uint8_t * buffer = realloc(plist->phandles, sizeof(uint8_t)*plist->allocated_count*2);
+                uint8_t *buffer = realloc(plist->phandles, plist->allocated_count * 2 * sizeof *buffer);
                 if (buffer) {
-                    memset(buffer + plist->allocated_count, 0, sizeof(uint8_t)*plist->allocated_count);
+                    memset(buffer + plist->allocated_count, 0, plist->allocated_count * sizeof *buffer);
                     plist->phandles = buffer;
                 } else {
                     fputs("DTS get phandles recursive: Failed to re-allocate memory\n", stderr);
@@ -734,11 +754,11 @@ dts_get_phandles_recursive_parse_prop(
 
 uint32_t
 dts_get_phandles_recursive(
+    struct dts_phandle_list * const plist,
     uint8_t const * const           node,
     uint32_t const                  max_offset,
     uint32_t const                  offset_phandle,
-    uint32_t const                  offset_linux_phandle,
-    struct dts_phandle_list * const plist
+    uint32_t const                  offset_linux_phandle
 ){
     uint32_t const count = dts_get_count(max_offset);
     if (!count) {
@@ -751,7 +771,7 @@ dts_get_phandles_recursive(
         current = start + i;
         switch (*current) {
             case DTS_BEGIN_NODE_ACTUAL:
-                offset_child = dts_get_phandles_recursive((const uint8_t *)(current + 1), max_offset - 4*i, offset_phandle, offset_linux_phandle, plist);
+                offset_child = dts_get_phandles_recursive(plist, (uint8_t const*)(current + 1), max_offset - 4*i, offset_phandle, offset_linux_phandle);
                 if (offset_child) {
                     i += offset_child + 1;
                 } else {
@@ -923,5 +943,38 @@ dts_dclone_parse(
     parg_free_definer_helper(&dhelper);
     fputs("DTS dclone parse: New DTB partitions:\n", stderr);
     dts_report_partitions_simple(dparts);
+    return 0;
+}
+
+int
+dts_get_phandles(
+    struct dts_phandle_list * const plist,
+    uint8_t const * const           dts,
+    uint32_t const                  max_offset,
+    uint32_t const                  offset_phandle,
+    uint32_t const                  offset_linux_phandle
+){
+    uint8_t const *const start = dts_skip_nop(dts);
+    if (!start) {
+        fputs("DTS get phandles: Node does not start properly\n", stderr);
+        return -1;
+    }
+    memset(plist, 0, sizeof *plist);
+    plist->phandles = malloc(128 * sizeof *plist->phandles);
+    if (!plist->phandles) {
+        fputs("DTS get phandles: Failed to allocate memory for phandle list\n", stderr);
+        return 1;
+    }
+    plist->allocated_count = 128;
+    if (dts_get_phandles_recursive(plist, start + 4, max_offset - (start - dts) - 4, offset_phandle, offset_linux_phandle)) {
+        free(plist->phandles);
+        fputs("DTS get phandles: Failed to get phandle list\n", stderr);
+        return 2;
+    }
+    if (dts_phandle_list_finish(plist)) {
+        free(plist->phandles);
+        fputs("DTS get phandles: Failed to finish phandle list\n", stderr);
+        return 3;
+    }
     return 0;
 }

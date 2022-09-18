@@ -82,7 +82,7 @@ parg_parse_u64_definer(
     }
     const size_t len = end - start;
     if (len) {
-        char *const str = malloc(sizeof(char) * (len + 1));
+        char *const str = malloc((len + 1) * sizeof *str);
         if (!str) {
             fputs("PARG parse u64 definer: Failed to create temp buffer to parse number\n", stderr);
             return 4;
@@ -129,7 +129,7 @@ parg_parse_u64_adjustor(
     }
     const size_t len = end - start;
     if (len) {
-        char *str = malloc(sizeof(char) * (len + 1));
+        char *str = malloc((len + 1) * sizeof *str);
         if (!str) {
             fputs("PARG parse u64 adjustor: Failed to create temp buffer to parse number\n", stderr);
             return 2;
@@ -192,12 +192,12 @@ parg_parse_definer(
     PARG_PARSE_RAW_ALLOWANCE_CHECK(size)
     bool have_masks = *(seperators[2] + 1);
     PARG_PARSE_RAW_ALLOWANCE_CHECK(masks)
-    struct parg_definer *part = malloc(sizeof(struct parg_definer));
+    struct parg_definer *part = malloc(sizeof *part);
     if (!part) {
         fprintf(stderr, "PARG parse definer: Failed to allocate memory for arg: %s\n", arg);
         return NULL;
     }
-    memset(part, 0, sizeof(struct parg_definer));
+    memset(part, 0, sizeof *part);
     if (have_name) {
         size_t len_name = seperators[0] - arg;
         if (len_name > MAX_PARTITION_NAME_LENGTH - 1) {
@@ -311,7 +311,7 @@ parg_parse_modifier_get_selector(
         }
         strncpy(modifier->select_name, selector, len);
     } else {
-        char *str_buffer = malloc(sizeof(char) * (len + 1));
+        char *str_buffer = malloc((len + 1) * sizeof *str_buffer);
         if (!str_buffer) {
             fputs("PARG parse modifier: Failed to allocate memory to parse relative selector\n", stderr);
             return 2;
@@ -457,7 +457,7 @@ parg_parse_modifier(
         fputs("PARG parse modifier: Only non-empty string is accepted\n", stderr);
         return NULL;
     }
-    struct parg_modifier *modifier = malloc(sizeof(struct parg_modifier));
+    struct parg_modifier *modifier = malloc(sizeof *modifier);
     if (!modifier) {
         return NULL;
     }
@@ -497,7 +497,7 @@ parg_parse_editor(
         if (!modifier) {
             return NULL;
         }
-        struct parg_editor *editor = malloc(sizeof(struct parg_editor));
+        struct parg_editor *editor = malloc(sizeof *editor);
         if (!editor) {
             return NULL;
         }
@@ -510,7 +510,7 @@ parg_parse_editor(
         if (!definer) {
             return NULL;
         }
-        struct parg_editor *editor = malloc(sizeof(struct parg_editor));
+        struct parg_editor *editor = malloc(sizeof *editor);
         if (!editor) {
             return NULL;
         }
@@ -541,12 +541,12 @@ parg_parse_dclone_mode(
         fputs("PARG parse dclone mode: Illegal argument counts\n", stderr);
         return NULL;
     }
-    struct parg_definer_helper *dhelper = malloc(sizeof(struct parg_definer_helper));
+    struct parg_definer_helper *dhelper = malloc(sizeof *dhelper);
     if (!dhelper) {
         fputs("PARG parse dclone mode: Failed to allocate memory for definer helper\n", stderr);
         return NULL;
     }
-    dhelper->definers = malloc(sizeof(struct parg_definer) * argc);
+    dhelper->definers = malloc(argc * sizeof *dhelper->definers);
     if (!dhelper->definers) {
         fputs("PARG parse dclone mode: Failed to allocate memroy for definers\n", stderr);
         return NULL;
@@ -576,12 +576,12 @@ parg_parse_eclone_mode(
         fputs("PARG parse eclone mode: Illegal argument counts\n", stderr);
         return NULL;
     }
-    struct parg_definer_helper *dhelper = malloc(sizeof(struct parg_definer_helper));
+    struct parg_definer_helper *dhelper = malloc(sizeof *dhelper);
     if (!dhelper) {
         fputs("PARG parse eclone mode: Failed to allocate memory for definer helper\n", stderr);
         return NULL;
     }
-    dhelper->definers = malloc(sizeof(struct parg_definer) * argc);
+    dhelper->definers = malloc(argc * sizeof *dhelper->definers);
     if (!dhelper->definers) {
         fputs("PARG parse eclone mode: Failed to allocate memroy for definers\n", stderr);
         return NULL;

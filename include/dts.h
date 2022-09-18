@@ -87,13 +87,13 @@ int
         struct stringblock_helper const *   shelper
     );
 
-uint32_t 
-    dts_get_phandles_recursive(
+int
+    dts_get_phandles(
+        struct dts_phandle_list *   plist,
         uint8_t const *             node, 
         uint32_t                    max_offset,
         uint32_t                    offset_phandle,
-        uint32_t                    offset_linux_phandle,
-        struct dts_phandle_list *   plist
+        uint32_t                    offset_linux_phandle
     );
 
 int
@@ -104,10 +104,10 @@ int
         size_t const            max_len
     );
 
-int 
-    dts_phandle_list_finish(
-        struct dts_phandle_list *   plist
-    );
+// int 
+//     dts_phandle_list_finish(
+//         struct dts_phandle_list *   plist
+//     );
 
 void
     dts_report_partitions(

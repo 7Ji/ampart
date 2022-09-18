@@ -293,7 +293,7 @@ ept_table_from_dts_partitions_helper(
         fputs("EPT table from DTS partitions helper: Helper invalid or does not contain valid partitions\n", stderr);
         return 1;
     }
-    memcpy(table, &ept_table_empty, sizeof(struct ept_table));
+    memcpy(table, &ept_table_empty, sizeof *table);
     const struct dts_partition_entry *part_dtb;
     struct ept_partition *part_table;
     bool replace;
@@ -418,11 +418,11 @@ ept_read(
     if (!table) {
         return 1;
     }
-    if (size < sizeof(struct ept_table)) {
+    if (size < sizeof *table) {
         fputs("EPT read: Input size too small\n", stderr);
         return 2;
     }
-    if (io_read_till_finish(fd, table, sizeof(struct ept_table))) {
+    if (io_read_till_finish(fd, table, sizeof *table)) {
         fputs("EPT read: Failed to read into buffer", stderr);
         return 3;
     }
@@ -748,7 +748,7 @@ ept_migrate_plan(
     mhelper->count = capacity / mhelper->block;
     size_t const block_max_source = capacity_source / mhelper->block;
     size_t const block_max_target = capacity_target / mhelper->block;
-    size_t const size_entries = sizeof(struct io_migrate_entry) * mhelper->count;
+    size_t const size_entries = mhelper->count * sizeof *mhelper->entries;
     mhelper->entries = malloc(size_entries);
     if (!mhelper->entries) {
         return 3;

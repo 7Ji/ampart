@@ -119,7 +119,7 @@ io_find_disk(
             read(fd, dev_content, 23);
             close(fd);
             if (!strcmp(major_minor, dev_content)) {
-                char *path_real = malloc(sizeof(char) * (6 + len_entry)); // /dev/ is 5, name max 256
+                char *path_real = malloc((6 + len_entry) * sizeof *path_real); // /dev/ is 5, name max 256
                 if (!path_real) {
                     return NULL;
                 }
@@ -312,7 +312,7 @@ io_identify_target_type(
         fprintf(stderr, "IO identify target type: Failed to open '%s' as read-only\n", path);
         return 2;
     }
-    memset(type, 0, sizeof(struct io_target_type));
+    memset(type, 0, sizeof *type);
     if (io_identify_target_type_get_basic_stat(type, fd, path)) {
         close(fd);
         return 3;
@@ -429,11 +429,11 @@ io_migrate_recursive(
 ){
     struct io_migrate_entry *const msource = mhelper->entries + id;
     fprintf(stderr, "IO migrate recursive dry-run: %u => %u\n", id, msource->target);
-    if (!(msource->buffer = malloc(sizeof(uint8_t) * mhelper->block))) {
+    if (!(msource->buffer = malloc(mhelper->block * sizeof *msource->buffer))) {
         fputs("IO migrate recursive dry-run: Failed to allocate memory\n", stderr);
         return 1;
     }
-    if (io_seek_and_read(fd, (off_t)mhelper->block * (off_t)id, msource->buffer, sizeof(uint8_t) * mhelper->block)) {
+    if (io_seek_and_read(fd, (off_t)mhelper->block * (off_t)id, msource->buffer, mhelper->block * sizeof *msource->buffer)) {
         free(msource->buffer);
         return 2;
     }
@@ -442,7 +442,7 @@ io_migrate_recursive(
         free(msource->buffer);
         return 3;
     }
-    if (io_seek_and_write(fd, (off_t)mhelper->block * (off_t)msource->target, msource->buffer, sizeof(uint8_t) * mhelper->block)) {
+    if (io_seek_and_write(fd, (off_t)mhelper->block * (off_t)msource->target, msource->buffer, mhelper->block * sizeof *msource->buffer)) {
         free(msource->buffer);
         return 4;
     }
@@ -460,11 +460,11 @@ io_migrate_recursive_dry_run(
 ){
     struct io_migrate_entry *const msource = mhelper->entries + id;
     fprintf(stderr, "IO migrate recursive dry-run: %u => %u\n", id, msource->target);
-    if (!(msource->buffer = malloc(sizeof(uint8_t) * mhelper->block))) {
+    if (!(msource->buffer = malloc(mhelper->block * sizeof *msource->buffer))) {
         fputs("IO migrate recursive dry-run: Failed to allocate memory\n", stderr);
         return 1;
     }
-    if (io_seek_and_read(fd, (off_t)mhelper->block * (off_t)id, msource->buffer, sizeof(uint8_t) * mhelper->block)) {
+    if (io_seek_and_read(fd, (off_t)mhelper->block * (off_t)id, msource->buffer, mhelper->block * sizeof *msource->buffer)) {
         free(msource->buffer);
         return 2;
     }

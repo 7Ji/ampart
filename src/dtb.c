@@ -8,6 +8,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <string.h>
+#include <time.h>
 #include <unistd.h>
 
 /* Local */
@@ -20,9 +21,11 @@
 
 /* Definition */
 
-#define DTB_PARTITION_CHECKSUM_COUNT   (DTB_PARTITION_SIZE - 4U) >> 2U
-#define DTB_PAGE_SIZE                  0x800U
+#define DTB_PARTITION_CHECKSUM_COUNT    (DTB_PARTITION_SIZE - 4U) >> 2U
+#define DTB_PAGE_SIZE                   0x800U
 #define DTB_MULTI_HEADER_ENTRY_LENGTH_v2    (DTB_MULTI_HEADER_PROPERTY_LENGTH_V2 * 3 + 8)
+#define DTB_PARTITION_VERSION           1
+#define DTB_PARTITION_MAGIC             0x00447E41U
 
 /* Macro */
 
@@ -42,6 +45,18 @@ dtb_checksum(
     }
     fprintf(stderr, "DTB checksum: Calculated %08x, Recorded %08x\n", checksum, dtb->checksum);
     return checksum;
+}
+
+void
+dtb_checksum_partition(
+    struct dtb_partition * const  dtb
+){
+    dtb->checksum = 0;
+    uint32_t const * const dtb_as_uint = (uint32_t const *)dtb;
+    for (uint32_t i=0; i<DTB_PARTITION_CHECKSUM_COUNT; ++i) {
+        dtb->checksum += dtb_as_uint[i];
+    }
+    fprintf(stderr, "DTB checksum: Calculated %08x\n", dtb->checksum);
 }
 
 static inline
@@ -465,9 +480,11 @@ void
 dtb_free_buffer_helper(
     struct dtb_buffer_helper * const  bhelper
 ){
-    if (bhelper && bhelper->dtb_count) {
+    if (bhelper && bhelper->dtb_count && bhelper->dtbs) {
         for (unsigned i = 0; i < bhelper->dtb_count; ++i) {
-            free(bhelper->dtbs[i].buffer);
+            if (bhelper->dtbs[i].buffer) {
+                free(bhelper->dtbs[i].buffer);
+            }
         }
         free(bhelper->dtbs);
     }
@@ -527,15 +544,19 @@ dtb_read_into_buffer_helper(
                 }
                 free(bhelper->dtbs);
                 free(buffer_read);
+                bhelper->dtbs = NULL;
+                bhelper->dtb_count = 0;
                 return 8;
             }
-            if (strncmp((bhelper->dtbs + i)->target, mhelper.entries[i].target, 36)) {
+            if (strncmp((bhelper->dtbs + i)->target, mhelper.entries[i].target, DTB_MULTI_HEADER_PROPERTY_LENGTH_V2 * 3)) {
                 fprintf(stderr, "DTB read into buffer helper: Target name in header is different from amlogic-dt-id in DTS: %s != %s\n", mhelper.entries[i].target, (bhelper->dtbs + i)->target);
                 for (unsigned j = 0; j <= i; ++j) {
                     free(bhelper->dtbs[j].buffer);
                 }
                 free(bhelper->dtbs);
                 free(buffer_read);
+                bhelper->dtbs = NULL;
+                bhelper->dtb_count = 0;
                 return 9;
             }
         }
@@ -841,7 +862,7 @@ dtb_buffer_entry_implement_partitions(
         new->buffer = NULL;
         return 10;
     }
-    fputs("Same partitions, all good\n", stderr);
+    fputs("DTB buffer entry implement partitions: Constructed DTB yields same partitions, all good\n", stderr);
     // if (dtb_get_partitions(&phelper_new, new->buffer, new->size)) {
     //     fputs("DTB buffer entry implement partitions: Failed to extract partitions from new DTB for varification\n", stderr);
     //     free(new->buffer);
@@ -962,6 +983,7 @@ dtb_combine_multi_dtb(
         free(offsets);
         return 3;
     }
+    memset(*dtb, 0, *size);
     uint32_t *current = (uint32_t *)(*dtb);
     *(current++) = DTB_MAGIC_MULTI;
     *(current++) = bhelper->multi_version;
@@ -1029,61 +1051,137 @@ dtb_compose(
         fputs("DTB compose: Failed to implement partitions into DTB\n", stderr);
         return 1;
     }
-    switch(bhelper->type_main) {
-        case DTB_TYPE_PLAIN:
-            if (!(*dtb = malloc(bhelper_new.dtbs->size * sizeof **dtb))) {
-                fputs("DTB compose: Failed to duplicate plain DTB\n", stderr);
-                return 2;
-            }
-            memcpy(*dtb, bhelper_new.dtbs->buffer, bhelper_new.dtbs->size);
-            *size = bhelper_new.dtbs->size;
-            break;
-        case DTB_TYPE_MULTI:
-            if (dtb_combine_multi_dtb(dtb, size, &bhelper_new)) {
-                fputs("DTB compose: Failed to compose multi-DTB\n", stderr);
-                dtb_free_buffer_helper(&bhelper_new);
-                return 3;
-            }
-            break;
-        case DTB_TYPE_GZIPPED:
-            switch (bhelper->type_sub) {
-                case DTB_TYPE_PLAIN:
-                    if (!(*size = gzip_zip(bhelper_new.dtbs->buffer, bhelper_new.dtbs->size, dtb))) {
-                        fputs("DTB compose: Failed to compose Gzipped plain DTB\n", stderr);
-                        dtb_free_buffer_helper(&bhelper_new);
-                        return 4;
-                    }
-                    break;
-                case DTB_TYPE_MULTI: {
-                    uint8_t *buffer;
-                    size_t msize;
-                    if (dtb_combine_multi_dtb(&buffer, &msize, &bhelper_new)) {
-                        fputs("DTB compose: Failed to compose multi-DTB before gzipping it\n", stderr);
-                        dtb_free_buffer_helper(&bhelper_new);
-                        return 5;
-                    }
-                    if (!(*size = gzip_zip(buffer, msize, dtb))) {
-                        fputs("DTB compose: Failed to compose Gzipped multi-DTB\n", stderr);
-                        free(buffer);
-                        dtb_free_buffer_helper(&bhelper_new);
-                        return 6;
-                    }
-                    free(buffer);
-                    break;
-                }
-                default:
-                    fputs("DTB compose: Illegal DTB sub type for gzipped DTB\n", stderr);
-                    return 7;
-            }
-            break;
-        default:
-            fputs("DTB compose: Illegal DTB type\n", stderr);
-            return 8;
+    if (!bhelper_new.dtb_count) {
+        fputs("DTB compose: New DTB count 0, which is impossible, refuse to work\n", stderr);
+        dtb_free_buffer_helper(&bhelper_new);
+        return 2;
     }
+    if (bhelper_new.dtb_count == 1) {
+        if (!(*dtb = malloc(bhelper_new.dtbs->size * sizeof **dtb))) {
+            fputs("DTB compose: Failed to duplicate plain DTB\n", stderr);
+            dtb_free_buffer_helper(&bhelper_new);
+            return 3;
+        }
+        memcpy(*dtb, bhelper_new.dtbs->buffer, bhelper_new.dtbs->size);
+        *size = bhelper_new.dtbs->size;
+    } else {
+        if (dtb_combine_multi_dtb(dtb, size, &bhelper_new)) {
+            fputs("DTB compose: Failed to compose multi-DTB\n", stderr);
+            dtb_free_buffer_helper(&bhelper_new);
+            return 4;
+        }
+    }
+    if (*size > DTB_PARTITION_DATA_SIZE) {
+        fprintf(stderr, "DTB compose: DTB size too large (0x%lx), trying to gzip it\n", *size);
+        uint8_t *buffer;
+        if (!(*size = gzip_zip(*dtb, *size, &buffer))) {
+            fputs("DTB compose: Failed to compose Gzipped multi-DTB\n", stderr);
+            free(*dtb);
+            dtb_free_buffer_helper(&bhelper_new);
+            return 6;
+        }
+        if (*size > DTB_PARTITION_DATA_SIZE) {
+            fprintf(stderr, "DTB compose: Gzipped DTB still too large (0x%lx), giving up\n", *size);
+            free(buffer);
+            free(*dtb);
+            dtb_free_buffer_helper(&bhelper_new);
+            return 6;
+        }
+        free(*dtb);
+        *dtb = buffer;
+    }
+    // switch(bhelper->type_main) {
+    //     case DTB_TYPE_PLAIN:
+    //         if (!(*dtb = malloc(bhelper_new.dtbs->size * sizeof **dtb))) {
+    //             fputs("DTB compose: Failed to duplicate plain DTB\n", stderr);
+    //             return 2;
+    //         }
+    //         memcpy(*dtb, bhelper_new.dtbs->buffer, bhelper_new.dtbs->size);
+    //         *size = bhelper_new.dtbs->size;
+    //         break;
+    //     case DTB_TYPE_MULTI:
+    //         if (dtb_combine_multi_dtb(dtb, size, &bhelper_new)) {
+    //             fputs("DTB compose: Failed to compose multi-DTB\n", stderr);
+    //             dtb_free_buffer_helper(&bhelper_new);
+    //             return 3;
+    //         }
+    //         break;
+    //     case DTB_TYPE_GZIPPED:
+    //         switch (bhelper->type_sub) {
+    //             case DTB_TYPE_PLAIN:
+    //                 if (!(*size = gzip_zip(bhelper_new.dtbs->buffer, bhelper_new.dtbs->size, dtb))) {
+    //                     fputs("DTB compose: Failed to compose Gzipped plain DTB\n", stderr);
+    //                     dtb_free_buffer_helper(&bhelper_new);
+    //                     return 4;
+    //                 }
+    //                 break;
+    //             case DTB_TYPE_MULTI: {
+    //                 uint8_t *buffer;
+    //                 size_t msize;
+    //                 if (dtb_combine_multi_dtb(&buffer, &msize, &bhelper_new)) {
+    //                     fputs("DTB compose: Failed to compose multi-DTB before gzipping it\n", stderr);
+    //                     dtb_free_buffer_helper(&bhelper_new);
+    //                     return 5;
+    //                 }
+    //                 if (!(*size = gzip_zip(buffer, msize, dtb))) {
+    //                     fputs("DTB compose: Failed to compose Gzipped multi-DTB\n", stderr);
+    //                     free(buffer);
+    //                     dtb_free_buffer_helper(&bhelper_new);
+    //                     return 6;
+    //                 }
+    //                 free(buffer);
+    //                 break;
+    //             }
+    //             default:
+    //                 fputs("DTB compose: Illegal DTB sub type for gzipped DTB\n", stderr);
+    //                 return 7;
+    //         }
+    //         break;
+    //     default:
+    //         fputs("DTB compose: Illegal DTB type\n", stderr);
+    //         return 8;
+    // }
     dtb_free_buffer_helper(&bhelper_new);
     return 0;
 }
 
+void
+dtb_finish_partition(
+    struct dtb_partition * const    part
+){
+    part->magic = DTB_PARTITION_MAGIC;
+    part->version = DTB_PARTITION_VERSION;
+    part->timestamp = time(NULL);
+    dtb_checksum_partition(part);
+}
+
+int
+dtb_as_partition(
+    uint8_t * * const   dtb,
+    size_t * const      size
+){
+    if (!dtb || !*dtb || !size || !*size) {
+        fputs("DTB as partition: Illegal arguments\n", stderr);
+        return -1;
+    }
+    if (*size > DTB_PARTITION_DATA_SIZE) {
+        fputs("DTB as partition: Data too large\n", stderr);
+        return 1;
+    }
+    struct dtb_partition *part = malloc(2 * sizeof *part);
+    if (!part) {
+        fputs("DTB as partition: Failed to allocate memory for DTB partition\n", stderr);
+        return 2;
+    }
+    memcpy(part, *dtb, *size);
+    memset((uint8_t *)part + *size, 0, sizeof *part - *size);
+    dtb_finish_partition(part);
+    memcpy(part + 1, part, sizeof *part);
+    free(*dtb);
+    *dtb = (uint8_t *)part;
+    *size = 2 * sizeof *part;
+    return 0;
+}
 // uint32_t enter_node(uint32_t layer, uint32_t offset_phandle, uint8_t *dtb, uint32_t offset, uint32_t end_offset, struct dtb_header *dh) {
 //     if (offset >= end_offset) {
 //         puts("ERROR: Trying to enter a node exceeding end point");

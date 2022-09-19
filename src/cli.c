@@ -332,6 +332,10 @@ cli_write_dtb(
         return 1;
     }
     fprintf(stderr, "CLI write DTB: size of new DTB (as a whole) is 0x%lx\n", dtb_new_size);
+    if (cli_options.content != CLI_CONTENT_TYPE_DTB && dtb_as_partition(&dtb_new, &dtb_new_size)) {
+        fputs("CLI write DTB: Failed to package DTB in partition\n", stderr);
+        return 2;
+    }
     if (cli_options.dry_run) {
         fputs("CLI write DTB: In dry-run mode, assuming success\n", stderr);
         free(dtb_new);
@@ -352,7 +356,7 @@ cli_write_dtb(
     }
     // FILE *dtb = fopen("New.dtb", "w");
     // fwrite(dtb_new, dtb_new_size, 1, dtb);
-    // fclose(dtb)
+    // fclose(dtb);
     free(dtb_new);
     close(fd);
     fputs("CLI write DTB: WIP\n", stderr);

@@ -114,6 +114,13 @@ struct
     };
 
 /* Function */
+
+int
+    dtb_as_partition(
+        uint8_t * * dtb,
+        size_t *    size
+    );
+
 int
     dtb_buffer_helper_implement_partitions(
         struct dtb_buffer_helper *                  new,

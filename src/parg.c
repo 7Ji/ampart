@@ -15,15 +15,16 @@
 #define PARG_PARSE_RAW_ALLOWANCE_CHECK(name) \
     if (have_##name && require_##name & PARG_DISALLOW) { \
         fprintf(stderr, "PARG parse: Argument contains "#name" but it's not allowed: %s\n", arg); \
-        return NULL; \
+        return -2; \
     } \
     if (!have_##name && require_##name & PARG_REQUIRED) { \
         fprintf(stderr, "PARG parse: Argument does not contain "#name" but it must be set: %s\n", arg); \
-        return NULL; \
+        return -2; \
     }
 
-#define PARG_PARSE_YOLO_MODE(arg) \
+#define PARG_PARSE_YOLO_MODE(definer, arg) \
     parg_parse_definer( \
+        definer, \
         arg, \
         PARG_REQUIRED, \
         PARG_ALLOW_ABSOLUTE | PARG_ALLOW_RELATIVE, \
@@ -31,8 +32,9 @@
         PARG_ANY \
     )
 
-#define PARG_PARSE_ECLONE_MODE(arg) \
+#define PARG_PARSE_ECLONE_MODE(definer, arg) \
     parg_parse_definer( \
+        definer, \
         arg, \
         PARG_REQUIRED, \
         PARG_REQUIRED | PARG_ALLOW_ABSOLUTE, \
@@ -40,8 +42,9 @@
         PARG_REQUIRED \
     )
 
-#define PARG_PARSE_DCLONE_MODE(arg) \
+#define PARG_PARSE_DCLONE_MODE(definer, arg) \
     parg_parse_definer( \
+        definer, \
         arg, \
         PARG_REQUIRED, \
         PARG_DISALLOW, \
@@ -166,23 +169,23 @@ parg_parse_get_seperators(
     return 0;
 }
 
-struct
-parg_definer *
+int
 parg_parse_definer(
-    char const * const  arg,
-    uint8_t             require_name,
-    uint8_t             require_offset,
-    uint8_t             require_size,
-    uint8_t             require_masks
+    struct parg_definer * const definer,
+    char const * const          arg,
+    uint8_t                     require_name,
+    uint8_t                     require_offset,
+    uint8_t                     require_size,
+    uint8_t                     require_masks
 ){
-    if (util_string_is_empty(arg)) {
-        fputs("PARG parse definer: Only non-empty string is accepted\n", stderr);
-        return NULL;
+    if (!definer || util_string_is_empty(arg)) {
+        fputs("PARG parse definer: Illegal arguments\n", stderr);
+        return -1;
     }
     const char *seperators[3];
     if (parg_parse_get_seperators(seperators, arg)) {
         fprintf(stderr, "PARG parse definer: Argument too short: %s\n", arg);
-        return NULL;
+        return 1;
     }
     bool have_name = seperators[0] != arg;
     PARG_PARSE_RAW_ALLOWANCE_CHECK(name)
@@ -192,43 +195,35 @@ parg_parse_definer(
     PARG_PARSE_RAW_ALLOWANCE_CHECK(size)
     bool have_masks = *(seperators[2] + 1);
     PARG_PARSE_RAW_ALLOWANCE_CHECK(masks)
-    struct parg_definer *part = malloc(sizeof *part);
-    if (!part) {
-        fprintf(stderr, "PARG parse definer: Failed to allocate memory for arg: %s\n", arg);
-        return NULL;
-    }
-    memset(part, 0, sizeof *part);
+    memset(definer, 0, sizeof *definer);
     if (have_name) {
         size_t len_name = seperators[0] - arg;
         if (len_name > MAX_PARTITION_NAME_LENGTH - 1) {
             fprintf(stderr, "PARG parse definer: Partition name too long in arg: %s\n", arg);
-            free(part);
-            return NULL;
+            return 2;
         }
-        strncpy(part->name, arg, len_name);
-        part->set_name = true;
+        strncpy(definer->name, arg, len_name);
+        definer->set_name = true;
     }
     if (have_offset) {
-        if (parg_parse_u64_definer(&part->offset, &part->relative_offset, require_offset, seperators[0] + 1, seperators[1])) {
+        if (parg_parse_u64_definer(&definer->offset, &definer->relative_offset, require_offset, seperators[0] + 1, seperators[1])) {
             fprintf(stderr, "PARG parse definer: Failed to parse offset in arg: %s\n", arg);
-            free(part);
-            return NULL;
+            return 3;
         }
-        part->set_offset = true;
+        definer->set_offset = true;
     }
     if (have_size) {
-        if (parg_parse_u64_definer(&part->size, &part->relative_size, require_size, seperators[1] + 1, seperators[2])) {
+        if (parg_parse_u64_definer(&definer->size, &definer->relative_size, require_size, seperators[1] + 1, seperators[2])) {
             fprintf(stderr, "PARG parse definer: Failed to parse size in arg: %s\n", arg);
-            free(part);
-            return NULL;
+            return 4;
         }
-        part->set_size = true;
+        definer->set_size = true;
     }
     if (have_masks) {
-        part->masks = strtoul(seperators[2] + 1, NULL, 0);
-        part->set_masks = true;
+        definer->masks = strtoul(seperators[2] + 1, NULL, 0);
+        definer->set_masks = true;
     }
-    return part;
+    return 0;
 }
 
 static inline
@@ -449,81 +444,60 @@ parg_parse_modifier_dispatcher(
 }
 
 
-struct parg_modifier *
+int
 parg_parse_modifier(
-    char const * const  arg
+    struct parg_modifier * const    modifier,
+    char const * const              arg
 ) {
-    if (util_string_is_empty(arg)) {
-        fputs("PARG parse modifier: Only non-empty string is accepted\n", stderr);
-        return NULL;
-    }
-    struct parg_modifier *modifier = malloc(sizeof *modifier);
-    if (!modifier) {
-        return NULL;
+    if (!modifier || util_string_is_empty(arg)) {
+        fputs("PARG parse modifier: Illegal arguments\n", stderr);
+        return -1;
     }
     if (parg_parse_modifier_get_select_method(modifier, arg[1])) {
         fprintf(stderr, "PARG parse modifier: no selector given in arg: %s\n", arg);
-        free(modifier);
-        return NULL;
+        return 1;
     }
     char const *const select_end = parg_parse_modifier_get_select_end(modifier, arg + 2);
     if (!select_end) {
         fprintf(stderr, "PARG parse modifier: selector/operator invalid/incomplete: %s\n", arg);
-        free(modifier);
-        return NULL;
+        return 2;
     }
     if (parg_parse_modifier_get_selector(modifier, arg + 1, select_end - arg - 1)) {
         fprintf(stderr, "PARG parse modifier: selector invalid: %s\n", arg);
-        free(modifier);
-        return NULL;
+        return 3;
     }
     if (parg_parse_modifier_dispatcher(modifier, select_end + 1)) {
-        free(modifier);
-        return NULL;
+        return 4;
     }
-    return modifier;
+    return 0;
 }
 
-struct parg_editor *
+int
 parg_parse_editor(
-    char const * const  arg
+    struct parg_editor *    editor,
+    char const * const      arg
 ){
-    if (util_string_is_empty(arg)) {
-        fputs("PARG parse editor: Only non-empty string is accepted\n", stderr);
-        return NULL;
+    if (!editor || util_string_is_empty(arg)) {
+        fputs("PARG parse editor: Illegal arguments\n", stderr);
+        return -1;
     }
     if (arg[0] == '^') {
-        struct parg_modifier *modifier = parg_parse_modifier(arg);
-        if (!modifier) {
-            return NULL;
-        }
-        struct parg_editor *editor = malloc(sizeof *editor);
-        if (!editor) {
-            return NULL;
+        if (parg_parse_modifier(&editor->modifier, arg)) {
+            return 1;
         }
         editor->modify = true;
-        editor->modifier = *modifier;
-        free(modifier);
-        return editor;
     } else {
-        struct parg_definer *definer = PARG_PARSE_YOLO_MODE(arg);
-        if (!definer) {
-            return NULL;
-        }
-        struct parg_editor *editor = malloc(sizeof *editor);
-        if (!editor) {
-            return NULL;
+        if (PARG_PARSE_YOLO_MODE(&editor->definer, arg)) {
+            return 2;
         }
         editor->modify = false;
-        editor->definer = *definer;
-        free(definer);
-        return editor;
     }
+    return 0;
 }
 
 void
-parg_free_definer_helper(
-    struct parg_definer_helper * * const    dhelper
+parg_free_definer_helper_dynamic(
+    struct parg_definer_helper_dynamic * * const    dhelper
 ){
     if (*dhelper) {
         free((*dhelper)->definers);
@@ -532,75 +506,76 @@ parg_free_definer_helper(
     }
 }
 
-struct parg_definer_helper *
+int
 parg_parse_dclone_mode(
-    int const       argc,
-    char const * const * const   argv
+    struct parg_definer_helper_static * const   dhelper,
+    int const                                   argc,
+    char const * const * const                  argv
 ){
-    if (argc <= 0 || argc > MAX_PARTITIONS_COUNT) {
+    if (!dhelper || argc <= 0 || argc > MAX_PARTITIONS_COUNT || !argv) {
         fputs("PARG parse dclone mode: Illegal argument counts\n", stderr);
-        return NULL;
-    }
-    struct parg_definer_helper *dhelper = malloc(sizeof *dhelper);
-    if (!dhelper) {
-        fputs("PARG parse dclone mode: Failed to allocate memory for definer helper\n", stderr);
-        return NULL;
-    }
-    dhelper->definers = malloc(argc * sizeof *dhelper->definers);
-    if (!dhelper->definers) {
-        fputs("PARG parse dclone mode: Failed to allocate memroy for definers\n", stderr);
-        return NULL;
+        return -1;
     }
     dhelper->count = argc;
-    struct parg_definer *definer;
     for (int i = 0; i < argc; ++i) {
-        definer = PARG_PARSE_DCLONE_MODE(argv[i]);
-        if (!definer) {
+        if (PARG_PARSE_DCLONE_MODE(dhelper->definers + i, argv[i])) {
             fprintf(stderr, "PARG parse dclone mode: Failed to parse argument: %s\n", argv[i]);
-            free(dhelper->definers);
-            free(dhelper);
-            return NULL;
+            return 1;
         }
-        dhelper->definers[i] = *definer;
-        free(definer);
     }
-    return dhelper;
+    return 0;
 }
 
-struct parg_definer_helper *
+int
 parg_parse_eclone_mode(
-    int const       argc,
-    char const * const * const   argv
+    struct parg_definer_helper_static * const   dhelper,
+    int const                                   argc,
+    char const * const * const                  argv
 ){
-    if (argc <= 0 || argc > MAX_PARTITIONS_COUNT) {
+    if (!dhelper || argc <= 0 || argc > MAX_PARTITIONS_COUNT || !argv) {
         fputs("PARG parse eclone mode: Illegal argument counts\n", stderr);
-        return NULL;
-    }
-    struct parg_definer_helper *dhelper = malloc(sizeof *dhelper);
-    if (!dhelper) {
-        fputs("PARG parse eclone mode: Failed to allocate memory for definer helper\n", stderr);
-        return NULL;
-    }
-    dhelper->definers = malloc(argc * sizeof *dhelper->definers);
-    if (!dhelper->definers) {
-        fputs("PARG parse eclone mode: Failed to allocate memroy for definers\n", stderr);
-        return NULL;
+        return -1;
     }
     dhelper->count = argc;
-    struct parg_definer *definer;
     for (int i = 0; i < argc; ++i) {
-        definer = PARG_PARSE_ECLONE_MODE(argv[i]);
-        if (!definer) {
-            fprintf(stderr, "PARG parse dclone mode: Failed to parse argument: %s\n", argv[i]);
-            free(dhelper->definers);
-            free(dhelper);
-            return NULL;
+        if (PARG_PARSE_ECLONE_MODE(dhelper->definers + i, argv[i])) {
+            fprintf(stderr, "PARG parse eclone mode: Failed to parse argument: %s\n", argv[i]);
+            return 1;
         }
-        dhelper->definers[i] = *definer;
-        free(definer);
     }
-    return dhelper;
+    return 0;
 }
 
+int
+parg_parse_dedit_mode(
+    struct parg_editor_helper * const   ehelper,
+    int const                           argc,
+    char const * const * const          argv
+){
+    if (!ehelper ||  argc <= 0 || argc > MAX_PARTITIONS_COUNT || !argv) {
+        fputs("PARG parse dclone mode: Illegal arguments\n", stderr);
+        return -1;
+    }
+    
+    // dhelper->definers = malloc(argc * sizeof *dhelper->definers);
+    // if (!dhelper->definers) {
+    //     fputs("PARG parse dclone mode: Failed to allocate memroy for definers\n", stderr);
+    //     return NULL;
+    // }
+    // dhelper->count = argc;
+    // struct parg_definer *definer;
+    // for (int i = 0; i < argc; ++i) {
+    //     definer = PARG_PARSE_DCLONE_MODE(argv[i]);
+    //     if (!definer) {
+    //         fprintf(stderr, "PARG parse dclone mode: Failed to parse argument: %s\n", argv[i]);
+    //         free(dhelper->definers);
+    //         free(dhelper);
+    //         return NULL;
+    //     }
+    //     dhelper->definers[i] = *definer;
+    //     free(definer);
+    // }
+    return 0;
+}
 
 /* parg.c: Processing partition arguments */

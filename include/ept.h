@@ -94,9 +94,9 @@ int
 
 int
     ept_eclone_parse(
+        struct ept_table * const    table,
         int const                   argc,
         char const * const * const  argv,
-        struct ept_table * const    table,
         size_t const                capacity
     );
 

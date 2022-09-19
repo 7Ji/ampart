@@ -510,23 +510,27 @@ ept_is_not_pedantic(
 
 int
 ept_eclone_parse(
+    struct ept_table * const    table,
     int const                   argc,
     char const * const * const  argv,
-    struct ept_table * const    table,
     size_t const                capacity
 ){
-    struct parg_definer_helper *dhelper = parg_parse_eclone_mode(argc, argv);
-    if (!dhelper) {
-        fputs("EPT eclone parse: Failed to parse PARGS\n", stderr);
+    if (!table || argc <= 0 || argc > MAX_PARTITIONS_COUNT || !argv || !capacity) {
+        fputs("EPT eclone parse: Illegal arguments\n", stderr);
+        return -1;
+    }
+    struct parg_definer_helper_static dhelper;
+    if (parg_parse_eclone_mode(&dhelper, argc, argv)) {
+        fputs("EPT eclone parse: Failed to parse arguments\n", stderr);
         return 1;
     }
     *table = ept_table_empty;
-    table->partitions_count = dhelper->count;
+    table->partitions_count = dhelper.count;
     struct parg_definer *definer;
     struct ept_partition *part;
     size_t part_end;
-    for (unsigned i = 0; i < dhelper->count; ++i) {
-        definer = dhelper->definers + i;
+    for (unsigned i = 0; i < dhelper.count; ++i) {
+        definer = dhelper.definers + i;
         part = table->partitions + i;
         strncpy(part->name, definer->name, MAX_PARTITION_NAME_LENGTH);
         part->offset = definer->offset;
@@ -538,7 +542,6 @@ ept_eclone_parse(
         }
         part->mask_flags = definer->masks;
     }
-    parg_free_definer_helper(&dhelper);
     ept_checksum_table(table);
     fputs("EPT eclone parse: New EPT:\n", stderr);
     ept_report(table);

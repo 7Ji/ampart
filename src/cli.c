@@ -352,7 +352,7 @@ cli_write_dtb(
     }
     // FILE *dtb = fopen("New.dtb", "w");
     // fwrite(dtb_new, dtb_new_size, 1, dtb);
-    // fclose(dtb);
+    // fclose(dtb)
     free(dtb_new);
     close(fd);
     fputs("CLI write DTB: WIP\n", stderr);
@@ -658,7 +658,7 @@ cli_mode_dclone(
         return 2;
     }
     struct dts_partitions_helper_simple dparts;
-    if (dts_dclone_parse(argc, argv, &dparts)) {
+    if (dts_dclone_parse(&dparts, argc, argv)) {
         fputs("CLI mode dclone: Failed to parse PARGs\n", stderr);
         return 3;
     }
@@ -698,7 +698,7 @@ cli_mode_eclone(
         return 2;
     }
     struct ept_table table_new;
-    if (ept_eclone_parse(argc, argv, &table_new, capacity)) {
+    if (ept_eclone_parse(&table_new, argc, argv, capacity)) {
         fputs("CLI mode eclone: Failed to get new EPT\n", stderr);
         return 3;
     }

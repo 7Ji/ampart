@@ -1031,14 +1031,18 @@ dtb_compose(
     }
     switch(bhelper->type_main) {
         case DTB_TYPE_PLAIN:
-            *dtb = bhelper_new.dtbs->buffer;
+            if (!(*dtb = malloc(bhelper_new.dtbs->size * sizeof **dtb))) {
+                fputs("DTB compose: Failed to duplicate plain DTB\n", stderr);
+                return 2;
+            }
+            memcpy(*dtb, bhelper_new.dtbs->buffer, bhelper_new.dtbs->size);
             *size = bhelper_new.dtbs->size;
             break;
         case DTB_TYPE_MULTI:
             if (dtb_combine_multi_dtb(dtb, size, &bhelper_new)) {
                 fputs("DTB compose: Failed to compose multi-DTB\n", stderr);
                 dtb_free_buffer_helper(&bhelper_new);
-                return 2;
+                return 3;
             }
             break;
         case DTB_TYPE_GZIPPED:
@@ -1047,7 +1051,7 @@ dtb_compose(
                     if (!(*size = gzip_zip(bhelper_new.dtbs->buffer, bhelper_new.dtbs->size, dtb))) {
                         fputs("DTB compose: Failed to compose Gzipped plain DTB\n", stderr);
                         dtb_free_buffer_helper(&bhelper_new);
-                        return 3;
+                        return 4;
                     }
                     break;
                 case DTB_TYPE_MULTI: {
@@ -1056,25 +1060,25 @@ dtb_compose(
                     if (dtb_combine_multi_dtb(&buffer, &msize, &bhelper_new)) {
                         fputs("DTB compose: Failed to compose multi-DTB before gzipping it\n", stderr);
                         dtb_free_buffer_helper(&bhelper_new);
-                        return 4;
+                        return 5;
                     }
                     if (!(*size = gzip_zip(buffer, msize, dtb))) {
                         fputs("DTB compose: Failed to compose Gzipped multi-DTB\n", stderr);
                         free(buffer);
                         dtb_free_buffer_helper(&bhelper_new);
-                        return 5;
+                        return 6;
                     }
                     free(buffer);
                     break;
                 }
                 default:
                     fputs("DTB compose: Illegal DTB sub type for gzipped DTB\n", stderr);
-                    return 6;
+                    return 7;
             }
             break;
         default:
             fputs("DTB compose: Illegal DTB type\n", stderr);
-            return 7;
+            return 8;
     }
     dtb_free_buffer_helper(&bhelper_new);
     return 0;

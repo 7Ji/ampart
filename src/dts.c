@@ -1035,27 +1035,31 @@ dts_compare_partitions_mixed(
 
 int
 dts_dclone_parse(
+    struct dts_partitions_helper_simple * const dparts,
     int const                                   argc,
-    char const * const * const                  argv,
-    struct dts_partitions_helper_simple * const dparts
+    char const * const * const                  argv
 ){
-    struct parg_definer_helper *dhelper = parg_parse_dclone_mode(argc, argv);
-    if (!dhelper || !dhelper->count) {
+    if (argc < 0 || argc >= MAX_PARTITIONS_COUNT || !dparts || !dparts->partitions_count || !argv) {
+        fputs("DTS dclone parse: Illegal arguments\n", stderr);
+        return -1;
+    }
+    struct parg_definer_helper_static dhelper;
+    parg_parse_dclone_mode(&dhelper, argc, argv);
+    if (parg_parse_dclone_mode(&dhelper, argc, argv) || !dhelper.count) {
         fputs("DTS dclone parse: Failed to parse new partitions\n", stderr);
         return 1;
     }
     *dparts = dts_partitions_helper_simple_empty;
-    dparts->partitions_count = dhelper->count;
+    dparts->partitions_count = dhelper.count;
     struct parg_definer *definer;
     struct dts_partition_entry_simple *entry;
-    for (unsigned i = 0; i < dhelper->count; ++i) {
-        definer = dhelper->definers + i;
+    for (unsigned i = 0; i < dhelper.count; ++i) {
+        definer = dhelper.definers + i;
         entry = dparts->partitions + i;
         strncpy(entry->name, definer->name, MAX_PARTITION_NAME_LENGTH);
         entry->size = definer->size;
         entry->mask = definer->masks;
     }
-    parg_free_definer_helper(&dhelper);
     fputs("DTS dclone parse: New DTB partitions:\n", stderr);
     dts_report_partitions_simple(dparts);
     return 0;
@@ -1279,3 +1283,31 @@ dts_get_node_full_length(
     }
     return 4 * (offset_child + 2);
 }
+
+// int
+// dts_dedit_parse(
+//     int const                                   argc,
+//     char const * const * const                  argv,
+//     struct dts_partitions_helper_simple * const dparts
+// ){
+//     // struct parg_definer_helper *dhelper = parg_parse_dedit_mode(argc, argv);
+//     if (!dhelper || !dhelper->count) {
+//         fputs("DTS dclone parse: Failed to parse new partitions\n", stderr);
+//         return 1;
+//     }
+//     // *dparts = dts_partitions_helper_simple_empty;
+//     // dparts->partitions_count = dhelper->count;
+//     // struct parg_definer *definer;
+//     // struct dts_partition_entry_simple *entry;
+//     // for (unsigned i = 0; i < dhelper->count; ++i) {
+//     //     definer = dhelper->definers + i;
+//     //     entry = dparts->partitions + i;
+//     //     strncpy(entry->name, definer->name, MAX_PARTITION_NAME_LENGTH);
+//     //     entry->size = definer->size;
+//     //     entry->mask = definer->masks;
+//     // }
+//     // parg_free_definer_helper(&dhelper);
+//     // fputs("DTS dclone parse: New DTB partitions:\n", stderr);
+//     // dts_report_partitions_simple(dparts);
+//     return 0;
+// }

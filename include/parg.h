@@ -57,8 +57,14 @@ struct
     };
 
 struct
-    parg_definer_helper {
+    parg_definer_helper_dynamic {
         struct parg_definer *   definers;
+        unsigned int            count;
+    };
+
+struct
+    parg_definer_helper_static {
+        struct parg_definer     definers[MAX_PARTITIONS_COUNT];
         unsigned int            count;
     };
 
@@ -89,23 +95,31 @@ struct
         };
     };
 
+struct
+    parg_editor_helper {
+        struct parg_editor *    editors;
+        unsigned int            count;
+    };
+
 /* Function */
 
 void
-    parg_free_definer_helper(
-        struct parg_definer_helper * * const    dhelper
+    parg_free_definer_helper_dynamic(
+        struct parg_definer_helper_dynamic * * const    dhelper
     );
 
-struct parg_definer_helper *
+int
     parg_parse_dclone_mode(
-        int                     argc,
-        char const * const *    argv
+        struct parg_definer_helper_static * dhelper,
+        int                                 argc,
+        char const * const *                argv
     );
 
-struct parg_definer_helper *
+int
     parg_parse_eclone_mode(
-        int                     argc,
-        char const * const *    argv
+        struct parg_definer_helper_static * dhelper,
+        int                                 argc,
+        char const * const *                argv
     );
 
 #endif

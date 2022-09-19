@@ -85,9 +85,9 @@ int
 
 int
     dts_dclone_parse(
+        struct dts_partitions_helper_simple * const dparts,
         int const                                   argc,
-        char const * const * const                  argv,
-        struct dts_partitions_helper_simple * const dparts
+        char const * const * const                  argv
     );
 
 int

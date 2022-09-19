@@ -477,10 +477,12 @@ cli_mode_dtoe(
         return 4;
     }
     ept_report(&table_new);
+#ifdef CLI_LAZY_WRITE
     if (table && !ept_compare_table(table, &table_new)) {
         fputs("CLI mode dtoe: New table is the same as the old table, no need to update\n", stderr);
         return 0;
     }
+#endif
     if (cli_write_ept(table, &table_new)) {
         fputs("CLI mode dtoe: Failed to write new EPT\n", stderr);
         return 5;
@@ -562,6 +564,42 @@ cli_check_parg_count(
 
 static inline
 int
+cli_write_ept_from_dtb(
+    struct ept_table const * const                    table,
+    struct dts_partitions_helper_simple const * const dparts
+
+){
+    if (!table || !dparts) {
+        fputs("CLI write EPT from DTB: Illegal arguments\n", stderr);
+        return -1;
+    }
+    fputs("CLI write EPT from DTB: Checking if EPT also needs update\n", stderr);
+    size_t const capacity = cli_get_capacity(table);
+    if (!capacity) {
+        fputs("CLI write EPT from DTB: Failed to check capacity\n", stderr);
+        return 1;
+    }
+    struct ept_table table_new;
+    if (ept_table_from_dts_partitions_helper_simple(&table_new, &dparts, capacity)) {
+        fputs("CLI write EPT from DTB: Failed create EPT from DTB\n", stderr);
+        return 2;
+    }
+#ifdef CLI_LAZY_WRITE
+    if (ept_compare_table(table, &table_new)) {
+        fputs("CLI write EPT from DTB: Corresponding table updated, also write it\n", stderr);
+#endif
+        if (cli_write_ept(table, &table_new)) {
+            fputs("CLI write EPT from DTB: Failed to write EPT\n", stderr);
+            return 3;
+        }
+#ifdef CLI_LAZY_WRITE
+    }
+#endif
+    return 0;
+}
+
+static inline
+int
 cli_mode_dedit(
     struct dtb_buffer_helper const * const  bhelper,
     struct ept_table const * const          table,
@@ -572,9 +610,6 @@ cli_mode_dedit(
     if (cli_check_parg_count(argc, 0) || !bhelper) {
         fputs("CLI mode dedit: Illegal arguments\n", stderr);
         return -1;
-    }
-    for (int i =0; i<argc; ++i) {
-        printf("%d: %s\n", i, argv[i]);
     }
     struct dts_partitions_helper_simple dparts;
     if (dts_partitions_helper_to_simple(&dparts, &bhelper->dtbs->phelper)) {
@@ -587,12 +622,12 @@ cli_mode_dedit(
     }
     if (cli_write_dtb(bhelper, &dparts)) {
         fputs("CLI mode dedit: Failed to write DTB\n", stderr);
-        return 2;
+        return 4;
     }
-    if (!table) {
-        return 2;
+    if (table && cli_write_ept_from_dtb(table, &dparts)) {
+        fputs("CLI mode dedit: Failed to also write EPT\n", stderr);
+        return 5;
     }
-    
     return 0;
 }
 
@@ -604,20 +639,23 @@ cli_mode_eedit(
     char const * const * const      argv
 ){
     fputs("CLI mode eedit: Edit EPT\n", stderr);
-    if (cli_check_parg_count(argc, 0)) {
-        return 0;
+    if (cli_check_parg_count(argc, 0) || !table) {
+        fputs("CLI mode eedit: Illegal arguments\n", stderr);
+        return -1;
     }
-    for (int i =0; i<argc; ++i) {
-        printf("%d: %s\n", i, argv[i]);
+    struct ept_table table_new = *table;
+#ifdef CLI_LAZY_WRITE
+    if (ept_compare_table(table, &table_new)) {
+#endif
+        if (cli_write_ept(table, &table_new)) {
+            fputs("CLI mode eedit: Failed to write new EPT\n", stderr);
+            return 2;
+        }
+#ifdef CLI_LAZY_WRITE
+    } else {
+        fputs("CLI mode eedit: Old and new table same, no need to write\n", stderr);
     }
-    if (!table) {
-        return 1;
-    }
-    struct ept_table *table_new = NULL;
-    if (cli_write_ept(table, table_new)) {
-        fputs("CLI mode edit: Failed to write new EPT\n", stderr);
-        return 2;
-    }
+#endif
     return 0;
 }
 
@@ -679,34 +717,19 @@ cli_mode_dclone(
         fputs("CLI mode dclone: Failed to parse PARGs\n", stderr);
         return 3;
     }
+#ifdef CLI_LAZY_WRITE
     if (!dts_compare_partitions_mixed(&bhelper->dtbs->phelper, &dparts)) {
         fputs("CLI mode dclone: New partitions same as old, no need to write\n", stderr);
         return 0;
     }
+#endif
     if (cli_write_dtb(bhelper, &dparts)) {
         fputs("CLI mode dclone: Failed to write\n", stderr);
         return 4;
     }
-    if (table) {
-        fputs("CLI mode dclone: Checking if EPT also needs update\n", stderr);
-        size_t const capacity = cli_get_capacity(table);
-        if (!capacity) {
-            fputs("CLI mode dclone: Failed to check capacity\n", stderr);
-            return 5;
-        }
-        struct ept_table table_new;
-        if (ept_table_from_dts_partitions_helper_simple(&table_new, &dparts, capacity)) {
-            fputs("CLI mode dclone: Failed create EPT from DTB\n", stderr);
-            return 6;
-        }
-        if (ept_compare_table(table, &table_new)) {
-            fputs("CLI mode dclone: Corresponding table updated, also write it\n", stderr);
-            if (cli_write_ept(table, &table_new)) {
-                fputs("CLI mode dclone: Failed to write EPT\n", stderr);
-                return 7;
-            }
-        }
-        return 0;
+    if (table && cli_write_ept_from_dtb(table, &dparts)) {
+        fputs("CLI mode dclone: Failed to also write EPT\n", stderr);
+        return 5;
     }
     return 0;
 }
@@ -736,15 +759,19 @@ cli_mode_eclone(
         fputs("CLI mode eclone: Failed to get new EPT\n", stderr);
         return 3;
     }
+#ifdef CLI_LAZY_WRITE
     if (ept_compare_table(table, &table_new)) {
         fputs("CLI mode eclone: New table is different, need to write\n", stderr);
+#endif
         if (cli_write_ept(table, &table_new)) {
             fputs("CLI mode eclone: Failed to write EPT\n", stderr);
             return 4;
         }
+#ifdef CLI_LAZY_WRITE
     } else {
         fputs("CLI mode eclone: New table is the same as old table, no need to write\n", stderr);
     }
+#endif
     return 0;
 }
 

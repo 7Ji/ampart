@@ -47,6 +47,7 @@ struct
     dtb_buffer_helper {
         struct dtb_buffer_entry *   dtbs;
         unsigned                    dtb_count;
+        unsigned                    multi_version;
         enum dtb_type               type_main;
         enum dtb_type               type_sub;
     };

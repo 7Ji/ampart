@@ -656,6 +656,10 @@ cli_mode_dclone(
         fputs("CLI mode dclone: Failed to parse PARGs\n", stderr);
         return 3;
     }
+    if (!dts_compare_partitions_mixed(&bhelper->dtbs->phelper, &dparts)) {
+        fputs("CLI mode dclone: New partitions same as old, no need to write\n", stderr);
+        return 0;
+    }
     if (cli_write_dtb(bhelper, &dparts)) {
         fputs("CLI mode dclone: Failed to write\n", stderr);
         return 4;

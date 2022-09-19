@@ -31,7 +31,7 @@ gzip_unzip_no_header(
     size_t const        in_size,
     uint8_t * * const   out
 ){
-    size_t allocated_size = util_nearest_upper_bound_ulong(in_size, 64, 4); // 4 times the size, nearest multiply of 64
+    size_t allocated_size = util_nearest_upper_bound_with_multiply_ulong(in_size, 64, 4); // 4 times the size, nearest multiply of 64
     fprintf(stderr, "unzip: Decompressing raw deflated data, in size %ld, allocated %ld\n", in_size, allocated_size);
     *out = malloc(allocated_size);
     if (!*out) {

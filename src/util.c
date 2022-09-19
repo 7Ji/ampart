@@ -17,22 +17,38 @@ size_t const    util_human_readable_suffixes_length = strlen(UTIL_HUMAN_READABLE
 
 /* Function */
 
-unsigned long 
+long 
+util_nearest_upper_bound_long(
+    long const  value, 
+    long const  bound
+){
+    return value % bound ? value / bound * bound + bound : value;
+}
+
+unsigned long
 util_nearest_upper_bound_ulong(
     unsigned long const value, 
-    unsigned long const bound, 
-    unsigned long const multiply
+    unsigned long const bound
 ){
-    return (value % bound) ? (value / bound * bound * multiply + bound) : (value * multiply);
+    return value % bound ? value / bound * bound + bound : value;
 }
 
 long 
-util_nearest_upper_bound_long(
+util_nearest_upper_bound_with_multiply_long(
     long const  value, 
     long const  bound, 
     long const  multiply
 ){
-    return (value % bound) ? (value / bound * bound * multiply + bound) : (value * multiply);
+    return util_nearest_upper_bound_long(value * multiply, bound);
+}
+
+unsigned long 
+util_nearest_upper_bound_with_multiply_ulong(
+    unsigned long const value, 
+    unsigned long const bound, 
+    unsigned long const multiply
+){
+    return util_nearest_upper_bound_ulong(value * multiply, bound);
 }
 
 double

@@ -1109,8 +1109,9 @@ dts_drop_partitions_phandles(
     struct dts_partition_entry const *dts_part;
     uint32_t phandle;
     for (uint32_t i = 0; i < phelper->partitions_count; ++i) {
-        dts_part = phelper->partitions + i;
-        phandle = dts_part->phandle;
+        if (!(phandle = (dts_part = phelper->partitions + i)->phandle)) {
+            continue;
+        }
         plist->phandles[phandle] -= step;
         if (plist->phandles[phandle]) {
             fprintf(stderr, "DTS drop partitions phandles: Phandle 0x%x still used after droping it from partition %s, this is impossile, give up\n", phandle, dts_part->name);
@@ -1118,13 +1119,14 @@ dts_drop_partitions_phandles(
         }
         fprintf(stderr, "DTS drop partitions phandles: Phandle 0x%x previously used by partition %s can be used now\n", phandle, dts_part->name);
     }
-    phandle = phelper->phandle_root;
-    plist->phandles[phandle] -= step;
-    if (plist->phandles[phandle]) {
-        fprintf(stderr, "DTS drop partitions phandles: Phandle 0x%x still used after dropping it from partitions root node, this is impossile, give up\n", phandle);
-        return 5;
+    if ((phandle = phelper->phandle_root)) {
+        plist->phandles[phandle] -= step;
+        if (plist->phandles[phandle]) {
+            fprintf(stderr, "DTS drop partitions phandles: Phandle 0x%x still used after dropping it from partitions root node, this is impossile, give up\n", phandle);
+            return 5;
+        }
+        fprintf(stderr, "DTS drop partitions phandles: Phandle 0x%x previously used by partitions root node can be used now\n", phandle);
     }
-    fprintf(stderr, "DTS drop partitions phandles: Phandle 0x%x previously used by partitions root node can be used now\n", phandle);
     return 0;
 }
 
@@ -1206,7 +1208,7 @@ dts_compose_partitions_node(
         chelper = chelpers + i;
         chelper->len_name = strlen(dentry->name);
         chelper->len_pname = chelper->len_name + 1;
-        chelper->len_node_name = util_nearest_upper_bound_ulong(chelper->len_pname, 4, 1);
+        chelper->len_node_name = util_nearest_upper_bound_ulong(chelper->len_pname, 4);
         chelper->offset_partn = stringblock_append_string_safely(shelper, partn, 0);
         chelper->phandle = dts_assign_available_phanle(plist);
         chelper->phandle_be32 = bswap_32(chelper->phandle);

@@ -21,6 +21,10 @@
 /* Definition */
 
 #define DTB_PARTITION_CHECKSUM_COUNT   (DTB_PARTITION_SIZE - 4U) >> 2U
+#define DTB_PAGE_SIZE                  0x800U
+#define DTB_MULTI_HEADER_PROPERTY_LENGTH_V1 4U
+#define DTB_MULTI_HEADER_PROPERTY_LENGTH_V2 16U
+#define DTB_MULTI_HEADER_ENTRY_LENGTH_v2    (DTB_MULTI_HEADER_PROPERTY_LENGTH_V2 * 3 + 8)
 
 /* Macro */
 
@@ -69,9 +73,9 @@ dtb_get_multi_header_property_length(
 ){
     switch(header->version) {
         case 1:
-            return 4;
+            return DTB_MULTI_HEADER_PROPERTY_LENGTH_V1;
         case 2:
-            return 16;
+            return DTB_MULTI_HEADER_PROPERTY_LENGTH_V2;
         default:
             fprintf(stderr, "DTB parse multi entries: version not supported, only v1 and v2 supported yet the version is %"PRIu32"\n", header->version);
             return 0;
@@ -499,6 +503,7 @@ dtb_read_into_buffer_helper(
             return 6;
         }
         bhelper->dtb_count = mhelper.entry_count;
+        bhelper->multi_version = mhelper.version;
         if (!(bhelper->dtbs = malloc(bhelper->dtb_count * sizeof *bhelper->dtbs))) {
             fputs("DTB read into buffer helper: Failed to allocate memory for multi DTBs\n", stderr);
             free(buffer_read);
@@ -723,15 +728,15 @@ dtb_buffer_entry_implement_partitions(
         free(plist.phandles);
         return 4;
     }
-    shelper.allocated_length = util_nearest_upper_bound_long(shelper.length, 0x1000, 2);
-    char *const buffer = malloc(shelper.allocated_length * sizeof *buffer);
-    if (!buffer) {
+    shelper.allocated_length = util_nearest_upper_bound_with_multiply_long(shelper.length, 0x1000, 2);
+    char *const sbuffer = malloc(shelper.allocated_length * sizeof *sbuffer);
+    if (!sbuffer) {
         free(plist.phandles);
         return 5;
     }
-    memcpy(buffer, shelper.stringblock, shelper.length * sizeof *shelper.stringblock);
-    memset(buffer + shelper.length, 0, (shelper.allocated_length - shelper.length) * sizeof *buffer);
-    shelper.stringblock = buffer;
+    memcpy(sbuffer, shelper.stringblock, shelper.length * sizeof *shelper.stringblock);
+    memset(sbuffer + shelper.length, 0, (shelper.allocated_length - shelper.length) * sizeof *sbuffer);
+    shelper.stringblock = sbuffer;
     uint8_t *node = NULL;
     size_t len_node = 0;
     if (dts_compose_partitions_node(&node, &len_node, &plist, phelper, &shelper, offset_phandle, offset_linux_phandle) || !node) {
@@ -772,25 +777,26 @@ dtb_buffer_entry_implement_partitions(
     size_t const size_after = old->buffer + dh.off_dt_struct + dh.size_dt_struct - end_start;
     size_t const size_dt_struct = size_before - dh.off_dt_struct + size_after + len_node + 8;
     size_t const offset_dt_strings = dh.off_dt_strings + size_dt_struct - dh.size_dt_struct; 
-    size_t const size_new = util_nearest_upper_bound_ulong(old->size - dh.size_dt_struct + size_dt_struct - dh.size_dt_strings + shelper.length, 4, 1);
+    size_t const size_new = util_nearest_upper_bound_ulong(old->size - dh.size_dt_struct + size_dt_struct - dh.size_dt_strings + shelper.length, 4);
     fprintf(stderr, "DTB buffer entry implement partitions: Old DTB size 0x%lx, existing partitions node in it size is 0x%lx, DT struct offset 0x%x, size 0x%x. New node size 0x%lx, will insert between %p (off 0x%lx) and %p (off 0x%lx), size before insertion is 0x%lx, size after insertion is 0x%lx, size of new DT struct is 0x%lx, new DT strings offset 0x%lx, size 0x%lx. Total size of new DTB is 0x%lx\n", old->size, len_existing_node, dh.off_dt_struct, dh.size_dt_struct, len_node, node_start, node_start - old->buffer, end_start, end_start - old->buffer, size_before, size_after, size_dt_struct, offset_dt_strings, shelper.length, size_new);
-    if (!(new->buffer = malloc(size_new * sizeof *new->buffer))) {
+    uint8_t *dbuffer = malloc(size_new * sizeof *dbuffer);
+    if (!dbuffer) {
         free(node);
         free(shelper.stringblock);
         free(plist.phandles);
         return 7;
     }
     // puts("Allocate success\n");
-    memset(new->buffer, 0, size_new * sizeof *new->buffer);
-    uint8_t *offset_hot = new->buffer;
+    memset(dbuffer, 0, size_new * sizeof *dbuffer);
+    uint8_t *offset_hot = dbuffer;
     memcpy(offset_hot, old->buffer, size_before);
     *(uint32_t *)(offset_hot += size_before) = DTS_BEGIN_NODE_ACTUAL;
     memcpy((offset_hot += 4), node, len_node);
     *(uint32_t *)(offset_hot += len_node) = DTS_END_NODE_ACTUAL;
     memcpy((offset_hot += 4), end_start, size_after);
     memcpy((offset_hot += size_after), shelper.stringblock, shelper.length);
-    // fprintf(stderr, "Calculated offset of DT string: 0x%lx, Actual offset: 0x%lx\n", offset_dt_strings, offset_hot - new->buffer);
-    struct dtb_header *dh_new = (struct dtb_header *)new->buffer;
+    // fprintf(stderr, "Calculated offset of DT string: 0x%lx, Actual offset: 0x%lx\n", offset_dt_strings, offset_hot - dbuffer);
+    struct dtb_header *dh_new = (struct dtb_header *)dbuffer;
     dh_new->totalsize = bswap_32(size_new);
     dh_new->size_dt_struct = bswap_32(size_dt_struct);
     dh_new->off_dt_strings = bswap_32(offset_dt_strings);
@@ -800,24 +806,57 @@ dtb_buffer_entry_implement_partitions(
     free(shelper.stringblock);
     free(plist.phandles);
     // int a = open("cache.dtb", O_WRONLY);
-    // write(a, new->buffer, size_new);
+    // write(a, dbuffer, size_new);
     // close(a);
-    struct dts_partitions_helper phelper_new;
-    printf("%p\n", new->buffer);
-    if (dtb_get_partitions(&phelper_new, new->buffer, new->size)) {
-        fputs("DTB buffer entry implement partitions: Failed to extract partitions from new DTB for varification\n", stderr);
-        free(new->buffer);
-        new->buffer = NULL;
+    if (dtb_parse_entry(new, dbuffer)) {
+        fputs("DTB buffer entry implement partitions: Failed to convert to buffer entry\n", stderr);
+        free(dbuffer);
         return 8;
     }
-    if (dts_compare_partitions_mixed(&phelper_new, phelper)) {
-        fputs("DTB buffer entry implement partitions: Reconstructed DTB yeilds different partitions:\n", stderr);
-        dts_report_partitions(&phelper_new);
+    free(dbuffer);
+    if (!new->has_partitions || !new->phelper.partitions_count) {
+        fputs("DTB buffer entry implement partitions: New buffer entry does not have partitions node, which is impossible\n", stderr);
         free(new->buffer);
         new->buffer = NULL;
         return 9;
     }
+    if (dts_compare_partitions_mixed(&new->phelper, phelper)) {
+        fputs("DTB buffer entry implement partitions: Reconstructed DTB yeilds different partitions:\n", stderr);
+        free(new->buffer);
+        new->buffer = NULL;
+        return 10;
+    }
+    fputs("Same partitions, all good\n", stderr);
+    // if (dtb_get_partitions(&phelper_new, new->buffer, new->size)) {
+    //     fputs("DTB buffer entry implement partitions: Failed to extract partitions from new DTB for varification\n", stderr);
+    //     free(new->buffer);
+    //     new->buffer = NULL;
+    //     return 8;
+    // }
+    // if (dts_compare_partitions_mixed(&phelper_new, phelper)) {
+    //     fputs("DTB buffer entry implement partitions: Reconstructed DTB yeilds different partitions:\n", stderr);
+    //     dts_report_partitions(&phelper_new);
+    //     free(new->buffer);
+    //     new->buffer = NULL;
+    //     return 9;
+    // }
     return 0;
+}
+
+int
+dtb_buffer_helper_not_all_have_buffer(
+    struct dtb_buffer_helper const * const  bhelper
+){
+    if (!bhelper || !bhelper->dtb_count) {
+        return -1;
+    }
+    int r = 0;
+    for (unsigned i = 0; i < bhelper->dtb_count; ++i) {
+        if (!bhelper->dtbs[i].buffer) {
+            ++r;
+        }
+    }
+    return r;
 }
 
 int
@@ -826,7 +865,7 @@ dtb_buffer_helper_implement_partitions(
     struct dtb_buffer_helper const * const              old,
     struct dts_partitions_helper_simple const * const   phelper
 ){
-    if (!old || !new || !phelper || !old->dtb_count || !old->dtbs->buffer || !phelper->partitions_count) {
+    if (!old || !new || !phelper || !old->dtb_count || dtb_buffer_helper_not_all_have_buffer(old) || !phelper->partitions_count) {
         fputs("DTB buffer helper implement partitions: Invalid arguments\n", stderr);
         return -1;
     }
@@ -849,6 +888,119 @@ dtb_buffer_helper_implement_partitions(
         }
     }
     return 0;
+}
+
+char
+dtb_pedantic_multi_entry_char(
+    char c
+){
+    if (c == ' ') {
+        return '\0';
+    } else {
+        return c;
+    }
+}
+    
+
+int
+dtb_combine_multi_dtb(
+    uint8_t * * const dtb,
+    size_t *size,
+    struct dtb_buffer_helper const * const  bhelper
+){
+    if (!dtb || !size || !bhelper || !bhelper->dtb_count || !bhelper->multi_version || dtb_buffer_helper_not_all_have_buffer(bhelper)) {
+        return -1;
+    }
+    size_t property_length;
+    switch (bhelper->multi_version) {
+        case 1:
+            property_length = DTB_MULTI_HEADER_PROPERTY_LENGTH_V1;
+            break;
+        case 2:
+            property_length = DTB_MULTI_HEADER_PROPERTY_LENGTH_V2;
+            break;
+        default:
+            return 1;
+    }
+    size_t const entry_length = property_length * 3 + 8;
+    *size = util_nearest_upper_bound_ulong(12 + entry_length * bhelper->dtb_count, DTB_PAGE_SIZE);
+    size_t *offsets = malloc(bhelper->dtb_count * sizeof *offsets);
+    if (!offsets) {
+        return 2;
+    }
+    for (unsigned i = 0; i < bhelper->dtb_count; ++i) {
+        offsets[i] = *size;
+        *size += util_nearest_upper_bound_ulong(bhelper->dtbs[i].size, DTB_PAGE_SIZE);
+    }
+    if (!(*dtb = malloc(*size * sizeof **dtb))) {
+        free(offsets);
+        return 3;
+    }
+    uint32_t *current = (uint32_t *)(*dtb);
+    *(current++) = DTB_MAGIC_MULTI;
+    *(current++) = bhelper->multi_version;
+    *(current++) = bhelper->dtb_count;
+    char *char_current = (char *)current;
+    struct dtb_buffer_entry *bentry;
+    char *properties[3];
+    char *property;
+    for (unsigned i = 0; i < bhelper->dtb_count; ++i) {
+        bentry = bhelper->dtbs + i;
+        properties[0] = bentry->soc;
+        properties[1] = bentry->platform;
+        properties[2] = bentry->variant;
+        for (unsigned j = 0; j < 3; ++j) {
+            property = properties[j];
+            for (unsigned k = 0; k < property_length; k+=4) {
+                *(char_current++) = dtb_pedantic_multi_entry_char(property[j+3]);
+                *(char_current++) = dtb_pedantic_multi_entry_char(property[j+2]);
+                *(char_current++) = dtb_pedantic_multi_entry_char(property[j+1]);
+                *(char_current++) = dtb_pedantic_multi_entry_char(property[j]);
+            }
+        }
+        current = (uint32_t *)char_current;
+        *(current++) = offsets[i];
+        *(current++) = bentry->size;
+    }
+    for (unsigned i = 0; i < bhelper->dtb_count; ++i) {
+        bentry = bhelper->dtbs + i;
+        memcpy(*dtb + offsets[i], bentry->buffer, bentry->size);
+    }
+    free(offsets);
+    return 0;
+}
+
+int
+dtb_compose(
+    uint8_t * * const dtb,
+    size_t *size,
+    struct dtb_buffer_helper const * const bhelper,
+    struct dts_partitions_helper_simple const * const   phelper
+){
+    if (!dtb || !bhelper || !bhelper->dtb_count || dtb_buffer_helper_not_all_have_buffer(bhelper) || !phelper || !phelper->partitions_count) {
+        return -1;
+    }
+    *dtb = NULL;
+    *size = 0;
+    struct dtb_buffer_helper bhelper_new;
+    if (dtb_buffer_helper_implement_partitions(&bhelper_new, bhelper, phelper)) {
+        fputs("DTB compose: Failed to implement partitions into DTB\n", stderr);
+    }
+    switch(bhelper->type_main) {
+        case DTB_TYPE_PLAIN:
+            *dtb = bhelper_new.dtbs->buffer;
+            *size = bhelper_new.dtbs->size;
+            return 0;
+        case DTB_TYPE_MULTI:
+
+        case DTB_TYPE_GZIPPED:
+        default:
+            fputs("DTB compose: Illegal DTB type\n", stderr);
+            return 1;
+    }
+    return 0;
+
+
 }
 
 // uint32_t enter_node(uint32_t layer, uint32_t offset_phandle, uint8_t *dtb, uint32_t offset, uint32_t end_offset, struct dtb_header *dh) {

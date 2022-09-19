@@ -20,18 +20,30 @@ void
         const char *    title
     );
 
+long 
+    util_nearest_upper_bound_long(
+        long    value,
+        long    bound
+    );
+
 unsigned long 
     util_nearest_upper_bound_ulong(
         unsigned long   value,
-        unsigned long   bound,
-        unsigned long   multiply
+        unsigned long   bound
     );
 
 long 
-    util_nearest_upper_bound_long(
+    util_nearest_upper_bound_with_multiply_long(
         long    value, 
         long    bound, 
         long    multiply
+    );
+
+unsigned long 
+    util_nearest_upper_bound_with_multiply_ulong(
+        unsigned long   value,
+        unsigned long   bound,
+        unsigned long   multiply
     );
 
 double 

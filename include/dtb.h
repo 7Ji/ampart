@@ -15,6 +15,10 @@
 #define DTB_PARTITION_SIZE          0x40000U  //256K
 #define DTB_PARTITION_DATA_SIZE     DTB_PARTITION_SIZE - 4*sizeof(uint32_t)
 
+#define DTB_MULTI_HEADER_PROPERTY_LENGTH_V1 4U
+#define DTB_MULTI_HEADER_PROPERTY_LENGTH_V2 16U
+#define DTB_MULTI_TARGET_LENGTH_V2          48U
+
 /* Macro */
 
 //#define DTB_HEADER_HOT(x)   union { uint32_t x, hot_##x; }
@@ -37,10 +41,10 @@ struct
         size_t                          size;
         struct dts_partitions_helper    phelper;
         bool                            has_partitions;
-        char                            target[36];
-        char                            soc[12];
-        char                            platform[12];
-        char                            variant[12];
+        char                            target[DTB_MULTI_TARGET_LENGTH_V2];
+        char                            soc[DTB_MULTI_HEADER_PROPERTY_LENGTH_V2];
+        char                            platform[DTB_MULTI_HEADER_PROPERTY_LENGTH_V2];
+        char                            variant[DTB_MULTI_HEADER_PROPERTY_LENGTH_V2];
     };
 
 struct
@@ -77,10 +81,10 @@ struct
 
 struct 
     dtb_multi_entry {
-        char        soc[12];
-        char        platform[12];
-        char        variant[12];
-        char        target[36];
+        char        soc[DTB_MULTI_HEADER_PROPERTY_LENGTH_V2];
+        char        platform[DTB_MULTI_HEADER_PROPERTY_LENGTH_V2];
+        char        variant[DTB_MULTI_HEADER_PROPERTY_LENGTH_V2];
+        char        target[DTB_MULTI_TARGET_LENGTH_V2];
         uint8_t *   dtb;
         uint32_t    offset;
         uint32_t    size;

@@ -334,22 +334,26 @@ cli_write_dtb(
     fprintf(stderr, "CLI write DTB: size of new DTB (as a whole) is 0x%lx\n", dtb_new_size);
     if (cli_options.dry_run) {
         fputs("CLI write DTB: In dry-run mode, assuming success\n", stderr);
+        free(dtb_new);
         return 0;
     }
     int fd = open(cli_options.target, O_WRONLY);
     if (fd < 0) {
         fputs("CLI write DTB: Failed to open target\n", stderr);
+        free(dtb_new);
         return 1;
     }
     off_t const dtb_offset = io_seek_dtb(fd);
     if (dtb_offset < 0) {
         fputs("CLI write DTB: Failed to seek\n", stderr);
+        close(fd);
+        free(dtb_new);
         return 2;
     }
-    // for (unsigned i = 0; i < bhelper_new.dtb_count; ++i) {
-    //     fputs("CLI write DTB: freeing\n", stderr);
-    //     free(bhelper_new.dtbs[i].buffer);
-    // }
+    // FILE *dtb = fopen("New.dtb", "w");
+    // fwrite(dtb_new, dtb_new_size, 1, dtb);
+    // fclose(dtb);
+    free(dtb_new);
     close(fd);
     fputs("CLI write DTB: WIP\n", stderr);
     return 0;
@@ -535,7 +539,7 @@ cli_check_parg_count(
     int const   max
 ){
     if (argc <= 0) {
-        fputs("CLI check PARG count: No PARG, early quit", stderr);
+        fputs("CLI check PARG count: No PARG, early quit\n", stderr);
         return -1;
     }
     if (max > 0 && argc > max) {

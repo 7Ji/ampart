@@ -22,8 +22,6 @@
 
 #define DTB_PARTITION_CHECKSUM_COUNT   (DTB_PARTITION_SIZE - 4U) >> 2U
 #define DTB_PAGE_SIZE                  0x800U
-#define DTB_MULTI_HEADER_PROPERTY_LENGTH_V1 4U
-#define DTB_MULTI_HEADER_PROPERTY_LENGTH_V2 16U
 #define DTB_MULTI_HEADER_ENTRY_LENGTH_v2    (DTB_MULTI_HEADER_PROPERTY_LENGTH_V2 * 3 + 8)
 
 /* Macro */
@@ -95,7 +93,7 @@ dtb_pasre_multi_entries_each(
     mhelper->entries[i].offset = *(const uint32_t *)(dtb + prop_offset);
     mhelper->entries[i].size = *(const uint32_t *)(dtb + prop_offset + 4);
     mhelper->entries[i].dtb = (uint8_t *)dtb + mhelper->entries[i].offset;
-    char target[3][12] = {0};
+    char target[3][DTB_MULTI_HEADER_PROPERTY_LENGTH_V2] = {0};
     for (int j = 0; j < 3; ++j) {
         for (uint32_t k = 0; k < len_property; k += 4) {
             char *const str_hot = target[j] + k;
@@ -109,16 +107,16 @@ dtb_pasre_multi_entries_each(
                 *(uint32_t *)str_hot = 0;
             }
         }
-        for (int k = 0; k < 12; ++k) {
+        for (unsigned k = 0; k < DTB_MULTI_HEADER_PROPERTY_LENGTH_V2; ++k) {
             if (target[j][k] == ' ') {
                 target[j][k] = '\0';
             }
         }
     }
-    strncpy(mhelper->entries[i].soc, target[0], 12);
-    strncpy(mhelper->entries[i].platform, target[1], 12);
-    strncpy(mhelper->entries[i].variant, target[2], 12);
-    snprintf(mhelper->entries[i].target, 36, "%s_%s_%s", target[0], target[1], target[2]);
+    strncpy(mhelper->entries[i].soc, target[0], DTB_MULTI_HEADER_PROPERTY_LENGTH_V2);
+    strncpy(mhelper->entries[i].platform, target[1], DTB_MULTI_HEADER_PROPERTY_LENGTH_V2);
+    strncpy(mhelper->entries[i].variant, target[2], DTB_MULTI_HEADER_PROPERTY_LENGTH_V2);
+    snprintf(mhelper->entries[i].target, DTB_MULTI_TARGET_LENGTH_V2, "%s_%s_%s", target[0], target[1], target[2]);
     fprintf(stderr, "DTB parse multi entries: Entry %uth of %u, %s, for SoC %s, platform %s, variant %s\n", i+1, mhelper->entry_count, mhelper->entries[i].target, mhelper->entries[i].soc, mhelper->entries[i].platform, mhelper->entries[i].variant);
 }
 
@@ -382,11 +380,11 @@ int
 dtb_entry_split_target_string(
     struct dtb_buffer_entry * const entry
 ){
-    char buffer[36] = {0};
-    strncpy(buffer, entry->target, 36);
+    char buffer[DTB_MULTI_TARGET_LENGTH_V2] = {0};
+    strncpy(buffer, entry->target, DTB_MULTI_TARGET_LENGTH_V2);
     char *key[3] = {buffer, NULL};
     unsigned key_id = 0;
-    for (unsigned i = 0; i < 36; ++i) {
+    for (unsigned i = 0; i < DTB_MULTI_TARGET_LENGTH_V2; ++i) {
         if (buffer[i] == '_') {
             buffer[i] = '\0';
             key[++key_id] = buffer + i + 1;
@@ -398,9 +396,9 @@ dtb_entry_split_target_string(
     if (key_id != 2) {
         return 1;
     }
-    strncpy(entry->soc, key[0], 12);
-    strncpy(entry->platform, key[1], 12);
-    strncpy(entry->variant, key[2], 12);
+    strncpy(entry->soc, key[0], DTB_MULTI_HEADER_PROPERTY_LENGTH_V2);
+    strncpy(entry->platform, key[1], DTB_MULTI_HEADER_PROPERTY_LENGTH_V2);
+    strncpy(entry->variant, key[2], DTB_MULTI_HEADER_PROPERTY_LENGTH_V2);
     fprintf(stderr, "DTB entry split target string: SoC %s, platform %s, variant %s\n", entry->soc, entry->platform, entry->variant);
     return 0;
 }
@@ -817,6 +815,11 @@ dtb_buffer_entry_implement_partitions(
     free(node);
     free(shelper.stringblock);
     free(plist.phandles);
+    // char name[40];
+    // snprintf(name, 40, "DTBhot_%s.dtb", old->target);
+    // FILE *fp = fopen(name, "w");
+    // fwrite(dbuffer, size_new, 1, fp);
+    // fclose(fp);
     // int a = open("cache.dtb", O_WRONLY);
     // write(a, dbuffer, size_new);
     // close(a);
@@ -907,8 +910,8 @@ char
 dtb_pedantic_multi_entry_char(
     char c
 ){
-    if (c == ' ') {
-        return '\0';
+    if (c == '\0') {
+        return ' ';
     } else {
         return c;
     }
@@ -963,7 +966,7 @@ dtb_combine_multi_dtb(
     *(current++) = DTB_MAGIC_MULTI;
     *(current++) = bhelper->multi_version;
     *(current++) = bhelper->dtb_count;
-    char *char_current = (char *)current;
+    char *char_current;
     struct dtb_buffer_entry *bentry;
     char *properties[3];
     char *property;
@@ -972,13 +975,14 @@ dtb_combine_multi_dtb(
         properties[0] = bentry->soc;
         properties[1] = bentry->platform;
         properties[2] = bentry->variant;
+        char_current = (char *)current;
         for (unsigned j = 0; j < 3; ++j) {
             property = properties[j];
             for (unsigned k = 0; k < property_length; k+=4) {
-                *(char_current++) = dtb_pedantic_multi_entry_char(property[j+3]);
-                *(char_current++) = dtb_pedantic_multi_entry_char(property[j+2]);
-                *(char_current++) = dtb_pedantic_multi_entry_char(property[j+1]);
-                *(char_current++) = dtb_pedantic_multi_entry_char(property[j]);
+                *(char_current++) = dtb_pedantic_multi_entry_char(property[k+3]);
+                *(char_current++) = dtb_pedantic_multi_entry_char(property[k+2]);
+                *(char_current++) = dtb_pedantic_multi_entry_char(property[k+1]);
+                *(char_current++) = dtb_pedantic_multi_entry_char(property[k]);
             }
         }
         current = (uint32_t *)char_current;
@@ -1049,7 +1053,7 @@ dtb_compose(
                 case DTB_TYPE_MULTI: {
                     uint8_t *buffer;
                     size_t msize;
-                    if (dtb_combine_multi_dtb(&buffer, &msize, bhelper)) {
+                    if (dtb_combine_multi_dtb(&buffer, &msize, &bhelper_new)) {
                         fputs("DTB compose: Failed to compose multi-DTB before gzipping it\n", stderr);
                         dtb_free_buffer_helper(&bhelper_new);
                         return 4;

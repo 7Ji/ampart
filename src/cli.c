@@ -558,17 +558,23 @@ cli_mode_dedit(
     char const * const * const              argv
 ){
     fputs("CLI mode dedit: Edit partitions node in DTB, and potentially create EPT from it\n", stderr);
-    if (cli_check_parg_count(argc, 0)) {
-        return 0;
+    if (cli_check_parg_count(argc, 0) || !bhelper) {
+        fputs("CLI mode dedit: Illegal arguments\n", stderr);
+        return -1;
     }
     for (int i =0; i<argc; ++i) {
         printf("%d: %s\n", i, argv[i]);
     }
-    if (!bhelper) {
-        return 1;
+    struct dts_partitions_helper_simple dparts;
+    if (dts_partitions_helper_to_simple(&dparts, &bhelper->dtbs->phelper)) {
+        fputs("CLI mode dedit: Failed to convert to simple helper\n", stderr);
+        return 2;
     }
-    struct dts_partitions_helper_simple const * const dparts = NULL;
-    if (cli_write_dtb(bhelper, dparts)) {
+    if (dts_dedit_parse(&dparts, argc, argv)) {
+        fputs("CLI mode dedit: Failed to parse arguments\n", stderr);
+        return 3;
+    }
+    if (cli_write_dtb(bhelper, &dparts)) {
         fputs("CLI mode dedit: Failed to write DTB\n", stderr);
         return 2;
     }

@@ -91,6 +91,13 @@ int
     );
 
 int
+    dts_dedit_parse(
+        struct dts_partitions_helper_simple *   dparts,
+        int                                     argc,
+        char const * const *                    argv
+    );
+
+int
     dts_drop_partitions_phandles(
         struct dts_phandle_list *               plist,
         struct dts_partitions_helper const *    phelper
@@ -131,6 +138,12 @@ int
         uint32_t const          property_offset,
         char *                  string,
         size_t const            max_len
+    );
+
+int
+    dts_partitions_helper_to_simple(
+        struct dts_partitions_helper_simple *   simple,
+        struct dts_partitions_helper const *    generic
     );
 
 // int 

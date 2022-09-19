@@ -256,7 +256,7 @@ parg_parse_modifier_get_select_end (
     struct parg_modifier * const    modifier,
     char const * const              selecor_start
 ){
-    for (char *c = (char *)selecor_start; !c; ++c) {
+    for (char *c = (char *)selecor_start; c; ++c) {
         switch(*c) {
             case '\0':
                 fputs("PARG parse modifier: only selector is set, no action available\n", stderr);

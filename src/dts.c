@@ -1284,6 +1284,21 @@ dts_get_node_full_length(
     return 4 * (offset_child + 2);
 }
 
+int
+dts_partitions_helper_to_simple(
+    struct dts_partitions_helper_simple * const simple,
+    struct dts_partitions_helper const * const  generic
+){
+    if (!simple || !generic || !generic->partitions_count) {
+        return -1;
+    }
+    simple->partitions_count = generic->partitions_count;
+    for (unsigned i = 0; i < simple->partitions_count; ++i) {
+        simple->partitions[i] = *(struct dts_partition_entry_simple *)(generic->partitions + i);
+    }
+    return 0;
+}
+
 struct dts_partition_entry_simple *
 dts_dedit_part_select(
     struct parg_modifier const * const modifier,
@@ -1359,10 +1374,53 @@ dts_dedit_adjust(
 }
 
 int
+dts_dedit_place(
+    struct parg_modifier const * const          modifier,
+    struct dts_partitions_helper_simple * const dparts,
+    struct dts_partition_entry_simple * const   dpart
+){
+    int place_target;
+    switch (modifier->modify_place) {
+        case PARG_MODIFY_PLACE_ABSOLUTE:
+            if (modifier->place >= 0) {
+                place_target = modifier->place;
+            } else {
+                place_target = dparts->partitions_count + modifier->place;
+            }
+            break;
+        case PARG_MODIFY_PLACE_RELATIVE:
+            place_target = dpart - dparts->partitions + modifier->place;
+            break;
+        default:
+            fputs("DTS dedit place: Illegal place method\n", stderr);
+            return -1;
+    }
+    if (place_target < 0 || (unsigned)place_target >= dparts->partitions_count) {
+        fprintf(stderr, "DTS dedit place: Target place %i overflows (minumum 0 as start, maximum %u as end)\n", place_target, dparts->partitions_count);
+        return 1;
+    }
+    struct dts_partition_entry_simple * const dpart_target = dparts->partitions + place_target;
+    if (dpart_target > dpart) {
+        struct dts_partition_entry_simple const dpart_buffer = *dpart;
+        for (struct dts_partition_entry_simple *dpart_hot = dpart; dpart_hot < dpart_target; ++dpart_hot) {
+            *(dpart_hot) = *(dpart_hot + 1);
+        }
+        *dpart_target = dpart_buffer;
+    } else if (dpart_target < dpart) {
+        struct dts_partition_entry_simple const dpart_buffer = *dpart;
+        for (struct dts_partition_entry_simple *dpart_hot = dpart; dpart_hot > dpart_target; --dpart_hot) {
+            *(dpart_hot) = *(dpart_hot + 1);
+        }
+        *dpart_target = dpart_buffer;
+    }
+    return 0;
+}
+
+int
 dts_dedit_parse(
+    struct dts_partitions_helper_simple * const dparts,
     int const                                   argc,
-    char const * const * const                  argv,
-    struct dts_partitions_helper_simple * const dparts
+    char const * const * const                  argv
 ){
     if (argc <= 0 || !argv || !dparts || !dparts->partitions_count) {
         fputs("DTS dedit parse: Illegal arguments\n", stderr);
@@ -1378,12 +1436,12 @@ dts_dedit_parse(
         fputs("DTS dedit parse: No editor\n", stderr);
         return 2;
     }
+    fputs("DTS dedit parse: Table before editting:\n", stderr);
+    dts_report_partitions_simple(dparts);
     struct parg_editor *editor;
     struct parg_definer *definer;
     struct parg_modifier *modifier;
-    struct dts_partition_entry_simple *dpart, *dpart_hot, *dpart_target;
-    struct dts_partition_entry_simple dpart_buffer;
-    int place_target;
+    struct dts_partition_entry_simple *dpart, *dpart_hot;
     for (unsigned i = 0; i < ehelper.count; ++i) {
         editor = ehelper.editors + i;
         if (editor->modify) {
@@ -1416,38 +1474,12 @@ dts_dedit_parse(
                     }
                     dpart_hot = dparts->partitions + dparts->partitions_count++;
                     *dpart_hot = *dpart;
+                    strncpy(dpart_hot->name, modifier->name, MAX_PARTITION_NAME_LENGTH);
                     break;
                 case PARG_MODIFY_PART_PLACE:
-                    switch (modifier->modify_place) {
-                        case PARG_MODIFY_PLACE_PRESERVE:
-                            return 1;
-                        case PARG_MODIFY_PLACE_ABSOLUTE:
-                            if (modifier->place >= 0) {
-                                place_target = modifier->place;
-                            } else {
-                                place_target = dparts->partitions_count + modifier->place;
-                            }
-                            break;
-                        case PARG_MODIFY_PLACE_RELATIVE:
-                            place_target = dpart - dparts->partitions + modifier->place;
-                            break;
-                    }
-                    if (place_target < 0 || (unsigned)place_target >= dparts->partitions_count) {
+                    if (dts_dedit_place(modifier, dparts, dpart)) {
+                        fputs("DTS dedit parse: Failed to place partition\n", stderr);
                         return 1;
-                    }
-                    dpart_target = dparts->partitions + place_target;
-                    if (dpart_target > dpart) {
-                        dpart_buffer = *dpart;
-                        for (dpart_hot = dpart; dpart_hot < dpart_target; ++dpart_hot) {
-                            *(dpart_hot) = *(dpart_hot + 1);
-                        }
-                        *dpart_target = dpart_buffer;
-                    } else if (dpart_target < dpart) {
-                        dpart_buffer = *dpart;
-                        for (dpart_hot = dpart; dpart_hot > dpart_target; --dpart_hot) {
-                            *(dpart_hot) = *(dpart_hot + 1);
-                        }
-                        *dpart_target = dpart_buffer;
                     }
                     break;
             }
@@ -1464,5 +1496,7 @@ dts_dedit_parse(
         }
     }
     free(ehelper.editors);
+    fputs("DTS dedit parse: Table after editting:\n", stderr);
+    dts_report_partitions_simple(dparts);
     return 0;
 }

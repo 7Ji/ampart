@@ -167,16 +167,19 @@ dtb_get_partitions(
         printf("End: 0x%x, Size: 0x%lx\n", dh.off_dt_strings + dh.size_dt_strings, size);
         return 2;
     }
-    const uint8_t *const node = DTB_GET_PARTITIONS_NODE_FROM_DTS(dtb + dh.off_dt_struct, dh.size_dt_struct);
-    if (!node) {
+    if (!(phelper->node = DTB_GET_PARTITIONS_NODE_FROM_DTS(dtb + dh.off_dt_struct, dh.size_dt_struct))) {
         fputs("DTB get partitions: partitions node does not exist in dtb\n", stderr);
         return 3;
     }
-    struct stringblock_helper shelper;
-    shelper.length = dh.size_dt_strings;
-    shelper.allocated_length = dh.size_dt_strings;
-    shelper.stringblock = (char *)(dtb + dh.off_dt_strings);
-    if (dts_get_partitions_from_node(phelper, node, &shelper)) {
+    // printf("%p\n", phelper->node);
+    struct stringblock_helper const shelper = {
+        .stringblock = (char *)(dtb + dh.off_dt_strings),
+        .length = dh.size_dt_strings,
+        .allocated_length = dh.size_dt_strings
+    };
+    // printf("0x%lx\n", shelper.length);
+    // puts((char *)phelper->node);
+    if (dts_get_partitions_from_node(phelper, &shelper)) {
         fputs("DTB get partitions: failed to get partitions\n", stderr);
         return 4;
     }
@@ -318,7 +321,9 @@ size_t
 dtb_get_size(
     uint8_t const * const   dtb
 ){
-    return bswap_32(((struct dtb_header *)dtb)->totalsize);
+    size_t const size = bswap_32(((struct dtb_header *)dtb)->totalsize);
+    fprintf(stderr, "DTB get size: size recorded in header is 0x%lx\n", size);
+    return size;
 }
 
 static inline
@@ -368,6 +373,7 @@ dtb_get_target(
         return 2;
     }
     dts_get_property_string(node, off_target, target, 36);
+    fprintf(stderr, "DTB get target: target is %s\n", target);
     return 0;
 }
 
@@ -395,6 +401,7 @@ dtb_entry_split_target_string(
     strncpy(entry->soc, key[0], 12);
     strncpy(entry->platform, key[1], 12);
     strncpy(entry->variant, key[2], 12);
+    fprintf(stderr, "DTB entry split target string: SoC %s, platform %s, variant %s\n", entry->soc, entry->platform, entry->variant);
     return 0;
 }
 
@@ -404,19 +411,24 @@ dtb_parse_entry(
     struct dtb_buffer_entry * const entry,
     uint8_t const * const           buffer
 ){
+    // printf("%08x @ %p\n", *(uint32_t*)buffer, buffer);
     entry->size = dtb_get_size(buffer);
     entry->buffer = malloc(entry->size);
     if (!entry->buffer) {
+        fputs("DTB parse entry: Failed to allocate memory for buffer\n", stderr);
         return 1;
     }
     memcpy(entry->buffer, buffer, entry->size);
     if (dtb_get_target(entry->buffer, entry->target)) {
+        fputs("DTB parse entry: Failed get target name\n", stderr);
         return 2;
     }
     if (dtb_entry_split_target_string(entry)) {
+        fputs("DTB parse entry: Failed split target string into SoC, platform and variant\n", stderr);
         return 3;
     }
     if (dtb_get_partitions(&(entry->phelper), entry->buffer, entry->size)) {
+        fputs("DTB parse entry: Failed to get partitions in DTB\n", stderr);
         entry->has_partitions = false;
         // free(entry->buffer);
         return -1;
@@ -876,6 +888,7 @@ dtb_buffer_helper_implement_partitions(
     }
     new->type_main = old->type_main;
     new->type_sub = old->type_sub;
+    new->multi_version = old->multi_version;
     for (unsigned i = 0; i < new->dtb_count; ++i) {
         struct dtb_buffer_entry const *const entry_old = old->dtbs + i;
         struct dtb_buffer_entry *const entry_new = new->dtbs + i;
@@ -909,6 +922,7 @@ dtb_combine_multi_dtb(
     struct dtb_buffer_helper const * const  bhelper
 ){
     if (!dtb || !size || !bhelper || !bhelper->dtb_count || !bhelper->multi_version || dtb_buffer_helper_not_all_have_buffer(bhelper)) {
+        fputs("DTB combine multi DTB: illegal arguments\n", stderr);
         return -1;
     }
     size_t property_length;
@@ -920,6 +934,8 @@ dtb_combine_multi_dtb(
             property_length = DTB_MULTI_HEADER_PROPERTY_LENGTH_V2;
             break;
         default:
+            printf("%u\n", bhelper->multi_version);
+            fputs("DTB combine multi DTB: illegal multi DTB version\n", stderr);
             return 1;
     }
     size_t const entry_length = property_length * 3 + 8;
@@ -928,11 +944,18 @@ dtb_combine_multi_dtb(
     if (!offsets) {
         return 2;
     }
+    size_t *sizes = malloc(bhelper->dtb_count * sizeof *offsets);
+    if (!sizes) {
+        free(offsets);
+        return 3;
+    }
     for (unsigned i = 0; i < bhelper->dtb_count; ++i) {
         offsets[i] = *size;
-        *size += util_nearest_upper_bound_ulong(bhelper->dtbs[i].size, DTB_PAGE_SIZE);
+        sizes[i] = util_nearest_upper_bound_ulong(bhelper->dtbs[i].size, DTB_PAGE_SIZE);
+        *size += sizes[i];
     }
     if (!(*dtb = malloc(*size * sizeof **dtb))) {
+        free(sizes);
         free(offsets);
         return 3;
     }
@@ -960,15 +983,30 @@ dtb_combine_multi_dtb(
         }
         current = (uint32_t *)char_current;
         *(current++) = offsets[i];
-        *(current++) = bentry->size;
+        *(current++) = sizes[i];
     }
     for (unsigned i = 0; i < bhelper->dtb_count; ++i) {
         bentry = bhelper->dtbs + i;
         memcpy(*dtb + offsets[i], bentry->buffer, bentry->size);
     }
+    free(sizes);
     free(offsets);
     return 0;
 }
+
+// void
+// dtb_free_buffer_helper(
+//     struct dtb_buffer_helper const * const bhelper
+// ){
+//     if (!bhelper || !bhelper->dtb_count) {
+//         return;
+//     }
+//     for (unsigned i = 0; i < bhelper->dtb_count; ++i) {
+//         if (bhelper->dtbs[i].buffer) {
+//             free(bhelper->dtbs[i].buffer);
+//         }
+//     }
+// }
 
 int
 dtb_compose(
@@ -985,22 +1023,57 @@ dtb_compose(
     struct dtb_buffer_helper bhelper_new;
     if (dtb_buffer_helper_implement_partitions(&bhelper_new, bhelper, phelper)) {
         fputs("DTB compose: Failed to implement partitions into DTB\n", stderr);
+        return 1;
     }
     switch(bhelper->type_main) {
         case DTB_TYPE_PLAIN:
             *dtb = bhelper_new.dtbs->buffer;
             *size = bhelper_new.dtbs->size;
-            return 0;
+            break;
         case DTB_TYPE_MULTI:
-
+            if (dtb_combine_multi_dtb(dtb, size, &bhelper_new)) {
+                fputs("DTB compose: Failed to compose multi-DTB\n", stderr);
+                dtb_free_buffer_helper(&bhelper_new);
+                return 2;
+            }
+            break;
         case DTB_TYPE_GZIPPED:
+            switch (bhelper->type_sub) {
+                case DTB_TYPE_PLAIN:
+                    if (!(*size = gzip_zip(bhelper_new.dtbs->buffer, bhelper_new.dtbs->size, dtb))) {
+                        fputs("DTB compose: Failed to compose Gzipped plain DTB\n", stderr);
+                        dtb_free_buffer_helper(&bhelper_new);
+                        return 3;
+                    }
+                    break;
+                case DTB_TYPE_MULTI: {
+                    uint8_t *buffer;
+                    size_t msize;
+                    if (dtb_combine_multi_dtb(&buffer, &msize, bhelper)) {
+                        fputs("DTB compose: Failed to compose multi-DTB before gzipping it\n", stderr);
+                        dtb_free_buffer_helper(&bhelper_new);
+                        return 4;
+                    }
+                    if (!(*size = gzip_zip(buffer, msize, dtb))) {
+                        fputs("DTB compose: Failed to compose Gzipped multi-DTB\n", stderr);
+                        free(buffer);
+                        dtb_free_buffer_helper(&bhelper_new);
+                        return 5;
+                    }
+                    free(buffer);
+                    break;
+                }
+                default:
+                    fputs("DTB compose: Illegal DTB sub type for gzipped DTB\n", stderr);
+                    return 6;
+            }
+            break;
         default:
             fputs("DTB compose: Illegal DTB type\n", stderr);
-            return 1;
+            return 7;
     }
+    dtb_free_buffer_helper(&bhelper_new);
     return 0;
-
-
 }
 
 // uint32_t enter_node(uint32_t layer, uint32_t offset_phandle, uint8_t *dtb, uint32_t offset, uint32_t end_offset, struct dtb_header *dh) {

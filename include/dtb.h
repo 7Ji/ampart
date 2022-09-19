@@ -127,6 +127,14 @@ int
         struct dtb_buffer_helper const *    bhelper
     );
 
+int
+    dtb_compose(
+        uint8_t * *                                 dtb,
+        size_t *                                    size,
+        struct dtb_buffer_helper const *            bhelper,
+        struct dts_partitions_helper_simple const * phelper
+    );
+
 void
     dtb_free_buffer_helper(
         struct dtb_buffer_helper *  bhelper

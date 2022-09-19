@@ -325,11 +325,13 @@ cli_write_dtb(
         fputs("CLI write DTB: Target content type not recognized, this should not happen, refuse to continue\n", stderr);
         return -2;
     }
-    struct dtb_buffer_helper bhelper_new;
-    if (dtb_buffer_helper_implement_partitions(&bhelper_new, bhelper, dparts)) {
+    uint8_t *dtb_new;
+    size_t dtb_new_size;
+    if (dtb_compose(&dtb_new, &dtb_new_size, bhelper, dparts)) {
         fputs("CLI write DTB: Failed to generate new DTBs\n", stderr);
         return 1;
     }
+    fprintf(stderr, "CLI write DTB: size of new DTB (as a whole) is 0x%lx\n", dtb_new_size);
     if (cli_options.dry_run) {
         fputs("CLI write DTB: In dry-run mode, assuming success\n", stderr);
         return 0;
@@ -344,10 +346,10 @@ cli_write_dtb(
         fputs("CLI write DTB: Failed to seek\n", stderr);
         return 2;
     }
-    for (unsigned i = 0; i < bhelper_new.dtb_count; ++i) {
-        fputs("CLI write DTB: freeing\n", stderr);
-        free(bhelper_new.dtbs[i].buffer);
-    }
+    // for (unsigned i = 0; i < bhelper_new.dtb_count; ++i) {
+    //     fputs("CLI write DTB: freeing\n", stderr);
+    //     free(bhelper_new.dtbs[i].buffer);
+    // }
     close(fd);
     fputs("CLI write DTB: WIP\n", stderr);
     return 0;

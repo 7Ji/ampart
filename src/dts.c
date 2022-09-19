@@ -627,10 +627,9 @@ dts_parse_partitions_node_prop(
 int
 dts_get_partitions_from_node(
     struct dts_partitions_helper *          phelper,
-    uint8_t const * const                   node,
     struct stringblock_helper const * const shelper
 ){
-    if (memcmp(node, dts_partitions_node_start, DTS_PARTITIONS_NODE_START_LENGTH)) {
+    if (memcmp(phelper->node, dts_partitions_node_start, DTS_PARTITIONS_NODE_START_LENGTH)) {
         fputs("DTS get partitions from node: node does not start properly\n", stderr);
         return 1;
     }
@@ -638,8 +637,10 @@ dts_get_partitions_from_node(
     if (dts_get_partitions_get_essential_offsets(&offsets, shelper)) {
         return 2;
     }
+    uint8_t *node_temp = phelper->node;
     memset(phelper, 0, sizeof *phelper);
-    uint32_t const * const start = (const uint32_t *)(node + DTS_PARTITIONS_NODE_START_LENGTH);
+    phelper->node = node_temp;
+    uint32_t const * const start = (const uint32_t *)(phelper->node + DTS_PARTITIONS_NODE_START_LENGTH);
     uint32_t const *current;
     bool in_partition = false;
     struct dts_partition_entry *partition = NULL;
@@ -658,7 +659,7 @@ dts_get_partitions_from_node(
                     }
                     in_partition = false;
                 } else {
-                    phelper->node = (uint8_t *)node;
+                    // phelper->node = (uint8_t *)node;
                     return 0;
                 }
                 break;

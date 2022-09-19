@@ -113,7 +113,6 @@ size_t
 int
     dts_get_partitions_from_node(
         struct dts_partitions_helper *          phelper,
-        uint8_t const *                     node,
         struct stringblock_helper const *   shelper
     );
 

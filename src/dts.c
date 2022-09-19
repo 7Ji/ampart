@@ -1039,8 +1039,9 @@ dts_dclone_parse(
     int const                                   argc,
     char const * const * const                  argv
 ){
-    if (argc < 0 || argc >= MAX_PARTITIONS_COUNT || !dparts || !dparts->partitions_count || !argv) {
+    if (argc < 0 || argc >= MAX_PARTITIONS_COUNT || !dparts || !argv) {
         fputs("DTS dclone parse: Illegal arguments\n", stderr);
+        printf("%d, %u\n", argc, dparts->partitions_count);
         return -1;
     }
     struct parg_definer_helper_static dhelper;

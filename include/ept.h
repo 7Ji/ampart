@@ -156,6 +156,13 @@ int
     );
 
 int
+    ept_table_from_dts_partitions_helper_simple(
+        struct ept_table * const                    table,
+        struct dts_partitions_helper_simple const * phelper, 
+        uint64_t const                              capacity
+    );
+
+int
     ept_table_to_dts_partitions_helper(
         struct ept_table const *                table,
         struct dts_partitions_helper_simple *   dparts,

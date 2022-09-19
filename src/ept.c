@@ -328,6 +328,47 @@ ept_table_from_dts_partitions_helper(
 }
 
 int
+ept_table_from_dts_partitions_helper_simple(
+    struct ept_table * const                            table,
+    struct dts_partitions_helper_simple const * const   phelper, 
+    uint64_t const                                      capacity
+){
+    if (!phelper || !phelper->partitions_count) {
+        fputs("EPT table from DTS partitions helper: Helper invalid or does not contain valid partitions\n", stderr);
+        return 1;
+    }
+    memcpy(table, &ept_table_empty, sizeof *table);
+    const struct dts_partition_entry_simple *part_dtb;
+    struct ept_partition *part_table;
+    bool replace;
+    for (uint32_t i=0; i<phelper->partitions_count; ++i) {
+        part_dtb = phelper->partitions + i;
+        replace = false;
+        for (uint32_t j=0; j<table->partitions_count; ++j) {
+            part_table = table->partitions + j;
+            if (!strncmp(part_dtb->name, part_table->name, MAX_PARTITION_NAME_LENGTH)) {
+                part_table->size = part_dtb->size;
+                part_table->mask_flags = part_dtb->mask;
+                replace = true;
+                break;
+            }
+        }
+        if (!replace) {
+            part_table = table->partitions + table->partitions_count++;
+            strncpy(part_table->name, part_dtb->name, MAX_PARTITION_NAME_LENGTH);
+            part_table->size = part_dtb->size;
+            part_table->mask_flags = part_dtb->mask;
+        }
+    }
+    if (ept_pedantic_offsets(table, capacity)) {
+        fputs("EPT table from DTS partitions helper: Failed to fill in offsets\n", stderr);
+        return 2;
+    }
+    ept_checksum_table(table);
+    return 0;
+}
+
+int
 ept_table_from_dtb(
     struct ept_table * const    table,
     uint8_t const * const       dtb,

@@ -341,7 +341,7 @@ cli_write_dtb(
         free(dtb_new);
         return 0;
     }
-    int fd = open(cli_options.target, O_WRONLY);
+    int fd = open(cli_options.target, cli_options.content == CLI_CONTENT_TYPE_DTB ? O_WRONLY | O_TRUNC : O_WRONLY);
     if (fd < 0) {
         fputs("CLI write DTB: Failed to open target\n", stderr);
         free(dtb_new);
@@ -354,12 +354,14 @@ cli_write_dtb(
         free(dtb_new);
         return 2;
     }
-    // FILE *dtb = fopen("New.dtb", "w");
-    // fwrite(dtb_new, dtb_new_size, 1, dtb);
-    // fclose(dtb);
-    free(dtb_new);
+    if (io_write_till_finish(fd, dtb_new, dtb_new_size)) {
+        fputs("CLI write DTB: Failed to write\n", stderr);
+        close(fd);
+        free(dtb_new);
+    }
     close(fd);
-    fputs("CLI write DTB: WIP\n", stderr);
+    free(dtb_new);
+    fputs("CLI write DTB: Write successful\n", stderr);
     return 0;
 }
 
@@ -424,8 +426,13 @@ cli_write_ept(
         }
         free(mhelper.entries);
     }
+    if (io_write_till_finish(fd, (struct ept_table *)new, sizeof *new)){
+        fputs("CLI write EPT: Failed to write\n", stderr);
+        close(fd);
+        return 4;
+    }
     close(fd);
-    fputs("CLI write EPT: WIP\n", stderr);
+    fputs("CLI write EPT: Write successful\n", stderr);
     return 0;
 }
 
@@ -681,7 +688,24 @@ cli_mode_dclone(
         return 4;
     }
     if (table) {
-        fputs("CLI mode dclone: Corresponding table updated, also write it\n", stderr);
+        fputs("CLI mode dclone: Checking if EPT also needs update\n", stderr);
+        size_t const capacity = cli_get_capacity(table);
+        if (!capacity) {
+            fputs("CLI mode dclone: Failed to check capacity\n", stderr);
+            return 5;
+        }
+        struct ept_table table_new;
+        if (ept_table_from_dts_partitions_helper_simple(&table_new, &dparts, capacity)) {
+            fputs("CLI mode dclone: Failed create EPT from DTB\n", stderr);
+            return 6;
+        }
+        if (ept_compare_table(table, &table_new)) {
+            fputs("CLI mode dclone: Corresponding table updated, also write it\n", stderr);
+            if (cli_write_ept(table, &table_new)) {
+                fputs("CLI mode dclone: Failed to write EPT\n", stderr);
+                return 7;
+            }
+        }
         return 0;
     }
     return 0;

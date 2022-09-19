@@ -122,4 +122,17 @@ int
         char const * const *                argv
     );
 
+int
+    parg_parse_dedit_mode(
+        struct parg_editor_helper * ehelper,
+        int const                   argc,
+        char const * const *        argv
+    );
+
+int
+    parg_parse_eedit_mode(
+        struct parg_editor_helper * ehelper,
+        int const                   argc,
+        char const * const *        argv
+    );
 #endif

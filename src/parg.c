@@ -22,7 +22,7 @@
         return -2; \
     }
 
-#define PARG_PARSE_YOLO_MODE(definer, arg) \
+#define PARG_PARSE_DEFINER_ECREATE_MODE(definer, arg) \
     parg_parse_definer( \
         definer, \
         arg, \
@@ -32,7 +32,7 @@
         PARG_ANY \
     )
 
-#define PARG_PARSE_ECLONE_MODE(definer, arg) \
+#define PARG_PARSE_DEFINER_ECLONE_MODE(definer, arg) \
     parg_parse_definer( \
         definer, \
         arg, \
@@ -42,7 +42,7 @@
         PARG_REQUIRED \
     )
 
-#define PARG_PARSE_DCLONE_MODE(definer, arg) \
+#define PARG_PARSE_DEFINER_DCLONE_MODE(definer, arg) \
     parg_parse_definer( \
         definer, \
         arg, \
@@ -322,17 +322,18 @@ static inline
 int
 parg_parse_modifier_get_adjustor(
     struct parg_modifier * const    modifier,
-    char const * const              adjustor
+    char const * const              adjustor,
+    bool const                      allow_adjustor_offset
 ){
     const char *seperators[3];
     if (parg_parse_get_seperators(seperators, adjustor)) {
-        fprintf(stderr, "PARG parse modifier: Adjustor too short: %s\n", adjustor);
+        fprintf(stderr, "PARG parse modifier get adjustor: Adjustor too short: %s\n", adjustor);
         return 1;
     }
     if (seperators[0] != adjustor) {
         size_t len_name = seperators[0] - adjustor;
         if (len_name > MAX_PARTITION_NAME_LENGTH - 1) {
-            return 1;
+            return 2;
         }
         strncpy(modifier->name, adjustor, len_name);
         modifier->modify_name = PARG_MODIFY_DETAIL_SET;
@@ -340,18 +341,22 @@ parg_parse_modifier_get_adjustor(
         modifier->modify_name = PARG_MODIFY_DETAIL_PRESERVE;
     }
     if (seperators[1] - seperators[0] > 1) {
+        if (!allow_adjustor_offset) {
+            fprintf(stderr, "PARG parse modifier get adjustor: Offset adjusted when not allowed: %s\n", adjustor);
+            return 3;
+        }
         if (parg_parse_u64_adjustor(&modifier->offset, &modifier->modify_offset, seperators[0] + 1, seperators[1])) {
-            fprintf(stderr, "PARG parse modifier: Failed to parse offset modifier in adjustor: %s\n", adjustor);
-            return 1;
+            fprintf(stderr, "PARG parse modifier get adjustor: Failed to parse offset modifier in adjustor: %s\n", adjustor);
+            return 4;
         }
     } else {
         modifier->modify_offset = PARG_MODIFY_DETAIL_PRESERVE;
     }
     if (seperators[2] - seperators[1] > 1) {
         if (parg_parse_u64_adjustor(&modifier->size, &modifier->modify_size, seperators[1] + 1, seperators[2])) {
-            fprintf(stderr, "PARG parse partition: Failed to parse size modifier in adjustor: %s\n", adjustor);
+            fprintf(stderr, "PARG parse partition get adjustor: Failed to parse size modifier in adjustor: %s\n", adjustor);
             free(modifier);
-            return 1;
+            return 5;
         }
     } else {
         modifier->modify_size = PARG_MODIFY_DETAIL_PRESERVE;
@@ -413,11 +418,12 @@ static inline
 int
 parg_parse_modifier_dispatcher(
     struct parg_modifier * const    modifier,
-    char const * const              arg
+    char const * const              arg,
+    bool const                      allow_adjustor_offset
 ) {
     switch (modifier->modify_part) {
         case PARG_MODIFY_PART_ADJUST:
-            if (parg_parse_modifier_get_adjustor(modifier, arg)) {
+            if (parg_parse_modifier_get_adjustor(modifier, arg, allow_adjustor_offset)) {
                 fprintf(stderr, "PARG parse modifier: adjustor invalid: %s\n", arg);
                 return 1;
             }
@@ -447,27 +453,33 @@ parg_parse_modifier_dispatcher(
 int
 parg_parse_modifier(
     struct parg_modifier * const    modifier,
-    char const * const              arg
+    char const * const              arg,
+    // bool const                      allow_operator_delete,
+    bool const                      allow_adjustor_offset
 ) {
     if (!modifier || util_string_is_empty(arg)) {
         fputs("PARG parse modifier: Illegal arguments\n", stderr);
         return -1;
     }
     if (parg_parse_modifier_get_select_method(modifier, arg[1])) {
-        fprintf(stderr, "PARG parse modifier: no selector given in arg: %s\n", arg);
+        fprintf(stderr, "PARG parse modifier: No selector given in arg: %s\n", arg);
         return 1;
     }
     char const *const select_end = parg_parse_modifier_get_select_end(modifier, arg + 2);
     if (!select_end) {
-        fprintf(stderr, "PARG parse modifier: selector/operator invalid/incomplete: %s\n", arg);
+        fprintf(stderr, "PARG parse modifier: Selector/operator invalid/incomplete: %s\n", arg);
         return 2;
     }
+    // if (!allow_operator_delete && modifier->modify_part == PARG_MODIFY_PART_DELETE) {
+    //     fprintf(stderr, "PARG pasrse modifier: Delete operator used when not allowed: %s\n", arg);
+    //     return 3;
+    // }
     if (parg_parse_modifier_get_selector(modifier, arg + 1, select_end - arg - 1)) {
-        fprintf(stderr, "PARG parse modifier: selector invalid: %s\n", arg);
-        return 3;
-    }
-    if (parg_parse_modifier_dispatcher(modifier, select_end + 1)) {
+        fprintf(stderr, "PARG parse modifier: Selector invalid: %s\n", arg);
         return 4;
+    }
+    if (parg_parse_modifier_dispatcher(modifier, select_end + 1, allow_adjustor_offset)) {
+        return 5;
     }
     return 0;
 }
@@ -475,20 +487,28 @@ parg_parse_modifier(
 int
 parg_parse_editor(
     struct parg_editor *    editor,
-    char const * const      arg
+    char const * const      arg,
+    // bool const              allow_operator_delete,
+    bool const              allow_offset
 ){
     if (!editor || util_string_is_empty(arg)) {
         fputs("PARG parse editor: Illegal arguments\n", stderr);
         return -1;
     }
     if (arg[0] == '^') {
-        if (parg_parse_modifier(&editor->modifier, arg)) {
+        if (parg_parse_modifier(&editor->modifier, arg, allow_offset)) {
             return 1;
         }
         editor->modify = true;
     } else {
-        if (PARG_PARSE_YOLO_MODE(&editor->definer, arg)) {
-            return 2;
+        if (allow_offset) {
+            if (PARG_PARSE_DEFINER_ECREATE_MODE(&editor->definer, arg)) {
+                return 2;
+            }
+        } else {
+            if (PARG_PARSE_DEFINER_DCLONE_MODE(&editor->definer, arg)) {
+                return 3;
+            }
         }
         editor->modify = false;
     }
@@ -518,7 +538,7 @@ parg_parse_dclone_mode(
     }
     dhelper->count = argc;
     for (int i = 0; i < argc; ++i) {
-        if (PARG_PARSE_DCLONE_MODE(dhelper->definers + i, argv[i])) {
+        if (PARG_PARSE_DEFINER_DCLONE_MODE(dhelper->definers + i, argv[i])) {
             fprintf(stderr, "PARG parse dclone mode: Failed to parse argument: %s\n", argv[i]);
             return 1;
         }
@@ -538,7 +558,7 @@ parg_parse_eclone_mode(
     }
     dhelper->count = argc;
     for (int i = 0; i < argc; ++i) {
-        if (PARG_PARSE_ECLONE_MODE(dhelper->definers + i, argv[i])) {
+        if (PARG_PARSE_DEFINER_ECLONE_MODE(dhelper->definers + i, argv[i])) {
             fprintf(stderr, "PARG parse eclone mode: Failed to parse argument: %s\n", argv[i]);
             return 1;
         }
@@ -553,28 +573,44 @@ parg_parse_dedit_mode(
     char const * const * const          argv
 ){
     if (!ehelper ||  argc <= 0 || argc > MAX_PARTITIONS_COUNT || !argv) {
-        fputs("PARG parse dclone mode: Illegal arguments\n", stderr);
+        fputs("PARG parse dedit mode: Illegal arguments\n", stderr);
         return -1;
     }
-    
-    // dhelper->definers = malloc(argc * sizeof *dhelper->definers);
-    // if (!dhelper->definers) {
-    //     fputs("PARG parse dclone mode: Failed to allocate memroy for definers\n", stderr);
-    //     return NULL;
-    // }
-    // dhelper->count = argc;
-    // struct parg_definer *definer;
-    // for (int i = 0; i < argc; ++i) {
-    //     definer = PARG_PARSE_DCLONE_MODE(argv[i]);
-    //     if (!definer) {
-    //         fprintf(stderr, "PARG parse dclone mode: Failed to parse argument: %s\n", argv[i]);
-    //         free(dhelper->definers);
-    //         free(dhelper);
-    //         return NULL;
-    //     }
-    //     dhelper->definers[i] = *definer;
-    //     free(definer);
-    // }
+    if (!(ehelper->editors = malloc(argc * sizeof *ehelper->editors))) {
+        fputs("PARG parse dedit mode: Failed to allocate memory for editors\n", stderr);
+        return 1;
+    }
+    ehelper->count = argc;
+    for (int i = 0; i < argc; ++i) {
+        if (parg_parse_editor(ehelper->editors + i, argv[i], false)) {
+            free(ehelper->editors);
+            return 2;
+        }
+    }
+    return 0;
+}
+
+int
+parg_parse_eedit_mode(
+    struct parg_editor_helper * const   ehelper,
+    int const                           argc,
+    char const * const * const          argv
+){
+    if (!ehelper ||  argc <= 0 || argc > MAX_PARTITIONS_COUNT || !argv) {
+        fputs("PARG parse eedit mode: Illegal arguments\n", stderr);
+        return -1;
+    }
+    if (!(ehelper->editors = malloc(argc * sizeof *ehelper->editors))) {
+        fputs("PARG parse eedit mode: Failed to allocate memory for editors\n", stderr);
+        return 1;
+    }
+    ehelper->count = argc;
+    for (int i = 0; i < argc; ++i) {
+        if (parg_parse_editor(ehelper->editors + i, argv[i], true)) {
+            free(ehelper->editors);
+            return 2;
+        }
+    }
     return 0;
 }
 

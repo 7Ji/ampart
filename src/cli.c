@@ -453,23 +453,20 @@ cli_write_ept(
         }
         return 1;
     }
-    off_t const ept_offset = io_seek_ept(fd);
-    if (ept_offset < 0) {
-        fputs("CLI write EPT: Failed to seek\n", stderr);
-        if (can_migrate) {
-            free(mhelper.entries);
-        }
-        close(fd);
-        return 2;
-    }
     if (can_migrate) {
         if (io_migrate(&mhelper, fd, false)) {
             fputs("CLI write EPT: Failed to migrate\n", stderr);
             close(fd);
             free(mhelper.entries);
-            return 3;
+            return 2;
         }
         free(mhelper.entries);
+    }
+    off_t const ept_offset = io_seek_ept(fd);
+    if (ept_offset < 0) {
+        fputs("CLI write EPT: Failed to seek\n", stderr);
+        close(fd);
+        return 3;
     }
     if (io_write_till_finish(fd, (struct ept_table *)new, sizeof *new)){
         fputs("CLI write EPT: Failed to write\n", stderr);

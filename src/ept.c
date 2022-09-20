@@ -208,12 +208,35 @@ int
 ept_valid_table(
     struct ept_table const * const  table
 ){
-    int ret = ept_valid_header((const struct ept_header *)table);
-    const uint32_t valid_count = table->partitions_count < 32 ? table->partitions_count : 32;
-    for (uint32_t i=0; i<valid_count; ++i) {
-        ret += ept_valid_partition(table->partitions+i);
+    if (!table) {
+        return -1;
     }
-    return ret;
+    int ret = ept_valid_header((const struct ept_header *)table);
+    uint32_t const valid_count = table->partitions_count < 32 ? table->partitions_count : 32;
+    char unique_names[MAX_PARTITIONS_COUNT][MAX_PARTITION_NAME_LENGTH];
+    unsigned name_id = 0;
+    unsigned illegal = 0, dups = 0, r;
+    bool dup;
+    struct ept_partition const *part;
+    for (uint32_t i=0; i<valid_count; ++i) {
+        part = table->partitions + i;
+        ret += (r = ept_valid_partition(table->partitions+i));
+        if (r) {
+            ++illegal;
+        }
+        dup = false;
+        for (unsigned j = 0; j < name_id; ++j) {
+            if (!strncmp(part->name, unique_names[j], MAX_PARTITION_NAME_LENGTH)) {
+                dup = true;
+                ++dups;
+            }
+        }
+        if (!dup) {
+            strncpy(unique_names[name_id++], part->name, MAX_PARTITION_NAME_LENGTH);
+        }
+    }
+    fprintf(stderr, "EPT valid table: %u partitions have illegal names, %u partitions have duplicated names\n", illegal, dups);
+    return ret + dups;
 }
 
 void 
@@ -1088,7 +1111,7 @@ ept_eedit_parse(
     struct ept_table * const    table,
     size_t const                capacity,
     int const                   argc,
-    char const * const * const      argv
+    char const * const * const  argv
 ){
     if (!table || argc <=0 || !argv) {
         fputs("EPT eedit parse: Illegal arguments\n", stderr);
@@ -1119,5 +1142,28 @@ ept_eedit_parse(
     return 0;
 }
 
+int
+ept_ecreate_parse(
+    struct ept_table * const        table_new,
+    struct ept_table const * const  table_old,
+    size_t const                    capacity,
+    int const                       argc,
+    char const * const * const      argv
+){
+    if (!table_new || argc > MAX_PARTITIONS_COUNT || !argv) {
+        fputs("EPT ecreate parse: Illegal argumnets\n", stderr);
+        return -1;
+    }
+    struct parg_definer_helper_static definer;
+    *table_new = ept_table_empty;
+    if (argc > 0) {
+
+    }
+    if (argc <= 0) {
+
+    }
+    
+
+}
 
 /* ept.c: eMMC Partition Table related functions */

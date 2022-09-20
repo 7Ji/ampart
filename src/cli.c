@@ -911,19 +911,25 @@ cli_mode_ecreate(
     char const * const * const              argv
 ){
     fputs("CLI mode ecreate: Create EPT in a YOLO way\n", stderr);
-    int const r = cli_check_parg_count(argc, MAX_PARTITIONS_COUNT);
-    if (r) {
-        if (r < 0) return 0; else return 1;
+    if (argc > MAX_PARTITIONS_COUNT) { // 0 is allowed, where a default empty table will be created
+        fputs("CLI mode ecreate: You've defined too many partitions\n", stderr);
+        return -1;
     }
-    if (argc <= 0) {
-        fputs("CLI mode ecreate: No PARG, early quit\n", stderr);
-        return 0;
+    if (!table || !ept_valid_table(table)) {
+        fputs("CLI mode eclone: Warning, old table corrupted or not valid, continue anyway\n", stderr);
     }
-    for (int i =0; i<argc; ++i) {
-        printf("%d: %s\n", i, argv[i]);
+    size_t const capacity = cli_get_capacity(table);
+    if (!capacity) {
+        fputs("CLI mode eclone: Cannot get valid capacity, give up\n", stderr);
+        return 2;
     }
-    if (!table) {
-        return 1;
+    struct ept_table table_new;
+    if (ept_ecreate_parse(&table_new, table, capacity, argc, argv)) {
+        fputs("CLI mode eclone: Failed to get new EPT\n", stderr);
+        return 3;
+    }
+    if (bhelper && cli_write_dtb_from_ept(bhelper, &table_new, capacity)) {
+        return 4;
     }
     return 0;
 }

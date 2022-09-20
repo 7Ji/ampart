@@ -541,6 +541,54 @@ parg_free_definer_helper_dynamic(
 }
 
 int
+parg_parse_dedit_mode(
+    struct parg_editor_helper * const   ehelper,
+    int const                           argc,
+    char const * const * const          argv
+){
+    if (!ehelper ||  argc <= 0 || !argv) {
+        fputs("PARG parse dedit mode: Illegal arguments\n", stderr);
+        return -1;
+    }
+    if (!(ehelper->editors = malloc(argc * sizeof *ehelper->editors))) {
+        fputs("PARG parse dedit mode: Failed to allocate memory for editors\n", stderr);
+        return 1;
+    }
+    ehelper->count = argc;
+    for (int i = 0; i < argc; ++i) {
+        if (parg_parse_editor(ehelper->editors + i, argv[i], false)) {
+            free(ehelper->editors);
+            return 2;
+        }
+    }
+    return 0;
+}
+
+int
+parg_parse_eedit_mode(
+    struct parg_editor_helper * const   ehelper,
+    int const                           argc,
+    char const * const * const          argv
+){
+    if (!ehelper ||  argc <= 0 || !argv) {
+        fputs("PARG parse eedit mode: Illegal arguments\n", stderr);
+        return -1;
+    }
+    if (!(ehelper->editors = malloc(argc * sizeof *ehelper->editors))) {
+        fputs("PARG parse eedit mode: Failed to allocate memory for editors\n", stderr);
+        return 1;
+    }
+    ehelper->count = argc;
+    for (int i = 0; i < argc; ++i) {
+        if (parg_parse_editor(ehelper->editors + i, argv[i], true)) {
+            free(ehelper->editors);
+            return 2;
+        }
+    }
+    return 0;
+}
+
+int
 parg_parse_dclone_mode(
     struct parg_definer_helper_static * const   dhelper,
     int const                                   argc,
@@ -581,48 +629,20 @@ parg_parse_eclone_mode(
 }
 
 int
-parg_parse_dedit_mode(
-    struct parg_editor_helper * const   ehelper,
-    int const                           argc,
-    char const * const * const          argv
+parg_parse_ecreate_mode(
+    struct parg_definer_helper_static * const   dhelper,
+    int const                                   argc,
+    char const * const * const                  argv
 ){
-    if (!ehelper ||  argc <= 0 || argc > MAX_PARTITIONS_COUNT || !argv) {
-        fputs("PARG parse dedit mode: Illegal arguments\n", stderr);
-        return -1;
-    }
-    if (!(ehelper->editors = malloc(argc * sizeof *ehelper->editors))) {
-        fputs("PARG parse dedit mode: Failed to allocate memory for editors\n", stderr);
-        return 1;
-    }
-    ehelper->count = argc;
-    for (int i = 0; i < argc; ++i) {
-        if (parg_parse_editor(ehelper->editors + i, argv[i], false)) {
-            free(ehelper->editors);
-            return 2;
-        }
-    }
-    return 0;
-}
-
-int
-parg_parse_eedit_mode(
-    struct parg_editor_helper * const   ehelper,
-    int const                           argc,
-    char const * const * const          argv
-){
-    if (!ehelper ||  argc <= 0 || argc > MAX_PARTITIONS_COUNT || !argv) {
+    if (!dhelper ||  argc <= 0 || argc > MAX_PARTITIONS_COUNT || !argv) {
         fputs("PARG parse eedit mode: Illegal arguments\n", stderr);
         return -1;
     }
-    if (!(ehelper->editors = malloc(argc * sizeof *ehelper->editors))) {
-        fputs("PARG parse eedit mode: Failed to allocate memory for editors\n", stderr);
-        return 1;
-    }
-    ehelper->count = argc;
+    dhelper->count = argc;
     for (int i = 0; i < argc; ++i) {
-        if (parg_parse_editor(ehelper->editors + i, argv[i], true)) {
-            free(ehelper->editors);
-            return 2;
+        if (PARG_PARSE_DEFINER_ECREATE_MODE(dhelper->definers + i, argv[i])) {
+            fprintf(stderr, "PARG parse ecreate mode: Failed to parse argument: %s\n", argv[i]);
+            return 1;
         }
     }
     return 0;

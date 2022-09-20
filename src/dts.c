@@ -1494,12 +1494,27 @@ dts_valid_partitions_simple(
     if (!dparts) {
         return -1;
     }
-    int r = 0;
+    int illegal = 0, dups = 0;
+    struct dts_partition_entry_simple const *dentry;
+    char unique_names[MAX_PARTITIONS_COUNT][MAX_PARTITION_NAME_LENGTH];
+    unsigned name_id = 0;
+    bool dup;
     for (unsigned i = 0; i < dparts->partitions_count; ++i) {
-        if (ept_valid_partition_name(dparts->partitions[i].name)) {
-            ++r;
+        dentry = dparts->partitions + i;
+        if (ept_valid_partition_name(dentry->name)) {
+            ++illegal;
+        }
+        dup = false;
+        for (unsigned j = 0; j < name_id; ++j) {
+            if (!strncmp(dentry->name, unique_names[j], MAX_PARTITION_NAME_LENGTH)) {
+                dup = true;
+                ++dups;
+            }
+        }
+        if (!dup) {
+            strncpy(unique_names[name_id++], dentry->name, MAX_PARTITION_NAME_LENGTH);
         }
     }
-    fprintf(stderr, "DTS valid partitions simple: %d partitions have illegal names\n", r);
-    return r;
+    fprintf(stderr, "DTS valid partitions simple: %d partitions have illegal names, %d partitions have duplicated names\n", illegal, dups);
+    return illegal + dups;
 }

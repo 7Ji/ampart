@@ -5,7 +5,7 @@ Everything is done in a **single session**, without any **repeated execution** o
 
 
 # Documentation
-Please refer to the [wiki](https://github.com/7Ji/ampart/wiki) for the usage and details about the arguments
+Please refer to the documentation under [doc](doc) for the usage and details about the arguments
 
 # License
 **ampart**(Amlogic emmc partition tool) is licensed under [**GPL3**](https://gnu.org/licenses/gpl.html)

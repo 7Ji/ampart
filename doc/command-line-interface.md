@@ -31,7 +31,7 @@ ampart --mode dclone /dev/mmcblk0 data::-1:4 system::2G:2
 
 ## Standard Input/Output
 ### stdin
-ampart does **not** accept any input non read anything from stdin (for now). This will potentially be used in the future for reading instructions piped in, but will **never** be used to read user input, as ampart is **only** intended to be called by scripts
+ampart does **not** accept any input nor read anything from stdin (for now). This will potentially be used in the future for reading instructions piped in, but will **never** be used to read user input, as ampart is **only** intended to be called by scripts (and probabaly by some power-users)
 ### stdout
 ampart **only** generates snapshots on standard output in **dsnapshot** and **esnapshot** mode, otherwise nothing is written to the standard output. 3 different snapshots will be guaranteed to be fed on standard output in the decimal>hex>human(decimal) order, one snapshot per line, scripts calling ampart can split the snapshots on \n character to get each snapshot, and split each snapshot on ' '(space, \x20)  character to get each partition, then split each partition on : character to get name, offset, size and masks
 

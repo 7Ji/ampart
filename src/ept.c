@@ -1114,8 +1114,8 @@ ept_eedit_parse(
     }
     free(ehelper.editors);
     fputs("EPT eedit parse: Table after editting:\n", stderr);
+    ept_checksum_table(table);
     ept_report(table);
-
     return 0;
 }
 

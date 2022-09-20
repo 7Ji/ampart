@@ -25,6 +25,8 @@
 #define CLI_WRITE_TABLE     0b00000010
 #define CLI_WRITE_MIGRATES  0b00000100
 
+#define CLI_LAZY_WRITE
+
 /* Variable */
 
 char const  cli_mode_strings[][10] = {
@@ -344,19 +346,23 @@ cli_write_dtb(
     struct dtb_buffer_helper const * const              bhelper,
     struct dts_partitions_helper_simple const * const   dparts
 ){
-    if (!bhelper || !dparts || !bhelper->dtb_count || !dparts->partitions_count) {
+    if (!bhelper || !bhelper->dtb_count || (dparts && !dparts->partitions_count)) {
         fputs("CLI write DTB: Buffer and Dparts not both valid and contain partitions, refuse to continue\n", stderr);
         return -1;
     }
-    fputs("CLI write DTB: Tryin to write DTB with the following partitions:\n", stderr);
-    dts_report_partitions_simple(dparts);
     if (cli_options.content == CLI_CONTENT_TYPE_AUTO) {
         fputs("CLI write DTB: Target content type not recognized, this should not happen, refuse to continue\n", stderr);
         return -2;
     }
-    if (dts_valid_partitions_simple(dparts)) {
-        fputs("CLI write DTB: Partitions illegal, refuse to continue\n", stderr);
-        return 1;
+    if (dparts) {
+        fputs("CLI write DTB: Trying to write DTB with the following partitions:\n", stderr);
+        dts_report_partitions_simple(dparts);
+        if (dts_valid_partitions_simple(dparts)) {
+            fputs("CLI write DTB: Partitions illegal, refuse to continue\n", stderr);
+            return 1;
+        }
+    } else {
+        fputs("CLI write DTB: Trying to write DTB with no partitions\n", stderr);
     }
     uint8_t *dtb_new;
     size_t dtb_new_size;
@@ -541,10 +547,10 @@ cli_mode_epedantic(
     }
     if (EPT_IS_PEDANTIC(table)) {
         fputs("CLI mode epedantic: EPT is pedantic\n", stderr);
-        return 1;
+        return 0;
     } else {
         fputs("CLI mode epedantic: EPT is not pedantic\n", stderr);
-        return 0;
+        return 1;
     }
 }
 
@@ -575,11 +581,18 @@ cli_mode_etod(
     struct dts_partitions_helper_simple dparts;
     if (ept_table_to_dts_partitions_helper(table, &dparts, capacity)) {
         fputs("CLI mode etod: Failed to convert to DTB partitions\n", stderr);
+        return 3;
     }
     dts_report_partitions_simple(&dparts);
+#ifdef CLI_LAZY_WRITE
+    if (bhelper && !dts_compare_partitions_mixed(&bhelper->dtbs->phelper, &dparts)) {
+        fputs("CLI mode etod: Result partitions are the same as old DTB, no need to write", stderr);
+        return 0;
+    }
+#endif
     if (cli_write_dtb(bhelper, &dparts)) {
         fputs("CLI mode dtoe: Failed to write DTB\n", stderr);
-        return 2;
+        return 4;
     }
     return 0;
 }
@@ -623,8 +636,9 @@ cli_write_ept_from_dtb(
         return 2;
     }
 #ifdef CLI_LAZY_WRITE
-    if (ept_compare_table(table, &table_new)) {
-        fputs("CLI write EPT from DTB: Corresponding table updated, also write it\n", stderr);
+    if (table && !ept_compare_table(table, &table_new)) {
+        fputs("CLI write EPT from DTB: Corresponding table same, no need to write it\n", stderr);
+    } else {
 #endif
         if (cli_write_ept(table, &table_new)) {
             fputs("CLI write EPT from DTB: Failed to write EPT\n", stderr);
@@ -658,10 +672,18 @@ cli_mode_dedit(
         fputs("CLI mode dedit: Failed to parse arguments\n", stderr);
         return 3;
     }
-    if (cli_write_dtb(bhelper, &dparts)) {
-        fputs("CLI mode dedit: Failed to write DTB\n", stderr);
-        return 4;
+#ifdef CLI_LAZY_WRITE
+    if (bhelper && !dts_compare_partitions_mixed(&bhelper->dtbs->phelper, &dparts)) {
+        fputs("CLI mode dedit: Result DTB same as old, no need to write\n", stderr);
+    } else {
+#endif
+        if (cli_write_dtb(bhelper, &dparts)) {
+            fputs("CLI mode dedit: Failed to write DTB\n", stderr);
+            return 4;
+        }
+#ifdef CLI_LAZY_WRITE
     }
+#endif
     if (table && cli_options.content != CLI_CONTENT_TYPE_DTB && cli_write_ept_from_dtb(table, &dparts)) {
         fputs("CLI mode dedit: Failed to also write EPT\n", stderr);
         return 5;
@@ -671,13 +693,62 @@ cli_mode_dedit(
 
 static inline
 int
+cli_write_dtb_from_ept(
+    struct dtb_buffer_helper const * const  bhelper,
+    struct ept_table const * const          table,
+    size_t const                            capacity
+){
+    if (!bhelper || !table || !capacity) {
+        fputs("CLI write DTB from EPT: Illegal arguments\n", stderr);
+        return -1;
+    }
+    if (EPT_IS_PEDANTIC(table)) {
+        fputs("CLI write DTB from EPT: Result EPT is pedantic, also updating DTB\n", stderr);
+        struct dts_partitions_helper_simple dparts;
+        if (ept_table_to_dts_partitions_helper(table, &dparts, capacity)) {
+            fputs("CLI write DTB from EPT: Failed to create corresponding DTB partitions list\n", stderr);
+            return 4;
+        }
+#ifdef CLI_LAZY_WRITE
+        if (bhelper && bhelper->dtb_count && !dts_compare_partitions_mixed(&bhelper->dtbs->phelper, &dparts)) {
+            fputs("CLI write DTB from EPT: Corresponding DTB partitions not updated, no need to write\n", stderr);
+        } else {
+#endif
+            if (cli_write_dtb(bhelper, &dparts)) {
+                fputs("CLI write DTB from EPT: Failed to write corresponding DTB partitions list\n", stderr);
+                return 5;
+            }
+#ifdef CLI_LAZY_WRITE
+        }
+#endif
+    } else {
+        fputs("CLI write DTB from EPT: Result EPT is not pedantic, removing partitions node in DTB\n", stderr);
+#ifdef CLI_LAZY_WRITE
+        if (bhelper && bhelper->dtb_count && !bhelper->dtbs->has_partitions) {
+            fputs("CLI write DTB from EPT: DTB does not have partitions node, no need to remove it", stderr);
+        } else {
+#endif
+            if (cli_write_dtb(bhelper, NULL)) {
+                fputs("CLI write DTB from EPT: Failed to remove partitions node in DTB\n", stderr);
+                return 3;
+            }
+#ifdef CLI_LAZY_WRITE
+        }
+#endif
+    }
+    return 0;
+}
+
+static inline
+int
 cli_mode_eedit(
-    struct ept_table const * const  table,
-    int const                       argc,
-    char const * const * const      argv
+    struct dtb_buffer_helper const * const  bhelper,
+    struct ept_table const * const          table,
+    int const                               argc,
+    char const * const * const              argv
 ){
     fputs("CLI mode eedit: Edit EPT\n", stderr);
-    if (cli_check_parg_count(argc, 0) || !table) {
+    if (!bhelper || !table || cli_check_parg_count(argc, 0)) {
         fputs("CLI mode eedit: Illegal arguments\n", stderr);
         return -1;
     }
@@ -694,13 +765,17 @@ cli_mode_eedit(
 #endif
         if (cli_write_ept(table, &table_new)) {
             fputs("CLI mode eedit: Failed to write new EPT\n", stderr);
-            return 2;
+            return 3;
         }
 #ifdef CLI_LAZY_WRITE
     } else {
         fputs("CLI mode eedit: Old and new table same, no need to write\n", stderr);
     }
 #endif
+    if (cli_write_dtb_from_ept(bhelper, &table_new, capacity)) {
+        fputs("CLI mode eedit: Failed to update DTB\n", stderr);
+        return 4;
+    }
     return 0;
 }
 
@@ -765,13 +840,15 @@ cli_mode_dclone(
 #ifdef CLI_LAZY_WRITE
     if (!dts_compare_partitions_mixed(&bhelper->dtbs->phelper, &dparts)) {
         fputs("CLI mode dclone: New partitions same as old, no need to write\n", stderr);
-        return 0;
+    } else {
+#endif
+        if (cli_write_dtb(bhelper, &dparts)) {
+            fputs("CLI mode dclone: Failed to write\n", stderr);
+            return 4;
+        }
+#ifdef CLI_LAZY_WRITE
     }
 #endif
-    if (cli_write_dtb(bhelper, &dparts)) {
-        fputs("CLI mode dclone: Failed to write\n", stderr);
-        return 4;
-    }
     if (table && cli_options.content != CLI_CONTENT_TYPE_DTB && cli_write_ept_from_dtb(table, &dparts)) {
         fputs("CLI mode dclone: Failed to also write EPT\n", stderr);
         return 5;
@@ -782,9 +859,10 @@ cli_mode_dclone(
 static inline
 int
 cli_mode_eclone(
-    struct ept_table const * const  table,
-    int const                       argc,
-    char const * const * const      argv
+    struct dtb_buffer_helper const * const  bhelper,
+    struct ept_table const * const          table,
+    int const                               argc,
+    char const * const * const              argv
 ){
     fputs("CLI mode eclone: Apply a snapshot taken in esnapshot mode\n", stderr);
     int const r = cli_check_parg_count(argc, MAX_PARTITIONS_COUNT);
@@ -817,17 +895,26 @@ cli_mode_eclone(
         fputs("CLI mode eclone: New table is the same as old table, no need to write\n", stderr);
     }
 #endif
+    if (cli_write_dtb_from_ept(bhelper, &table_new, capacity)) {
+        fputs("CLI mode eclone: Failed to also update DTB\n", stderr);
+        return 5;
+    }
     return 0;
 }
 
 static inline
 int
 cli_mode_ecreate(
-    struct ept_table const * const  table,
-    int const                       argc,
-    char const * const * const      argv
+    struct dtb_buffer_helper const * const  bhelper,
+    struct ept_table const * const          table,
+    int const                               argc,
+    char const * const * const              argv
 ){
     fputs("CLI mode ecreate: Create EPT in a YOLO way\n", stderr);
+    int const r = cli_check_parg_count(argc, MAX_PARTITIONS_COUNT);
+    if (r) {
+        if (r < 0) return 0; else return 1;
+    }
     if (argc <= 0) {
         fputs("CLI mode ecreate: No PARG, early quit\n", stderr);
         return 0;
@@ -867,7 +954,7 @@ cli_dispatcher(
         case CLI_MODE_DEDIT:
             return cli_mode_dedit(bhelper, table, argc, argv);
         case CLI_MODE_EEDIT:
-            return cli_mode_eedit(table, argc, argv);
+            return cli_mode_eedit(bhelper, table, argc, argv);
         case CLI_MODE_DSNAPSHOT:
             return cli_mode_dsnapshot(bhelper);
         case CLI_MODE_ESNAPSHOT:
@@ -875,9 +962,9 @@ cli_dispatcher(
         case CLI_MODE_DCLONE:
             return cli_mode_dclone(bhelper, table, argc, argv);
         case CLI_MODE_ECLONE:
-            return cli_mode_eclone(table, argc, argv);
+            return cli_mode_eclone(bhelper, table, argc, argv);
         case CLI_MODE_ECREATE:
-            return cli_mode_ecreate(table, argc, argv);
+            return cli_mode_ecreate(bhelper, table, argc, argv);
     }
     return 0;
 }

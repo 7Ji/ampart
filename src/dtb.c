@@ -981,7 +981,7 @@ dtb_buffer_entry_remove_partitions(
     dh_new->size_dt_strings = bswap_32(dh.size_dt_strings);
     int r = dtb_parse_entry(new, dbuffer);
     free(dbuffer);
-    if (r) {
+    if (r > 0) {
         fputs("DTB buffer entry remove partitions: Failed to convert to buffer entry\n", stderr);
         return 4;
     }

@@ -30,8 +30,12 @@
 #define EPT_HEADER_VERSION_UINT32_1     (uint32_t)0x30302E30U
 #define EPT_HEADER_VERSION_UINT32_2     (uint32_t)0x00000000U
 
+#define EPT_PARTITION_ESSENTIAL_COUNT 6
+#define EPT_PARTITION_CRITICAL_COUNT 2
+
 /* Macro */
 #define EPT_IS_PARTITION_ESSENTIAL(part) !ept_is_partition_not_essential(part)
+#define EPT_IS_PARTITION_CRITICAL(part) !ept_is_partition_not_critical(part)
 
 /* Variable */
 
@@ -92,6 +96,22 @@ struct ept_table const
                 {{0U},0U,0U,0U,0U}
             }
         }
+    };
+
+char const 
+    ept_partition_essential_names[EPT_PARTITION_ESSENTIAL_COUNT][MAX_PARTITION_NAME_LENGTH] = {
+        EPT_PARTITION_BOOTLOADER_NAME,
+        EPT_PARTITION_RESERVED_NAME,
+        EPT_PARTITION_ENV_NAME,
+        "logo",
+        "misc",
+        "dtbo"
+    };
+
+char const 
+    ept_partition_critical_names[EPT_PARTITION_CRITICAL_COUNT][MAX_PARTITION_NAME_LENGTH] = {
+        EPT_PARTITION_BOOTLOADER_NAME,
+        EPT_PARTITION_RESERVED_NAME
     };
 
 /* Function */
@@ -783,17 +803,20 @@ ept_get_minimum_block(
     return block;
 }
 
-#define EPT_PARTITION_ESSENTIAL_COUNT 8
-char const ept_partition_essential_names[EPT_PARTITION_ESSENTIAL_COUNT][MAX_PARTITION_NAME_LENGTH] = {
-    EPT_PARTITION_BOOTLOADER_NAME,
-    EPT_PARTITION_RESERVED_NAME,
-    EPT_PARTITION_ENV_NAME,
-    "logo",
-    "misc",
-    "dtb",
-    "dtbo",
-    "dtb_a"
-};
+int
+ept_is_partition_not_critical(
+    struct ept_partition const * const part
+){
+    if (!part) {
+        return -1;
+    }
+    for (unsigned i = 0; i < EPT_PARTITION_CRITICAL_COUNT; ++i) {
+        if (!strncmp(part->name, ept_partition_critical_names[i], MAX_PARTITION_NAME_LENGTH)) {
+            return 0;
+        }
+    }
+    return 1;
+}
 
 int
 ept_is_partition_not_essential(
@@ -1164,6 +1187,108 @@ ept_eedit_parse(
 }
 
 int
+ept_ungap(
+    struct ept_table *  table
+){
+    uint32_t const pcount = util_safe_partitions_count(table->partitions_count);
+    struct ept_partition *part;
+    struct ept_partition *bootloader = NULL;
+    struct ept_partition *reserved = NULL;
+    struct ept_partition *non_critical[MAX_PARTITIONS_COUNT - 2];
+    uint32_t non_critical_count = 0;
+    for (uint32_t i = 0; i < pcount; ++i) {
+        part = table->partitions + i;
+        part->offset = 0;
+        if (strncmp(part->name, EPT_PARTITION_BOOTLOADER_NAME, MAX_PARTITION_NAME_LENGTH)) {
+            if (strncmp(part->name, EPT_PARTITION_RESERVED_NAME, MAX_PARTITION_NAME_LENGTH)) {
+                non_critical[non_critical_count++] = part;
+            } else {
+                reserved = part;
+            }
+        } else {
+            bootloader = part;
+        }
+    }
+    if (!bootloader || !reserved) {
+        fputs("EPT ungap: Can not find both bootloader and reserved partition, refuse to continue\n", stderr);
+        return 1;
+    }
+    if (bootloader != table->partitions) {
+        fputs("EPT ungap: Bootloader is not the first partition, refuse to continue\n", stderr);
+        return 2;
+    }
+    reserved->offset = cli_options.offset_reserved;
+    size_t const gap = reserved->offset - bootloader->size;
+    if (non_critical_count && gap) {
+        struct ept_partition *buffer;
+        for (uint32_t i = 0; i < non_critical_count - 1; ++i) { // Sort from large to small, decreasing sequence
+            for (uint32_t j = i + 1; j < non_critical_count; ++j) {
+                if (non_critical[i]->size < non_critical[j]->size) {
+                    buffer = non_critical[i];
+                    non_critical[i] = non_critical[j];
+                    non_critical[j] = buffer;
+                }
+            }
+        }
+        // for (uint32_t i = 0; i < non_critical_count; ++i) {
+        //     fprintf(stderr, "Part %s, Size 0x%lx\n", non_critical[i]->name, non_critical[i]->size);
+        // }
+        bool strategy_best[MAX_PARTITIONS_COUNT - 2] = {0};
+        size_t gap_minimum = gap;
+        for (uint32_t i = 0; i < non_critical_count; ++i) { // Find best strategy, gready algorithm, go from biggest
+            // fprintf(stderr, "Strategy try %u\n", i);
+            size_t gap_remaining = gap;
+            bool strategy_current[MAX_PARTITIONS_COUNT - 2] = {0};
+            for (uint32_t j = i; j < non_critical_count; ++j) {
+                part = non_critical[j];
+                if (part->size <= gap_remaining) {
+                    strategy_current[j] = true;
+                    if (!(gap_remaining -= part->size)) {
+                        break;
+                    }
+                }
+            }
+            if (gap_remaining < gap_minimum) {
+                memcpy(strategy_best, strategy_current, sizeof strategy_best);
+                if (!(gap_minimum = gap_remaining)) {
+                    break;
+                }
+            }
+        }
+        struct ept_partition parts_inserted[MAX_PARTITIONS_COUNT - 2] = {0};
+        struct ept_partition parts_after[MAX_PARTITIONS_COUNT - 2] = {0};
+        uint32_t parts_inserted_count = 0;
+        uint32_t parts_after_count = 0;
+        for (uint32_t i = 0; i < non_critical_count; ++i) {
+            if (strategy_best[i] || !non_critical[i]->size) {
+                part = parts_inserted + parts_inserted_count++;
+            } else {
+                part = parts_after + parts_after_count++;
+            }
+            *part = *non_critical[i];
+        }
+        struct ept_partition reserved_buffer = *reserved;
+        struct ept_partition *part_target;
+        struct ept_partition *part_before = table->partitions;
+        for (uint32_t i = 0; i < parts_inserted_count; ++i) {
+            part_target = part_before + 1;
+            *part_target = parts_inserted[i];
+            part_target->offset = part_before->offset + part_before->size;
+            part_before = part_target;
+        }
+        ++part_before;
+        *part_before = reserved_buffer;
+        for (uint32_t i = 0; i <parts_after_count; ++i) {
+            part_target = part_before + 1;
+            *part_target = parts_after[i];
+            part_target->offset = part_before->offset + part_before->size;
+            part_before = part_target;
+        }
+    }
+    return 0;
+}
+
+int
 ept_ecreate_parse(
     struct ept_table * const        table_new,
     struct ept_table const * const  table_old,
@@ -1179,20 +1304,85 @@ ept_ecreate_parse(
     uint32_t const pcount_old = util_safe_partitions_count(table_old->partitions_count);
     if (pcount_old) {
         struct ept_partition const *part_old;
+        struct ept_partition *part_new;
         for (unsigned i = 0; i < pcount_old; ++i) {
             part_old = table_old->partitions + i;
+            if (EPT_IS_PARTITION_ESSENTIAL(part_old)) { // Implement essential partitions
+                bool replace = false;
+                for (unsigned j = 0; j < table_new->partitions_count; ++j) {
+                    part_new = table_new->partitions + j;
+                    if (!strncmp(part_old->name, part_new->name, MAX_PARTITION_NAME_LENGTH)) {
+                        *part_new = *part_old;
+                        replace = true;
+                        break;
+                    }
+                }
+                if (!replace) {
+                    if (table_new->partitions_count >= MAX_PARTITIONS_COUNT) {
+                        fputs("EPT ecreate parse: Too many partitions\n", stderr);
+                        return 1;
+                    }
+                    part_new = table_new->partitions + table_new->partitions_count++;
+                    *part_new = *part_old;
+                }
+            }
         }
     }
+    if (ept_ungap(table_new)) {
+        fputs("EPT ecreate parse: Failed to remove gap\n", stderr);
+        return 2;
+    }
+    // ept_report(table_new);
     if (argc > 0) {
-        struct parg_definer_helper_static definer;
-        parg_parse_ecreate_mode(&definer, argc, argv);
-
+        uint32_t const parg_max = MAX_PARTITIONS_COUNT - table_new->partitions_count;
+        if ((unsigned)argc > parg_max) {
+            fprintf(stderr, "EPT ecreate parse: Too many PARGs, you've defined %d yet only %u is supported, since there's %u used by existing partitions:\n", argc, parg_max, table_new->partitions_count);
+            return 3;
+        }
+        struct parg_definer_helper_static dhelper;
+        if (parg_parse_ecreate_mode(&dhelper, argc, argv)) {
+            fputs("EPT ecreate parse: Failed to parse arguments\n", stderr);
+            return 3;
+        }
+        uint32_t const pcount_new = dhelper.count > parg_max ? parg_max : dhelper.count;
+        struct ept_partition *part_last = table_new->partitions + table_new->partitions_count - 1;
+        struct ept_partition *part;
+        struct parg_definer *definer;
+        for (uint32_t i = 0; i < pcount_new; ++i) {
+            definer = dhelper.definers + i;
+            part = part_last + 1;
+            strncpy(part->name, definer->name, MAX_PARTITION_NAME_LENGTH);
+            if (definer->set_offset) {
+                if (definer->relative_offset) {
+                    part->offset = part_last->offset + part_last->size + definer->offset;
+                } else {
+                    part->offset = definer->offset;
+                }
+            } else {
+                part->offset = part_last->offset + part_last->size;
+            }
+            ept_sanitize_offset(part, capacity);
+            if (definer->set_size) {
+                part->size = definer->size;
+            } else {
+                part->size = capacity - part->offset;
+            }
+            ept_sanitize_size(part, capacity);
+            if (definer->set_masks) {
+                part->mask_flags = definer->masks;
+            } else {
+                part->mask_flags = 4;
+            }
+            part_last = part;
+            ++table_new->partitions_count;
+        }
+    } else {
+        fputs("EPT ecreate pasrse: No PARGs defined, using only essential partitions got from old table\n", stderr);
     }
-    if (argc <= 0) {
-
-    }
-    
-
+    fputs("EPT ecreate parse: New table:\n", stderr);
+    ept_checksum_table(table_new);
+    ept_report(table_new);
+    return 0;
 }
 
 /* ept.c: eMMC Partition Table related functions */

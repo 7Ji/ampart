@@ -772,7 +772,7 @@ cli_mode_eedit(
         fputs("CLI mode eedit: Old and new table same, no need to write\n", stderr);
     }
 #endif
-    if (cli_write_dtb_from_ept(bhelper, &table_new, capacity)) {
+    if (bhelper && cli_write_dtb_from_ept(bhelper, &table_new, capacity)) {
         fputs("CLI mode eedit: Failed to update DTB\n", stderr);
         return 4;
     }
@@ -916,20 +916,33 @@ cli_mode_ecreate(
         return -1;
     }
     if (!table || !ept_valid_table(table)) {
-        fputs("CLI mode eclone: Warning, old table corrupted or not valid, continue anyway\n", stderr);
+        fputs("CLI mode ecreate: Warning, old table corrupted or not valid, continue anyway\n", stderr);
     }
     size_t const capacity = cli_get_capacity(table);
     if (!capacity) {
-        fputs("CLI mode eclone: Cannot get valid capacity, give up\n", stderr);
+        fputs("CLI mode ecreate: Cannot get valid capacity, give up\n", stderr);
         return 2;
     }
     struct ept_table table_new;
     if (ept_ecreate_parse(&table_new, table, capacity, argc, argv)) {
-        fputs("CLI mode eclone: Failed to get new EPT\n", stderr);
+        fputs("CLI mode ecreate: Failed to get new EPT\n", stderr);
         return 3;
     }
+#ifdef CLI_LAZY_WRITE
+    if (ept_compare_table(table, &table_new)) {
+#endif
+        if (cli_write_ept(table, &table_new)) {
+            fputs("CLI mode ecreate: Failed to write new EPT\n", stderr);
+            return 4;
+        }
+#ifdef CLI_LAZY_WRITE
+    } else {
+        fputs("CLI mode ecreate: Old and new table same, no need to write\n", stderr);
+    }
+#endif
     if (bhelper && cli_write_dtb_from_ept(bhelper, &table_new, capacity)) {
-        return 4;
+        fputs("CLI mode ecreate: Failed to update DTB\n", stderr);
+        return 5;
     }
     return 0;
 }

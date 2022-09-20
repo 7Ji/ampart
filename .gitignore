@@ -1,0 +1,5 @@
+ampart
+.vscode/
+obj/*
+dtbs
+images/

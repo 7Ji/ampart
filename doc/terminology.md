@@ -1,0 +1,12 @@
+# Terms
+ - DT: Device Tree, a tree structure that describe the device so u-boot/kernel can behave accordingly
+ - DTS: Device Tree Structure, the actual structure for DT, human-readable
+ - DTB: Device Tree Blob, the file format to store DT, human-unreadble, it contains more metadata
+ - FDT: Flattened Device Tree, actual format name, in the sense of ampart, this is an alias of DTB
+ - plain DTB: A simple DTS stored in plain FDT format. One DTS = one file (although most of the time it's written as binary streams onto the eMMC)
+ - multi DTB: Amlogic's proprietary format, zips multiple plain DTBs into one single file (although most of the time it's written as binary streams onto the eMMC)
+ - gzipped DTB: On top of multi DTB, if the raw size of the multi DTB is too big (>256KiB-16B), then it's compressed as a gzip file (although most of the time it's written as binary streams onto the eMMC)
+ - reserved partition: The partition to store partition table, DTB, keys, etc. It does not have a filesystem, all the data mentioned earlier are stored directly in byte format (binary streams). Usually 64M in size, and placed at 36M offset of the usable eMMC area, 32M offset relative to the bootloader partition.
+ - DTB partition: The area in reserved partition, 512KiB in size, 4MiB offset relative to reserved partition's head, the partition contains two identical 256KiB copies of the same data streams, of which both the last 16B are used for metadata. So at most 256KiB-16B DTB datas (plain/multi/gzipped) can be stored.
+ - EPT: eMMC Partition Table, the table stored at the beginning of the reserved partition (usually the second) on the eMMC. It has 32 partition slots, each of which can have a name of 16 characters (including terminating null byte), uses 64-bit unsigned integer as offset and size, and 32-bit unsigned integer as masks
+ - pedantic EPT: An EPT created by Amlogic's u-boot, or with certain ampart modes. The first 4 partitions are forced to be bootloader(4M), reserved(64M), cache(0), env(8M). Bootlaoder starts at 0, reserved has 32M gap before it, all other partitions have 8M gap before them. All partitions must come in incremental order: the latter partition's offset can't be smaller than last partition's end point + 8M.

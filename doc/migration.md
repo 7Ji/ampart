@@ -1,7 +1,7 @@
 # Migration
 
 ## Modes
-Planning of migration will occur in the following mode,at the end of the run (before writing EPT), if the requirements are met, regardless of whether or not a migration is requested by the user (thus, even if the user does not want migration done by ampart, they can still migrate the partitions by themselves with the instrucstion given by an ampart dry-run session)
+Planning of partitions migration will occur in the following mode,at the end of the run (before writing EPT), if the requirements are met, regardless of whether or not a migration is requested by the user (thus, even if the user does not want migration done by ampart, they can still migrate the partitions by themselves with the instrucstion given by an ampart dry-run session)
 
  - dtoe *(DTB to EPT)*
    - If the target is not DTB
@@ -12,7 +12,7 @@ Planning of migration will occur in the following mode,at the end of the run (be
    - If a valid EPT exists in the target before the run
    - A new EPT can be constructed from the editted DTB
    - If the new EPT is different from the old one
- - edit *(EPT edit)*
+ - eedit *(EPT edit)*
    - If the new EPT is different from the old one
  - dclone *(DTB clone)*
    - If the target is not DTB
@@ -33,7 +33,8 @@ Migration includes planning and actual migration
 Two EPT (new and old) need to be both valid and contain at least 1 partition. Validation of partitions themselves are not managed here, as the corresponding modes should take care of it before calling migration.
 
 ### Block
-The least common multiple <=4M for all partitions in both EPTs' offsets and sizes will be chosen as the migration block. Usually this will be 2M or 4M. If this can't be gotten, a migration plan will not be constructed
+The least common multiple <=4M for all partitions in both EPTs' offsets and sizes will be chosen as the migration block. Usually this will be 2M or 4M. If this can't be gotten, a migration plan will not be constructed  
+Each block will has a boolean migration flag set if it needs to be migrated, and records its target block ID. The migration flag defaults to false, and the target block ID defaults to 0 before planning. (Target block ID = 0 does not neccessarily mean the block has migration plan, it could actually be block 0)
 
 ## Routine
 For each block that needs to be migrated (marked as pending), the following steps are executed:
@@ -46,5 +47,10 @@ For each block that needs to be migrated (marked as pending), the following step
      - Unmark as pending
      - Free buffer and set it to NULL
    - Plain
+     - If the target block is in pending status, call its routine
+     - Read into buffer
+     - Write to target block
+     - Unmark as pending
+     - Free buffer and set it to NULL
    
-Two important status marks (pending, buffer) are checked here. The pending mark is set to true for all blocks that need to be migrated during planning. The buffer is checked so that a circle migration chain won't get into dead-lock
+Two important status marks (pending, buffer) are checked here. The pending mark is set to true for all blocks that need to be migrated during planning. The buffer is checked during circle migration so that a circle migration chain won't get into dead-lock

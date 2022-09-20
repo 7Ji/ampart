@@ -832,7 +832,7 @@ dtb_buffer_entry_implement_partitions(
     dh_new->size_dt_struct = bswap_32(size_dt_struct);
     dh_new->off_dt_strings = bswap_32(offset_dt_strings);
     dh_new->size_dt_strings = bswap_32(shelper.length);
-    new->size = size_new;
+    // new->size = size_new;
     free(node);
     free(shelper.stringblock);
     free(plist.phandles);
@@ -844,12 +844,12 @@ dtb_buffer_entry_implement_partitions(
     // int a = open("cache.dtb", O_WRONLY);
     // write(a, dbuffer, size_new);
     // close(a);
-    if (dtb_parse_entry(new, dbuffer)) {
+    int r = dtb_parse_entry(new, dbuffer);
+    free(dbuffer);
+    if (r) {
         fputs("DTB buffer entry implement partitions: Failed to convert to buffer entry\n", stderr);
-        free(dbuffer);
         return 8;
     }
-    free(dbuffer);
     if (!new->has_partitions || !new->phelper.partitions_count) {
         fputs("DTB buffer entry implement partitions: New buffer entry does not have partitions node, which is impossible\n", stderr);
         free(new->buffer);
@@ -908,6 +908,7 @@ dtb_buffer_helper_implement_partitions(
     new->dtb_count = old->dtb_count;
     if (!(new->dtbs = malloc(new->dtb_count * sizeof *new->dtbs))) {
         fputs("DTB buffer helper implement partitions: Failed to allocate memory for entries\n", stderr);
+        new->dtb_count = 0;
         return 1;
     }
     new->type_main = old->type_main;
@@ -918,6 +919,105 @@ dtb_buffer_helper_implement_partitions(
         struct dtb_buffer_entry *const entry_new = new->dtbs + i;
         if (dtb_buffer_entry_implement_partitions(entry_new, entry_old, phelper)) {
             fprintf(stderr, "DTB buffer helper implement partitions: Failed to implement new partitions into DTB %u of %u\n", i + 1, new->dtb_count);
+            for (unsigned j = 0; j < i; ++j) {
+                free((new->dtbs + j)->buffer);
+            }
+            return 2;
+        }
+    }
+    return 0;
+}
+
+int
+dtb_buffer_entry_remove_partitions(
+    struct dtb_buffer_entry * const                     new,
+    struct dtb_buffer_entry const * const               old
+){
+    if (!old || !new || !old->buffer) {
+        fputs("DTB buffer entry implement partitions: Invalid arguments\n", stderr);
+        return -1;
+    }
+    memset(new, 0, sizeof *new);
+    if (!old->phelper.node) {
+        if (!(new->buffer = malloc(old->size))) {
+            return 1;
+        }
+        new->size = old->size;
+        memcpy(new->buffer, old->buffer, new->size);
+        memcpy(new->target, old->target, sizeof new->target);
+        memcpy(new->soc, old->soc, sizeof new->soc);
+        memcpy(new->platform, old->platform, sizeof new->platform);
+        memcpy(new->variant, old->variant, sizeof new->variant);
+        return 0;
+    }
+    struct dtb_header const dh = dtb_header_swapbytes((struct dtb_header *)old->buffer);
+    // struct stringblock_helper shelper = {
+    //     .stringblock = (char *)old->buffer + dh.off_dt_strings,
+    //     .length = dh.size_dt_strings,
+    //     .allocated_length = dh.size_dt_strings
+    // };
+    uint8_t *const node_start = old->phelper.node - 4;
+    size_t len_existing_node =  dts_get_node_full_length(old->phelper.node, dh.size_dt_struct);
+    if (!len_existing_node) {
+        return 2;
+    }
+    uint8_t *const end_start = node_start + len_existing_node;
+    size_t const size_before = node_start - old->buffer;
+    size_t const size_after = old->buffer + dh.off_dt_struct + dh.size_dt_struct - end_start;
+    size_t const size_dt_struct = size_before - dh.off_dt_struct + size_after;
+    size_t const offset_dt_strings = dh.off_dt_strings + size_dt_struct - dh.size_dt_struct; 
+    size_t const size_new = util_nearest_upper_bound_ulong(old->size - dh.size_dt_struct + size_dt_struct, 4);
+    uint8_t *dbuffer = malloc(size_new * sizeof *dbuffer);
+    if (!dbuffer) {
+        return 3;
+    }
+    memset(dbuffer, 0, size_new * sizeof *dbuffer);
+    memcpy(dbuffer, old->buffer, size_before);
+    memcpy(dbuffer + size_before, end_start, old->buffer + old->size - end_start);
+    struct dtb_header *dh_new = (struct dtb_header *)dbuffer;
+    dh_new->totalsize = bswap_32(size_new);
+    dh_new->size_dt_struct = bswap_32(size_dt_struct);
+    dh_new->off_dt_strings = bswap_32(offset_dt_strings);
+    dh_new->size_dt_strings = bswap_32(dh.size_dt_strings);
+    int r = dtb_parse_entry(new, dbuffer);
+    free(dbuffer);
+    if (r) {
+        fputs("DTB buffer entry remove partitions: Failed to convert to buffer entry\n", stderr);
+        return 4;
+    }
+    if (new->has_partitions || new->phelper.partitions_count) {
+        fputs("DTB buffer entry remove partitions: Result DTB has partitions, give up\n", stderr);
+        free(new->buffer);
+        new->buffer = NULL;
+        return 5;
+    }
+    fputs("DTB buffer entry remove partitions: Constructed DTB does not have partition, all good\n", stderr);
+    return 0;
+}
+
+int
+dtb_buffer_helper_remove_partitions(
+    struct dtb_buffer_helper * const                    new,
+    struct dtb_buffer_helper const * const              old
+){
+    if (!old || !new || !old->dtb_count || dtb_buffer_helper_not_all_have_buffer(old)) {
+        fputs("DTB buffer helper remove partitions: Invalid arguments\n", stderr);
+        return -1;
+    }
+    new->dtb_count = old->dtb_count;
+    if (!(new->dtbs = malloc(new->dtb_count * sizeof *new->dtbs))) {
+        fputs("DTB buffer helper remove partitions: Failed to allocate memory for entries\n", stderr);
+        new->dtb_count = 0;
+        return 1;
+    }
+    new->type_main = old->type_main;
+    new->type_sub = old->type_sub;
+    new->multi_version = old->multi_version;
+    for (unsigned i = 0; i < new->dtb_count; ++i) {
+        struct dtb_buffer_entry const *const entry_old = old->dtbs + i;
+        struct dtb_buffer_entry *const entry_new = new->dtbs + i;
+        if (dtb_buffer_entry_remove_partitions(entry_new, entry_old)) {
+            fprintf(stderr, "DTB buffer helper remove partitions: Failed to remove partitions into DTB %u of %u\n", i + 1, new->dtb_count);
             for (unsigned j = 0; j < i; ++j) {
                 free((new->dtbs + j)->buffer);
             }
@@ -938,7 +1038,6 @@ dtb_pedantic_multi_entry_char(
     }
 }
     
-
 int
 dtb_combine_multi_dtb(
     uint8_t * * const dtb,
@@ -1041,15 +1140,22 @@ dtb_compose(
     struct dtb_buffer_helper const * const bhelper,
     struct dts_partitions_helper_simple const * const   phelper
 ){
-    if (!dtb || !bhelper || !bhelper->dtb_count || dtb_buffer_helper_not_all_have_buffer(bhelper) || !phelper || !phelper->partitions_count) {
+    if (!dtb || !bhelper || !bhelper->dtb_count || dtb_buffer_helper_not_all_have_buffer(bhelper)) {
         return -1;
     }
     *dtb = NULL;
     *size = 0;
     struct dtb_buffer_helper bhelper_new;
-    if (dtb_buffer_helper_implement_partitions(&bhelper_new, bhelper, phelper)) {
-        fputs("DTB compose: Failed to implement partitions into DTB\n", stderr);
-        return 1;
+    if (phelper && phelper->partitions_count) {
+        if (dtb_buffer_helper_implement_partitions(&bhelper_new, bhelper, phelper)) {
+            fputs("DTB compose: Failed to implement partitions into DTB\n", stderr);
+            return 1;
+        }
+    } else {
+        if (dtb_buffer_helper_remove_partitions(&bhelper_new, bhelper)) {
+            fputs("DTB compose: Failed to remove partitions from DTB\n", stderr);
+            return 1;
+        }
     }
     if (!bhelper_new.dtb_count) {
         fputs("DTB compose: New DTB count 0, which is impossible, refuse to work\n", stderr);
@@ -1182,6 +1288,22 @@ dtb_as_partition(
     *size = 2 * sizeof *part;
     return 0;
 }
+
+// int
+// dtb_compose_no_partition(
+//     uint8_t * * const dtb,
+//     size_t *size,
+//     struct dtb_buffer_helper const * const bhelper
+// ){
+//     if (!dtb || !bhelper || !bhelper->dtb_count || dtb_buffer_helper_not_all_have_buffer(bhelper)) {
+//         return -1;
+//     }
+//     *dtb = NULL;
+//     *size = 0;
+
+
+    
+// }
 // uint32_t enter_node(uint32_t layer, uint32_t offset_phandle, uint8_t *dtb, uint32_t offset, uint32_t end_offset, struct dtb_header *dh) {
 //     if (offset >= end_offset) {
 //         puts("ERROR: Trying to enter a node exceeding end point");

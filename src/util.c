@@ -174,4 +174,14 @@ util_log_title(
     fputs(": ", stderr);
 }
 
+uint32_t
+util_safe_partitions_count(
+    uint32_t const  count
+){
+    if (count > MAX_PARTITIONS_COUNT) {
+        return MAX_PARTITIONS_COUNT;
+    } else {
+        return count;
+    }
+}
 /* util.c: Utility functions that do not lean to specific tasks */

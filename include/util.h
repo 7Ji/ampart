@@ -46,6 +46,11 @@ unsigned long
         unsigned long   multiply
     );
 
+uint32_t
+    util_safe_partitions_count(
+        uint32_t const  count
+    );
+
 double 
     util_size_to_human_readable(
         uint64_t    size, 

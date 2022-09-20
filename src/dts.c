@@ -478,7 +478,7 @@ dts_parse_partitions_node_begin(
         fputs("DTS parse partitions node begin: encountered sub node inside partition, which is impossible\n", stderr);
         return 1;
     } else {
-        if (phelper->partitions_count == MAX_PARTITIONS_COUNT) {
+        if (phelper->partitions_count >= MAX_PARTITIONS_COUNT) {
             fputs("DTS parse partitions node begin: partitions count exceeds maximum\n", stderr);
             return 2;
         }
@@ -686,14 +686,19 @@ dts_sort_partitions(
         fputs("DTB sort partitions: no partitions helper to sort\n", stderr);
         return 1;
     }
-    if (phelper->partitions_count != phelper->record_count) {
-        fprintf(stderr, "DTB sort partitions: partitions node count (%"PRIu32") != record count (%"PRIu32")\n", phelper->partitions_count, phelper->record_count);
+    if (phelper->record_count > MAX_PARTITIONS_COUNT) {
+        fputs("DTB sort partitions: Too many partitions\n", stderr);
         return 2;
     }
+    uint32_t const pcount = util_safe_partitions_count(phelper->partitions_count);
+    if (pcount != phelper->record_count) {
+        fprintf(stderr, "DTB sort partitions: partitions node count (%"PRIu32") != record count (%"PRIu32")\n", phelper->partitions_count, phelper->record_count);
+        return 3;
+    }
     struct dts_partition_entry buffer;
-    for (uint32_t i = 0; i<phelper->partitions_count; ++i) {
+    for (uint32_t i = 0; i < pcount; ++i) {
         if (phelper->phandles[i] != phelper->partitions[i].phandle) {
-            for (uint32_t j = i + 1; j < phelper->partitions_count; ++j) {
+            for (uint32_t j = i + 1; j < pcount; ++j) {
                 if (phelper->partitions[j].phandle == phelper->phandles[i]) {
                     buffer = phelper->partitions[i];
                     phelper->partitions[i] = phelper->partitions[j];
@@ -711,11 +716,12 @@ void
 dts_report_partitions(
     struct dts_partitions_helper const * const  phelper
 ){
-    fprintf(stderr, "DTS report partitions: %u partitions in the DTB:\n=======================================================\nID| name            |            size|(   human)| masks\n-------------------------------------------------------\n", phelper->partitions_count);
+    uint32_t const pcount = util_safe_partitions_count(phelper->partitions_count);
+    fprintf(stderr, "DTS report partitions: %u partitions in the DTB:\n=======================================================\nID| name            |            size|(   human)| masks\n-------------------------------------------------------\n", pcount);
     const struct dts_partition_entry *part;
     double num_size;
     char suffix_size;
-    for (uint32_t i=0; i<phelper->partitions_count; ++i) {
+    for (uint32_t i=0; i < pcount; ++i) {
         part = phelper->partitions + i;
         if (part->size == (uint64_t)-1) {
             fprintf(stderr, "%2d: %-16s                  (AUTOFILL) %6"PRIu32"\n", i, part->name, part->mask);
@@ -733,11 +739,12 @@ void
 dts_report_partitions_simple(
     struct dts_partitions_helper_simple const * phelper
 ){
-    fprintf(stderr, "DTS report partitions: %u partitions in the DTB:\n=======================================================\nID| name            |            size|(   human)| masks\n-------------------------------------------------------\n", phelper->partitions_count);
+    uint32_t const pcount = util_safe_partitions_count(phelper->partitions_count);
+    fprintf(stderr, "DTS report partitions: %u partitions in the DTB:\n=======================================================\nID| name            |            size|(   human)| masks\n-------------------------------------------------------\n", pcount);
     const struct dts_partition_entry_simple *part;
     double num_size;
     char suffix_size;
-    for (uint32_t i=0; i<phelper->partitions_count; ++i) {
+    for (uint32_t i=0; i < pcount; ++i) {
         part = phelper->partitions + i;
         if (part->size == (uint64_t)-1) {
             fprintf(stderr, "%2d: %-16s                  (AUTOFILL) %6"PRIu32"\n", i, part->name, part->mask);
@@ -946,9 +953,10 @@ dts_compare_partitions(
         compare_partitions = phelper_b->partitions_count;
         diff = phelper_b->partitions_count - phelper_a->partitions_count;
     }
-    if (compare_partitions) {
+    uint32_t const pcount = util_safe_partitions_count(compare_partitions);
+    if (pcount) {
         struct dts_partition_entry const *part_a, *part_b;
-        for (uint32_t i = 0; i < compare_partitions; ++i) {
+        for (uint32_t i = 0; i < pcount; ++i) {
             part_a = phelper_a->partitions + i;
             part_b = phelper_b->partitions + i;
             if (strncmp(part_a->name, part_b->name, MAX_PARTITION_NAME_LENGTH)) {
@@ -980,9 +988,10 @@ dts_compare_partitions_simple(
         compare_partitions = phelper_b->partitions_count;
         diff = phelper_b->partitions_count - phelper_a->partitions_count;
     }
-    if (compare_partitions) {
+    uint32_t const pcount = util_safe_partitions_count(compare_partitions);
+    if (pcount) {
         struct dts_partition_entry_simple const *part_a, *part_b;
-        for (uint32_t i = 0; i < compare_partitions; ++i) {
+        for (uint32_t i = 0; i < pcount; ++i) {
             part_a = phelper_a->partitions + i;
             part_b = phelper_b->partitions + i;
             if (strncmp(part_a->name, part_b->name, MAX_PARTITION_NAME_LENGTH)) {
@@ -1014,10 +1023,11 @@ dts_compare_partitions_mixed(
         compare_partitions = phelper_b->partitions_count;
         diff = phelper_b->partitions_count - phelper_a->partitions_count;
     }
-    if (compare_partitions) {
+    uint32_t const pcount = util_safe_partitions_count(compare_partitions);
+    if (pcount) {
         struct dts_partition_entry const *part_a;
         struct dts_partition_entry_simple const *part_b;
-        for (uint32_t i = 0; i < compare_partitions; ++i) {
+        for (uint32_t i = 0; i < pcount; ++i) {
             part_a = phelper_a->partitions + i;
             part_b = phelper_b->partitions + i;
             if (strncmp(part_a->name, part_b->name, MAX_PARTITION_NAME_LENGTH)) {
@@ -1042,7 +1052,6 @@ dts_dclone_parse(
 ){
     if (argc < 0 || argc >= MAX_PARTITIONS_COUNT || !dparts || !argv) {
         fputs("DTS dclone parse: Illegal arguments\n", stderr);
-        printf("%d, %u\n", argc, dparts->partitions_count);
         return -1;
     }
     struct parg_definer_helper_static dhelper;
@@ -1052,10 +1061,10 @@ dts_dclone_parse(
         return 1;
     }
     *dparts = dts_partitions_helper_simple_empty;
-    dparts->partitions_count = dhelper.count;
+    dparts->partitions_count = util_safe_partitions_count(dhelper.count);
     struct parg_definer *definer;
     struct dts_partition_entry_simple *entry;
-    for (unsigned i = 0; i < dhelper.count; ++i) {
+    for (unsigned i = 0; i < dparts->partitions_count; ++i) {
         definer = dhelper.definers + i;
         entry = dparts->partitions + i;
         strncpy(entry->name, definer->name, MAX_PARTITION_NAME_LENGTH);
@@ -1115,7 +1124,8 @@ dts_drop_partitions_phandles(
     uint8_t const step = plist->have_linux_phandle ? 2 : 1;
     struct dts_partition_entry const *dts_part;
     uint32_t phandle;
-    for (uint32_t i = 0; i < phelper->partitions_count; ++i) {
+    uint32_t const pcount = util_safe_partitions_count(phelper->partitions_count);
+    for (uint32_t i = 0; i < pcount; ++i) {
         if (!(phandle = (dts_part = phelper->partitions + i)->phandle)) {
             continue;
         }
@@ -1207,8 +1217,9 @@ dts_compose_partitions_node(
     struct dts_partition_entry_simple const *dentry;
     char partn[] = "part-NN";
     // Basic length of the node, excluding the start BEGIN_NODE and end END_NODE, 12 for partitions\0\0\0 as name, len 16 property (4 PROP_NODE, 4 len_prop, 4 name_off, 4 u32 value) for: 1 for parts, 1 for each part-N (storing phandle), 1 for phandle, optional 1 for linux,phandle. Then basic length of the partition sub-node, 8 (4 BEGIN_NODE + 4 END_NODE) + 12 (4 PROP_NODE, 4 len_prop, 4 name_off) for 4 or 5 props (pname, size, mask, phandle, optionally linux,phandle) + 8 for u64 size + 4 for u32 mask + 4 for u32 phandle + 4 optionally for u32 linux,phandle
-    *len_node = 12 + 16 * (1 + phelper->partitions_count + 1 + plist->have_linux_phandle) + phelper->partitions_count * (8 + 12 * (4 + plist->have_linux_phandle) + 8 + 4 + 4 + 4 * plist->have_linux_phandle);
-    for (uint32_t i = 0; i < phelper->partitions_count; ++i) {
+    uint32_t const pcount = util_safe_partitions_count(phelper->partitions_count);
+    *len_node = 12 + 16 * (1 + pcount + 1 + plist->have_linux_phandle) + pcount * (8 + 12 * (4 + plist->have_linux_phandle) + 8 + 4 + 4 + 4 * plist->have_linux_phandle);
+    for (uint32_t i = 0; i < pcount; ++i) {
         dentry = phelper->partitions + i;
         memset(partn + 5, 0, 3);
         snprintf(partn + 5, 3, "%u", i % 100);
@@ -1229,8 +1240,8 @@ dts_compose_partitions_node(
     }
     memcpy(*node, dts_partitions_node_start, DTS_PARTITIONS_NODE_START_LENGTH);
     uint32_t *current = (uint32_t *)(*node + DTS_PARTITIONS_NODE_START_LENGTH);
-    dts_add_property_be32(&current, offsets_be32[DTS_ESSENTIAL_OFFSET_PARTS], bswap_32(phelper->partitions_count));
-    for (uint32_t i = 0; i < phelper->partitions_count; ++i) {
+    dts_add_property_be32(&current, offsets_be32[DTS_ESSENTIAL_OFFSET_PARTS], bswap_32(pcount));
+    for (uint32_t i = 0; i < pcount; ++i) {
         chelper = chelpers + i;
         dts_add_property_be32(&current, bswap_32(chelper->offset_partn), bswap_32(chelper->phandle));
     }
@@ -1238,7 +1249,7 @@ dts_compose_partitions_node(
     if (plist->have_linux_phandle) {
         dts_add_property_be32(&current, offsets_be32[DTS_ESSENTIAL_OFFSET_LINUX_PHANDLE], phandle_root_be32);
     }
-    for (uint32_t i = 0; i < phelper->partitions_count; ++i) {
+    for (uint32_t i = 0; i < pcount; ++i) {
         dentry = phelper->partitions + i;
         chelper = chelpers + i;
         // node
@@ -1291,10 +1302,10 @@ dts_partitions_helper_to_simple(
     struct dts_partitions_helper_simple * const simple,
     struct dts_partitions_helper const * const  generic
 ){
-    if (!simple || !generic || !generic->partitions_count) {
+    if (!simple || !generic) {
         return -1;
     }
-    simple->partitions_count = generic->partitions_count;
+    simple->partitions_count = util_safe_partitions_count(generic->partitions_count);
     for (unsigned i = 0; i < simple->partitions_count; ++i) {
         simple->partitions[i] = *(struct dts_partition_entry_simple *)(generic->partitions + i);
     }
@@ -1306,9 +1317,10 @@ dts_dedit_part_select(
     struct parg_modifier const * const modifier,
     struct dts_partitions_helper_simple * const dparts
 ){
+    uint32_t const pcount = util_safe_partitions_count(dparts->partitions_count);
     switch (modifier->select) {
         case PARG_SELECT_NAME:
-            for (unsigned i = 0; i < dparts->partitions_count; ++i) {
+            for (unsigned i = 0; i < pcount; ++i) {
                 if (!strncmp(modifier->select_name, dparts->partitions[i].name, MAX_PARTITION_NAME_LENGTH)) {
                     return dparts->partitions + i;
                 }
@@ -1316,15 +1328,15 @@ dts_dedit_part_select(
             return NULL;
         case PARG_SELECT_RELATIVE:
             if (modifier->select_relative >= 0) {
-                if ((unsigned)modifier->select_relative + 1 > dparts->partitions_count) {
+                if ((unsigned)modifier->select_relative + 1 > pcount) {
                     return NULL;
                 }
                 return dparts->partitions + modifier->select_relative;
             } else {
-                if (abs(modifier->select_relative) > dparts->partitions_count) {
+                if (abs(modifier->select_relative) > pcount) {
                     return NULL;
                 }
-                return dparts->partitions + dparts->partitions_count + modifier->select_relative;
+                return dparts->partitions + pcount + modifier->select_relative;
             }
     }
     return NULL;
@@ -1369,9 +1381,10 @@ dts_dedit_place(
     struct dts_partitions_helper_simple * const dparts,
     struct dts_partition_entry_simple * const   dpart
 ){
-    int place_target = parg_get_place_target(modifier, dpart - dparts->partitions, dparts->partitions_count);
-    if (place_target < 0 || (unsigned)place_target >= dparts->partitions_count) {
-        fprintf(stderr, "DTS dedit place: Target place %i overflows (minumum 0 as start, maximum %u as end)\n", place_target, dparts->partitions_count);
+    uint32_t const pcount = util_safe_partitions_count(dparts->partitions_count);
+    int place_target = parg_get_place_target(modifier, dpart - dparts->partitions, pcount);
+    if (place_target < 0 || (unsigned)place_target >= pcount) {
+        fprintf(stderr, "DTS dedit place: Target place %i overflows (minumum 0 as start, maximum %u as end)\n", place_target, pcount);
         return 1;
     }
     struct dts_partition_entry_simple * const dpart_target = dparts->partitions + place_target;
@@ -1458,7 +1471,7 @@ dts_dedit_parse(
     int const                                   argc,
     char const * const * const                  argv
 ){
-    if (argc <= 0 || !argv || !dparts || !dparts->partitions_count) {
+    if (argc <= 0 || !argv || !dparts) {
         fputs("DTS dedit parse: Illegal arguments\n", stderr);
         return -1;
     }
@@ -1499,7 +1512,8 @@ dts_valid_partitions_simple(
     char unique_names[MAX_PARTITIONS_COUNT][MAX_PARTITION_NAME_LENGTH];
     unsigned name_id = 0;
     bool dup;
-    for (unsigned i = 0; i < dparts->partitions_count; ++i) {
+    uint32_t const pcount = util_safe_partitions_count(dparts->partitions_count);
+    for (unsigned i = 0; i < pcount; ++i) {
         dentry = dparts->partitions + i;
         if (ept_valid_partition_name(dentry->name)) {
             ++illegal;

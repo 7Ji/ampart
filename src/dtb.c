@@ -536,6 +536,7 @@ dtb_read_into_buffer_helper(
             free(buffer_read);
             return 7;
         }
+        memset(bhelper->dtbs, 0, bhelper->dtb_count * sizeof *bhelper->dtbs);
         for (unsigned i = 0; i < bhelper->dtb_count; ++i) {
             if (dtb_parse_entry(bhelper->dtbs + i, mhelper.entries[i].dtb) > 0) {
                 fprintf(stderr, "DTB read into buffer helper: Failed to parse entry %u of %u\n", i + 1, bhelper->dtb_count);
@@ -643,9 +644,9 @@ dtb_read_into_buffer_helper_and_report(
     return 0;
 }
 
-int dtb_replace_partitions() {
-    return 0;
-}
+// int dtb_replace_partitions() {
+//     return 0;
+// }
 
 static inline
 void
@@ -654,8 +655,9 @@ dtb_snapshot_decimal(
 ){
     struct dts_partition_entry const *const part_start = phelper->partitions;
     struct dts_partition_entry const *part_current;
+    uint32_t const pcount = util_safe_partitions_count(phelper->partitions_count);
     fputs("DTB snapshot decimal:\n", stderr);
-    for (unsigned i = 0; i < phelper->partitions_count; ++i) {
+    for (unsigned i = 0; i < pcount; ++i) {
         part_current = part_start + i;
         if (part_current->size == (uint64_t)-1) {
             printf("%s::-1:%u ", part_current->name, part_current->mask);
@@ -673,8 +675,9 @@ dtb_snapshot_hex(
 ){
     struct dts_partition_entry const *const part_start = phelper->partitions;
     struct dts_partition_entry const *part_current;
+    uint32_t const pcount = util_safe_partitions_count(phelper->partitions_count);
     fputs("DTB snapshot hex:\n", stderr);
-    for (unsigned i = 0; i < phelper->partitions_count; ++i) {
+    for (unsigned i = 0; i < pcount; ++i) {
         part_current = part_start + i;
         if (part_current->size == (uint64_t)-1) {
             printf("%s::-1:%u ", part_current->name, part_current->mask);
@@ -693,9 +696,10 @@ dtb_snapshot_human(
     fputs("DTB snapshot human:\n", stderr);
     struct dts_partition_entry const *const part_start = phelper->partitions;
     struct dts_partition_entry const *part_current;
+    uint32_t const pcount = util_safe_partitions_count(phelper->partitions_count);
     size_t size;
     char suffix;
-    for (unsigned i = 0; i < phelper->partitions_count; ++i) {
+    for (unsigned i = 0; i < pcount; ++i) {
         part_current = part_start + i;
         if (part_current->size == (uint64_t)-1) {
             printf("%s::-1:%u ", part_current->name, part_current->mask);

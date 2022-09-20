@@ -137,6 +137,13 @@ int
     );
 
 int
+    parg_parse_ecreate_mode(
+        struct parg_definer_helper_static * dhelper,
+        int                                 argc,
+        char const * const *                argv
+    );
+
+int
     parg_parse_dedit_mode(
         struct parg_editor_helper * ehelper,
         int const                   argc,

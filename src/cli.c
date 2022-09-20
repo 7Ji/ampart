@@ -41,6 +41,12 @@ char const  cli_mode_strings[][10] = {
     "ecreate"
 };
 
+char const  cli_migrate_strings[][20] = {
+    "essential",
+    "none",
+    "all"
+};
+
 char const  cli_content_type_strings[][9] = {
     "auto",
     "dtb",
@@ -51,6 +57,7 @@ char const  cli_content_type_strings[][9] = {
 struct cli_options cli_options = {
     .mode = CLI_MODE_INVALID,
     .content = CLI_CONTENT_TYPE_AUTO,
+    .migrate = CLI_MIGRATE_ESSENTIAL,
     .dry_run = false,
     .strict_device = false,
     .write = CLI_WRITE_DTB | CLI_WRITE_TABLE | CLI_WRITE_MIGRATES,
@@ -89,7 +96,7 @@ cli_describe_options() {
     double gap_partition = util_size_to_human_readable(cli_options.gap_partition, &suffix_gap_partition);
     double offset_reserved = util_size_to_human_readable(cli_options.offset_reserved, &suffix_offset_reserved);
     double offset_dtb = util_size_to_human_readable(cli_options.offset_dtb, &suffix_offset_dtb);
-    fprintf(stderr, "CLI describe options: mode %s, operating on %s, content type %s, dry run: %s, reserved gap: %lu (%lf%c), generic gap: %lu (%lf%c), reserved offset: %lu (%lf%c), dtb offset: %lu (%lf%c)\n", cli_mode_strings[cli_options.mode], cli_options.target, cli_content_type_strings[cli_options.content], cli_options.dry_run ? "yes" : "no", cli_options.gap_reserved, gap_reserved, suffix_gap_reserved, cli_options.gap_partition, gap_partition, suffix_gap_partition, cli_options.offset_reserved, offset_reserved, suffix_offset_reserved, cli_options.offset_dtb, offset_dtb, suffix_offset_dtb);
+    fprintf(stderr, "CLI describe options: mode %s, operating on %s, content type %s, migration strategy: %s, dry run: %s, reserved gap: %lu (%lf%c), generic gap: %lu (%lf%c), reserved offset: %lu (%lf%c), dtb offset: %lu (%lf%c)\n", cli_mode_strings[cli_options.mode], cli_options.target, cli_content_type_strings[cli_options.content], cli_migrate_strings[cli_options.migrate], cli_options.dry_run ? "yes" : "no", cli_options.gap_reserved, gap_reserved, suffix_gap_reserved, cli_options.gap_partition, gap_partition, suffix_gap_partition, cli_options.offset_reserved, offset_reserved, suffix_offset_reserved, cli_options.offset_dtb, offset_dtb, suffix_offset_dtb);
 }
 
 static inline
@@ -151,6 +158,20 @@ cli_parse_content(){
 
 static inline
 int
+cli_parse_migrate(){
+    for (enum cli_migrate migrate = CLI_MIGRATE_ESSENTIAL; migrate <= CLI_MIGRATE_ALL; ++migrate) {
+        if (!strcmp(cli_migrate_strings[migrate], optarg)) {
+            fprintf(stderr, "CLI interface: Migration strategy is set to %s\n", optarg);
+            cli_options.migrate = migrate;
+            return 0;
+        }
+    }
+    fprintf(stderr, "CLI interface: Invalid migration strategy %s\n", optarg);
+    return 1;
+}
+
+static inline
+int
 cli_parse_options(
     int const * const       argc,
     char * const * const    argv
@@ -161,6 +182,7 @@ cli_parse_options(
         {"help",            no_argument,        NULL,   'h'},
         {"mode",            required_argument,  NULL,   'm'},
         {"content",         required_argument,  NULL,   'c'},
+        {"migrate",         required_argument,  NULL,   'M'},
         {"strict-device",   no_argument,        NULL,   's'},
         {"dry-run",         no_argument,        NULL,   'd'},
         {"offset-reserved", required_argument,  NULL,   'R'},
@@ -186,6 +208,11 @@ cli_parse_options(
             case 'c':   // type:
                 if (cli_parse_content()) {
                     return 2;
+                }
+                break;
+            case 'M':
+                if (cli_parse_migrate()) {
+                    return 3;
                 }
                 break;
             case 's':   // strict-device
@@ -321,9 +348,15 @@ cli_write_dtb(
         fputs("CLI write DTB: Buffer and Dparts not both valid and contain partitions, refuse to continue\n", stderr);
         return -1;
     }
+    fputs("CLI write DTB: Tryin to write DTB with the following partitions:\n", stderr);
+    dts_report_partitions_simple(dparts);
     if (cli_options.content == CLI_CONTENT_TYPE_AUTO) {
         fputs("CLI write DTB: Target content type not recognized, this should not happen, refuse to continue\n", stderr);
         return -2;
+    }
+    if (dts_valid_partitions_simple(dparts)) {
+        fputs("CLI write DTB: Partitions illegal, refuse to continue\n", stderr);
+        return 1;
     }
     uint8_t *dtb_new;
     size_t dtb_new_size;
@@ -375,8 +408,10 @@ cli_write_ept(
         fputs("CLI write EPT: Table invalid, refuse to continue\n", stderr);
         return 1;
     }
+    fputs("CLI write EPT: Trying to write the following EPT:\n", stderr);
+    ept_report(new);
     struct io_migrate_helper mhelper;
-    bool const can_migrate = old && !ept_migrate_plan(&mhelper, old, new, true) && cli_options.content == CLI_CONTENT_TYPE_DISK;
+    bool const can_migrate = old && cli_options.migrate != CLI_MIGRATE_NONE && !ept_migrate_plan(&mhelper, old, new, cli_options.migrate == CLI_MIGRATE_ALL ? true : false) && cli_options.content == CLI_CONTENT_TYPE_DISK;
     switch (cli_options.content) {
         case CLI_CONTENT_TYPE_DTB:
             fputs("CLI write EPT: Target is DTB, no need to write\n", stderr);
@@ -392,6 +427,10 @@ cli_write_ept(
             return 2;
         default:
             break;
+    }
+    if (ept_valid_table(new)) {
+        fputs("CLI write EPT: Table illegal, refuse to continue\n", stderr);
+        return 3;
     }
     if (cli_options.dry_run) {
         fputs("CLI write EPT: In dry-run mode, assuming success\n", stderr);
@@ -567,7 +606,6 @@ int
 cli_write_ept_from_dtb(
     struct ept_table const * const                    table,
     struct dts_partitions_helper_simple const * const dparts
-
 ){
     if (!table || !dparts) {
         fputs("CLI write EPT from DTB: Illegal arguments\n", stderr);
@@ -580,7 +618,7 @@ cli_write_ept_from_dtb(
         return 1;
     }
     struct ept_table table_new;
-    if (ept_table_from_dts_partitions_helper_simple(&table_new, &dparts, capacity)) {
+    if (ept_table_from_dts_partitions_helper_simple(&table_new, dparts, capacity)) {
         fputs("CLI write EPT from DTB: Failed create EPT from DTB\n", stderr);
         return 2;
     }
@@ -624,7 +662,7 @@ cli_mode_dedit(
         fputs("CLI mode dedit: Failed to write DTB\n", stderr);
         return 4;
     }
-    if (table && cli_write_ept_from_dtb(table, &dparts)) {
+    if (table && cli_options.content != CLI_CONTENT_TYPE_DTB && cli_write_ept_from_dtb(table, &dparts)) {
         fputs("CLI mode dedit: Failed to also write EPT\n", stderr);
         return 5;
     }
@@ -643,7 +681,14 @@ cli_mode_eedit(
         fputs("CLI mode eedit: Illegal arguments\n", stderr);
         return -1;
     }
+    size_t const capacity = cli_get_capacity(table);
+    if (!capacity) {
+        return 1;
+    }
     struct ept_table table_new = *table;
+    if (ept_eedit_parse(&table_new, capacity, argc, argv)) {
+        return 2;
+    }
 #ifdef CLI_LAZY_WRITE
     if (ept_compare_table(table, &table_new)) {
 #endif
@@ -727,7 +772,7 @@ cli_mode_dclone(
         fputs("CLI mode dclone: Failed to write\n", stderr);
         return 4;
     }
-    if (table && cli_write_ept_from_dtb(table, &dparts)) {
+    if (table && cli_options.content != CLI_CONTENT_TYPE_DTB && cli_write_ept_from_dtb(table, &dparts)) {
         fputs("CLI mode dclone: Failed to also write EPT\n", stderr);
         return 5;
     }

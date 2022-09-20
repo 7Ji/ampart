@@ -103,9 +103,23 @@ struct
 
 /* Function */
 
+int
+    parg_adjustor_adjust_u64(
+        uint64_t * const                        target,
+        enum parg_modify_detail_method const    method,
+        uint64_t const                          value
+    );
+
 void
     parg_free_definer_helper_dynamic(
         struct parg_definer_helper_dynamic * * const    dhelper
+    );
+
+int
+    parg_get_place_target(
+        struct parg_modifier const *    modifier,
+        unsigned int                    current,
+        unsigned int                    count
     );
 
 int
@@ -134,5 +148,10 @@ int
         struct parg_editor_helper * ehelper,
         int const                   argc,
         char const * const *        argv
+    );
+
+void
+    parg_report_failed_select(
+        struct parg_modifier const *    modifier
     );
 #endif

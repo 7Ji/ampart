@@ -101,6 +101,14 @@ int
     );
 
 int
+    ept_eedit_parse(
+        struct ept_table *      table,
+        size_t const            capacity,
+        int const               argc,
+        char const * const *    argv
+    );
+
+int
     ept_is_not_pedantic(
         struct ept_table const *    table
     );
@@ -167,6 +175,11 @@ int
         struct ept_table const *                table,
         struct dts_partitions_helper_simple *   dparts,
         uint64_t const                          capacity
+    );
+
+unsigned int
+    ept_valid_partition_name(
+        char const *    name
     );
 
 int 

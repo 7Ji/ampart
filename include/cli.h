@@ -15,6 +15,13 @@ enum
         CLI_CONTENT_TYPE_DISK
     };
 
+enum
+    cli_migrate {
+        CLI_MIGRATE_ESSENTIAL,
+        CLI_MIGRATE_NONE,
+        CLI_MIGRATE_ALL
+    };
+
 enum 
     cli_modes {
         CLI_MODE_INVALID,
@@ -36,6 +43,7 @@ struct
     cli_options {
         enum cli_modes          mode;
         enum cli_content_types  content;
+        enum cli_migrate        migrate;
         bool                    dry_run;
         bool                    strict_device;
         uint8_t                 write;

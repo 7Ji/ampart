@@ -223,7 +223,7 @@ ept_report(
     if (!table) {
         return;
     }
-    fprintf(stderr, "table report: %d partitions in the table:\n===================================================================================\nID| name            |          offset|(   human)|            size|(   human)| masks\n-----------------------------------------------------------------------------------\n", table->partitions_count);
+    fprintf(stderr, "EPT report: %d partitions in the table:\n===================================================================================\nID| name            |          offset|(   human)|            size|(   human)| masks\n-----------------------------------------------------------------------------------\n", table->partitions_count);
     const struct ept_partition *part;
     double num_offset, num_size;
     char suffix_offset, suffix_size;
@@ -248,7 +248,7 @@ ept_report(
     uint32_t const block = ept_get_minimum_block(table);
     char suffix;
     double block_h = util_size_to_human_readable(block, &suffix);
-    fprintf(stderr, "table report: Minumum block in table: 0x%x, %u, %lf%c\n", block, block, block_h, suffix);
+    fprintf(stderr, "EPT report: Minumum block in table: 0x%x, %u, %lf%c\n", block, block, block_h, suffix);
     return;
 }
 
@@ -781,6 +781,11 @@ ept_migrate_plan(
         fputs("EPT migrate plan: Illegal arguments\n", stderr);
         return -1;
     }
+    if (all) {
+        fputs("EPT migrate plan: All partitions will be migrated\n", stderr);
+    } else {
+        fputs("EPT migrate plan: Only essential partitions will be migrated\n", stderr);
+    }
     size_t const block_source = ept_get_minimum_block(source);
     size_t const block_target = ept_get_minimum_block(target);
     if (!(mhelper->block = block_source > block_target ? block_target : block_source)) {
@@ -870,8 +875,249 @@ ept_migrate_plan(
     double const size_each_d = util_size_to_human_readable(mhelper->block, &suffix_each);
     size_t const size_total = (size_t)blocks * (size_t)mhelper->block;
     double const size_total_d = util_size_to_human_readable(size_total, &suffix_total);
-    fprintf(stderr, "EPT migrate plan: %u blocks should be migrated, each size 0x%x (%lf%c), total size 0x%lx (%lf%c). In the worst scenario you will need the SAME amount of memory for the migration. If you are using migartion=all mode, consider changing it to migrate=essential, or migarate=no\n", blocks, mhelper->block, size_each_d, suffix_each, size_total, size_total_d, suffix_total);
+    fprintf(stderr, "EPT migrate plan: %u blocks should be migrated, each size 0x%x (%lf%c), total size 0x%lx (%lf%c). In the worst scenario you will need the SAME amount of memory for the migration\n", blocks, mhelper->block, size_each_d, suffix_each, size_total, size_total_d, suffix_total);
     return 0;
 }
+
+
+struct ept_partition *
+ept_eedit_part_select(
+    struct parg_modifier const * const modifier,
+    struct ept_table * const table
+){
+    switch (modifier->select) {
+        case PARG_SELECT_NAME:
+            for (unsigned i = 0; i < table->partitions_count; ++i) {
+                if (!strncmp(modifier->select_name, table->partitions[i].name, MAX_PARTITION_NAME_LENGTH)) {
+                    return table->partitions + i;
+                }
+            }
+            return NULL;
+        case PARG_SELECT_RELATIVE:
+            if (modifier->select_relative >= 0) {
+                if ((unsigned)modifier->select_relative + 1 > table->partitions_count) {
+                    return NULL;
+                }
+                return table->partitions + modifier->select_relative;
+            } else {
+                if (abs(modifier->select_relative) > table->partitions_count) {
+                    return NULL;
+                }
+                return table->partitions + table->partitions_count + modifier->select_relative;
+            }
+    }
+    return NULL;
+}
+
+void
+ept_sanitize_offset(
+    struct ept_partition * const    part,
+    size_t const                    capacity
+){
+    if (part->offset > capacity) {
+        fprintf(stderr, "EPT sanitize offset: Warning: part %s offset overflows, limitting it to 0x%lx\n", part->name, capacity);
+        part->offset = capacity;
+    }
+}
+
+void
+ept_sanitize_size(
+    struct ept_partition * const    part,
+    size_t const                    capacity
+){
+    if (part->offset + part->size > capacity) {
+        part->size -= part->offset + part->size - capacity;
+        fprintf(stderr, "EPT sanitize size: Warning: part %s size overflows, limitting it to 0x%lx\n", part->name, part->size);
+    }
+}
+
+int
+ept_dedit_adjust(
+    struct parg_modifier const * const          modifier,
+    struct ept_partition * const   part,
+    size_t const                    capacity
+){
+    
+    if (modifier->modify_name == PARG_MODIFY_DETAIL_SET) {
+        strncpy(part->name, modifier->name, MAX_PARTITION_NAME_LENGTH);
+    }
+    if (parg_adjustor_adjust_u64(&part->offset, modifier->modify_offset, modifier->offset)) {
+        fprintf(stderr, "EPT dedit adjust: Failed to adjust offset of part %s\n", part->name);
+        return 1;
+    }
+    ept_sanitize_offset(part, capacity);
+    if (parg_adjustor_adjust_u64(&part->size, modifier->modify_size, modifier->size)) {
+        fprintf(stderr, "EPT dedit adjust: Failed to adjust size of part %s\n", part->name);
+        return 2;
+    }
+    ept_sanitize_size(part, capacity);
+    if (modifier->modify_masks == PARG_MODIFY_DETAIL_SET) {
+        part->mask_flags = modifier->masks;
+    }
+    return 0;
+}
+
+int
+ept_eedit_place(
+    struct parg_modifier const * const  modifier,
+    struct ept_table * const            table,
+    struct ept_partition * const        part
+){
+    int place_target;
+    switch (modifier->modify_place) {
+        case PARG_MODIFY_PLACE_ABSOLUTE:
+            if (modifier->place >= 0) {
+                place_target = modifier->place;
+            } else {
+                place_target = table->partitions_count + modifier->place;
+            }
+            break;
+        case PARG_MODIFY_PLACE_RELATIVE:
+            place_target = part - table->partitions + modifier->place;
+            break;
+        default:
+            fputs("EPT eedit place: Illegal place method\n", stderr);
+            return -1;
+    }
+    if (place_target < 0 || (unsigned)place_target >= table->partitions_count) {
+        fprintf(stderr, "EPT eedit place: Target place %i overflows (minumum 0 as start, maximum %u as end)\n", place_target, table->partitions_count);
+        return 1;
+    }
+    struct ept_partition * const part_target = table->partitions + place_target;
+    if (part_target > part) {
+        struct ept_partition const part_buffer = *part;
+        for (struct ept_partition *part_hot = part; part_hot < part_target; ++part_hot) {
+            *(part_hot) = *(part_hot + 1);
+        }
+        *part_target = part_buffer;
+    } else if (part_target < part) {
+        struct ept_partition const part_buffer = *part;
+        for (struct ept_partition *part_hot = part; part_hot > part_target; --part_hot) {
+            *(part_hot) = *(part_hot - 1);
+        }
+        *part_target = part_buffer;
+    }
+    return 0;
+}
+
+int
+ept_eedit_each(
+    struct ept_table * const            table,
+    size_t const                        capacity,
+    struct parg_editor const * const    editor
+){
+    if (editor->modify) {
+        struct parg_modifier const *const modifier = &editor->modifier;
+        struct ept_partition *const part = ept_eedit_part_select(modifier, table);
+        if (!part) {
+            parg_report_failed_select(modifier);
+            fputs("EPT dedit each: Failed selector\n", stderr);
+            return 1;
+        }
+        switch (modifier->modify_part) {
+            case PARG_MODIFY_PART_ADJUST:
+                if (ept_dedit_adjust(modifier, part, capacity)) {
+                    fputs("EPT eedit each: Failed to adjust partition detail\n", stderr);
+                    return 2;
+                }
+                break;
+            case PARG_MODIFY_PART_DELETE:
+                if (table->partitions_count == 0) {
+                    fputs("EPT eedit each: Cannot delete partition, there's already only 0 partitions left, which is impossible you could even see this\n", stderr);
+                    return 3;
+                }
+                for (struct ept_partition *part_hot = part; part_hot - table->partitions < table->partitions_count - 1; ++part_hot) {
+                    *part_hot = *(part_hot + 1);
+                }
+                --table->partitions_count;
+                break;
+            case PARG_MODIFY_PART_CLONE: {
+                if (table->partitions_count >= MAX_PARTITIONS_COUNT) {
+                    fputs("EPT eedit each: Trying to clone when partition count overflowed, refuse to continue\n", stderr);
+                    return 4;
+                }
+                struct ept_partition *part_hot = table->partitions + table->partitions_count++;
+                *part_hot = *part;
+                strncpy(part_hot->name, modifier->name, MAX_PARTITION_NAME_LENGTH);
+                break;
+            }
+            case PARG_MODIFY_PART_PLACE:
+                if (ept_eedit_place(modifier, table, part)) {
+                    fputs("EPT eedit each: Failed to place partition\n", stderr);
+                    return 5;
+                }
+                break;
+        }
+    } else {
+        if (table->partitions_count >= MAX_PARTITIONS_COUNT) {
+            fputs("EPT eedit each: Trying to define partition when partition count overflowed, refuse to continue\n", stderr);
+            return 1;
+        }
+        size_t const end = ept_get_capacity(table);
+        struct parg_definer const *const definer= &editor->definer;
+        struct ept_partition *const part = table->partitions + table->partitions_count++;
+        strncpy(part->name, definer->name, MAX_PARTITION_NAME_LENGTH);
+        part->size = definer->size;
+        if (definer->set_offset) {
+            if (definer->relative_offset) {
+                part->offset = end + definer->offset;
+            } else {
+                part->offset = definer->offset;
+            }
+        } else {
+            part->offset = end;
+        }
+        ept_sanitize_offset(part, capacity);
+        if (definer->set_size) {
+            part->size = definer->size;
+        } else {
+            part->size = capacity - part->offset;
+        }
+        ept_sanitize_size(part, capacity);
+        if (definer->set_masks) {
+            part->mask_flags = definer->masks;
+        } else {
+            part->mask_flags = 4;
+        }
+    }
+    return 0;
+}
+
+int
+ept_eedit_parse(
+    struct ept_table * const    table,
+    size_t const                capacity,
+    int const                   argc,
+    char const * const * const      argv
+){
+    if (!table || argc <=0 || !argv) {
+        fputs("EPT eedit parse: Illegal arguments\n", stderr);
+        return -1;
+    }
+    struct parg_editor_helper ehelper;
+    if (parg_parse_eedit_mode(&ehelper, argc, argv)) {
+        fputs("EPT eedit parse: Failed to parse arguments\n", stderr);
+        return 1;
+    }
+    if (!ehelper.count) {
+        free(ehelper.editors);
+        fputs("EPT eedit parse: No editor\n", stderr);
+        return 2;
+    }
+    fputs("EPT eedit parse: Table before editting:\n", stderr);
+    ept_report(table);
+    for (unsigned i = 0; i < ehelper.count; ++i) {
+        if (ept_eedit_each(table, capacity, ehelper.editors + i)) {
+            fputs("EPT eedit parse: Failed to edit table according to PARGs\n", stderr);
+            return 3;
+        }
+    }
+    free(ehelper.editors);
+    fputs("EPT eedit parse: Table after editting:\n", stderr);
+    ept_report(table);
+
+    return 0;
+}
+
 
 /* ept.c: eMMC Partition Table related functions */

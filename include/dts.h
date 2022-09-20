@@ -165,4 +165,10 @@ int
     dts_sort_partitions(
         struct dts_partitions_helper *  phelper
     );
+
+int
+    dts_valid_partitions_simple(
+        struct dts_partitions_helper_simple const * dparts
+    );
+    
 #endif

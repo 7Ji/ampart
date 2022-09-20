@@ -9,6 +9,7 @@
 
 /* Local */
 
+#include "ept.h"
 #include "parg.h"
 #include "util.h"
 
@@ -1329,19 +1330,19 @@ dts_dedit_part_select(
     return NULL;
 }
 
-void
-dts_dedit_report_failed_select(
-    struct parg_modifier const * const modifier
-){
-    switch (modifier->select) {
-        case PARG_SELECT_NAME:
-            fprintf(stderr, "DTS deidt report failed select: No partition selected by Name selector %s\n", modifier->select_name);
-            break;
-        case PARG_SELECT_RELATIVE:
-            fprintf(stderr, "DTS deidt report failed select: No partition selected by Relative selector %d\n", modifier->select_relative);
-            break;
-    }
-}
+// void
+// dts_dedit_report_failed_select(
+//     struct parg_modifier const * const modifier
+// ){
+//     switch (modifier->select) {
+//         case PARG_SELECT_NAME:
+//             fprintf(stderr, "DTS deidt report failed select: No partition selected by Name selector %s\n", modifier->select_name);
+//             break;
+//         case PARG_SELECT_RELATIVE:
+//             fprintf(stderr, "DTS deidt report failed select: No partition selected by Relative selector %d\n", modifier->select_relative);
+//             break;
+//     }
+// }
 
 int
 dts_dedit_adjust(
@@ -1352,21 +1353,9 @@ dts_dedit_adjust(
     if (modifier->modify_name == PARG_MODIFY_DETAIL_SET) {
         strncpy(dpart->name, modifier->name, MAX_PARTITION_NAME_LENGTH);
     }
-    switch (modifier->modify_size) {
-        case PARG_MODIFY_DETAIL_ADD:
-            dpart->size += modifier->size;
-            break;
-        case PARG_MODIFY_DETAIL_SUBSTRACT:
-            if (dpart->size < modifier->size) {
-                return 1;
-            }
-            dpart->size -= modifier->size;
-            break;
-        case PARG_MODIFY_DETAIL_SET:
-            dpart->size = modifier->size;
-            break;
-        default:
-            break;
+    if (parg_adjustor_adjust_u64(&dpart->size, modifier->modify_size, modifier->size)) {
+        fprintf(stderr, "DTS dedit adjust: Failed to adjust size of part %s\n", dpart->name);
+        return 1;
     }
     if (modifier->modify_masks == PARG_MODIFY_DETAIL_SET) {
         dpart->mask = modifier->masks;
@@ -1380,22 +1369,7 @@ dts_dedit_place(
     struct dts_partitions_helper_simple * const dparts,
     struct dts_partition_entry_simple * const   dpart
 ){
-    int place_target;
-    switch (modifier->modify_place) {
-        case PARG_MODIFY_PLACE_ABSOLUTE:
-            if (modifier->place >= 0) {
-                place_target = modifier->place;
-            } else {
-                place_target = dparts->partitions_count + modifier->place;
-            }
-            break;
-        case PARG_MODIFY_PLACE_RELATIVE:
-            place_target = dpart - dparts->partitions + modifier->place;
-            break;
-        default:
-            fputs("DTS dedit place: Illegal place method\n", stderr);
-            return -1;
-    }
+    int place_target = parg_get_place_target(modifier, dpart - dparts->partitions, dparts->partitions_count);
     if (place_target < 0 || (unsigned)place_target >= dparts->partitions_count) {
         fprintf(stderr, "DTS dedit place: Target place %i overflows (minumum 0 as start, maximum %u as end)\n", place_target, dparts->partitions_count);
         return 1;
@@ -1410,9 +1384,70 @@ dts_dedit_place(
     } else if (dpart_target < dpart) {
         struct dts_partition_entry_simple const dpart_buffer = *dpart;
         for (struct dts_partition_entry_simple *dpart_hot = dpart; dpart_hot > dpart_target; --dpart_hot) {
-            *(dpart_hot) = *(dpart_hot + 1);
+            *(dpart_hot) = *(dpart_hot - 1);
         }
         *dpart_target = dpart_buffer;
+    }
+    return 0;
+}
+
+int
+dts_dedit_each(
+    struct dts_partitions_helper_simple * const dparts,
+    struct parg_editor const * const            editor
+){
+    if (editor->modify) {
+        struct parg_modifier const *const modifier = &editor->modifier;
+        struct dts_partition_entry_simple *const dpart = dts_dedit_part_select(modifier, dparts);
+        if (!dpart) {
+            parg_report_failed_select(modifier);
+            fputs("DTS dedit each: Failed selector\n", stderr);
+            return 1;
+        }
+        switch (modifier->modify_part) {
+            case PARG_MODIFY_PART_ADJUST:
+                if (dts_dedit_adjust(modifier, dpart)) {
+                    fputs("DTS dedit each: Failed to adjust partition detail\n", stderr);
+                    return 2;
+                }
+                break;
+            case PARG_MODIFY_PART_DELETE: 
+                if (dparts->partitions_count == 0) {
+                    fputs("DTS dedit each: Cannot delete partition, there's already only 0 partitions left, which is impossible you could even see this\n", stderr);
+                    return 3;
+                }
+                for (struct dts_partition_entry_simple *dpart_hot = dpart; dpart_hot - dparts->partitions < dparts->partitions_count - 1; ++dpart_hot) {
+                    *dpart_hot = *(dpart_hot + 1);
+                }
+                --dparts->partitions_count;
+                break;
+            case PARG_MODIFY_PART_CLONE: {
+                if (dparts->partitions_count >= MAX_PARTITIONS_COUNT) {
+                    fputs("DTS dedit each: Trying to clone when partition count overflowed, refuse to continue\n", stderr);
+                    return 4;
+                }
+                struct dts_partition_entry_simple *dpart_hot = dparts->partitions + dparts->partitions_count++;
+                *dpart_hot = *dpart;
+                strncpy(dpart_hot->name, modifier->name, MAX_PARTITION_NAME_LENGTH);
+                break;
+            }
+            case PARG_MODIFY_PART_PLACE:
+                if (dts_dedit_place(modifier, dparts, dpart)) {
+                    fputs("DTS dedit each: Failed to place partition\n", stderr);
+                    return 1;
+                }
+                break;
+        }
+    } else {
+        if (dparts->partitions_count >= MAX_PARTITIONS_COUNT) {
+            fputs("DTS dedit each: Trying to define partition when partition count overflowed, refuse to continue\n", stderr);
+            return 1;
+        }
+        struct parg_definer const *const definer= &editor->definer;
+        struct dts_partition_entry_simple *const dpart = dparts->partitions + dparts->partitions_count++;
+        strncpy(dpart->name, definer->name, MAX_PARTITION_NAME_LENGTH);
+        dpart->size = definer->size;
+        dpart->mask = definer->masks;
     }
     return 0;
 }
@@ -1439,65 +1474,32 @@ dts_dedit_parse(
     }
     fputs("DTS dedit parse: Table before editting:\n", stderr);
     dts_report_partitions_simple(dparts);
-    struct parg_editor *editor;
-    struct parg_definer *definer;
-    struct parg_modifier *modifier;
-    struct dts_partition_entry_simple *dpart, *dpart_hot;
     for (unsigned i = 0; i < ehelper.count; ++i) {
-        editor = ehelper.editors + i;
-        if (editor->modify) {
-            modifier = &editor->modifier;
-            if (!(dpart = dts_dedit_part_select(modifier, dparts))) {
-                dts_dedit_report_failed_select(modifier);
-                fputs("DTS dedit parse: Failed selector\n", stderr);
-                return 3;
-            }
-            switch (modifier->modify_part) {
-                case PARG_MODIFY_PART_ADJUST:
-                    if (dts_dedit_adjust(modifier, dpart)) {
-                        fputs("DTS dedit parse: Failed to adjust partition detail\n", stderr);
-                        return 4;
-                    }
-                    break;
-                case PARG_MODIFY_PART_DELETE:
-                    if (dparts->partitions_count == 0) {
-                        return 1;
-                    }
-                    for (dpart_hot = dpart; dpart_hot - dparts->partitions < dparts->partitions_count - 1; ++dpart_hot) {
-                        *dpart_hot = *(dpart_hot + 1);
-                    }
-                    --dparts->partitions_count;
-                    break;
-                case PARG_MODIFY_PART_CLONE:
-                    if (dparts->partitions_count >= MAX_PARTITIONS_COUNT) {
-                        fputs("DTS dedit parse: Trying to clone when partition count overflowed, refuse to continue\n", stderr);
-                        return 1;
-                    }
-                    dpart_hot = dparts->partitions + dparts->partitions_count++;
-                    *dpart_hot = *dpart;
-                    strncpy(dpart_hot->name, modifier->name, MAX_PARTITION_NAME_LENGTH);
-                    break;
-                case PARG_MODIFY_PART_PLACE:
-                    if (dts_dedit_place(modifier, dparts, dpart)) {
-                        fputs("DTS dedit parse: Failed to place partition\n", stderr);
-                        return 1;
-                    }
-                    break;
-            }
-        } else {
-            definer = &editor->definer;
-            dpart = dparts->partitions + dparts->partitions_count;
-            if (++dparts->partitions_count > MAX_PARTITIONS_COUNT) {
-                fputs("DTS dedit parse: Trying to define partition when partition count overflowed, refuse to continue\n", stderr);
-                return 1;
-            }
-            strncpy(dpart->name, definer->name, MAX_PARTITION_NAME_LENGTH);
-            dpart->size = definer->size;
-            dpart->mask = definer->masks;
+        if (dts_dedit_each(dparts, ehelper.editors + i)) {
+            free(ehelper.editors);
+            fputs("DTS dedit parse: Failed to edit partitions according to PARGs\n", stderr);
+            return 3;
         }
     }
     free(ehelper.editors);
     fputs("DTS dedit parse: Table after editting:\n", stderr);
     dts_report_partitions_simple(dparts);
     return 0;
+}
+
+int
+dts_valid_partitions_simple(
+    struct dts_partitions_helper_simple const * const   dparts
+){
+    if (!dparts) {
+        return -1;
+    }
+    int r = 0;
+    for (unsigned i = 0; i < dparts->partitions_count; ++i) {
+        if (ept_valid_partition_name(dparts->partitions[i].name)) {
+            ++r;
+        }
+    }
+    fprintf(stderr, "DTS valid partitions simple: %d partitions have illegal names\n", r);
+    return r;
 }

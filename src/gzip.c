@@ -128,7 +128,7 @@ gzip_unzip(
 ){
     const int offset = gzip_valid_header(in);
     if (!offset) {
-        fputs("unzip: Gzip header invalid", stderr);
+        fputs("unzip: Gzip header invalid\n", stderr);
         return 0;
     }
     return gzip_unzip_no_header(in+offset, in_size-offset, out);

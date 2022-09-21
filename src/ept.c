@@ -212,7 +212,7 @@ ept_valid_partition_name(
         term = false;
     }
     if (ret) {
-        fprintf(stderr, "EPT valid partition name: %u illegal characters found in partition name '%s'", ret, name);
+        fprintf(stderr, "EPT valid partition name: %u illegal characters found in partition name '%s'\n", ret, name);
         if (term) {
             fputc('\n', stderr);
         } else {
@@ -532,7 +532,7 @@ ept_read(
         return 2;
     }
     if (io_read_till_finish(fd, table, sizeof *table)) {
-        fputs("EPT read: Failed to read into buffer", stderr);
+        fputs("EPT read: Failed to read into buffer\n", stderr);
         return 3;
     }
     return 0;
@@ -977,7 +977,7 @@ ept_eedit_part_select(
                 }
                 return table->partitions + modifier->select_relative;
             } else {
-                if (abs(modifier->select_relative) > pcount) {
+                if ((uint32_t)abs(modifier->select_relative) > pcount) {
                     return NULL;
                 }
                 return table->partitions + pcount + modifier->select_relative;

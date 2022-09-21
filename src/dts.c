@@ -371,7 +371,7 @@ dts_skip_nop(
         ++start;
     }
     if (*start != DTS_BEGIN_NODE_ACTUAL) {
-        fputs("DTS skip NOP: Node does not start properly", stderr);
+        fputs("DTS skip NOP: Node does not start properly\n", stderr);
         return NULL;
     }
     return (uint8_t *)start;
@@ -395,17 +395,9 @@ dts_get_node_from_path(
     }
     uint8_t const *const start = dts_skip_nop(dts);
     if (!start) {
-        fputs("DTS get node from path: Node does not start properly", stderr);
+        fputs("DTS get node from path: Node does not start properly\n", stderr);
         return NULL;
     }
-    // uint32_t const *current = (uint32_t const *)dts;
-    // while (*current == DTS_NOP_ACTUAL) {
-    //     ++current;
-    // }
-    // if (*current != DTS_BEGIN_NODE_ACTUAL) {
-    //     fputs("DTS get node from path: Node does not start properly", stderr);
-    //     return NULL;
-    // }
     if (len_path == 1) {
         fputs("DTS get node from path: Early quit for root node\n", stderr);
         return (uint8_t *)start + 4;
@@ -1333,7 +1325,7 @@ dts_dedit_part_select(
                 }
                 return dparts->partitions + modifier->select_relative;
             } else {
-                if (abs(modifier->select_relative) > pcount) {
+                if ((uint32_t)abs(modifier->select_relative) > pcount) {
                     return NULL;
                 }
                 return dparts->partitions + pcount + modifier->select_relative;

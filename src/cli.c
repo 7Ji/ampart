@@ -583,7 +583,7 @@ cli_mode_etod(
     dts_report_partitions_simple(&dparts);
 #ifdef CLI_LAZY_WRITE
     if (bhelper && !dts_compare_partitions_mixed(&bhelper->dtbs->phelper, &dparts)) {
-        fputs("CLI mode etod: Result partitions are the same as old DTB, no need to write", stderr);
+        fputs("CLI mode etod: Result partitions are the same as old DTB, no need to write\n", stderr);
         return 0;
     }
 #endif
@@ -722,7 +722,7 @@ cli_write_dtb_from_ept(
         fputs("CLI write DTB from EPT: Result EPT is not pedantic, removing partitions node in DTB\n", stderr);
 #ifdef CLI_LAZY_WRITE
         if (bhelper && bhelper->dtb_count && !bhelper->dtbs->has_partitions) {
-            fputs("CLI write DTB from EPT: DTB does not have partitions node, no need to remove it", stderr);
+            fputs("CLI write DTB from EPT: DTB does not have partitions node, no need to remove it\n", stderr);
         } else {
 #endif
             if (cli_write_dtb(bhelper, NULL)) {

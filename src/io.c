@@ -430,7 +430,7 @@ io_migrate_is_circle(
     memset(chain, 0, mhelper->count * sizeof *chain);
     struct io_migrate_entry const *mentry = mhelper->entries + id;
     chain[id] = true;
-    while (mentry->pending && mentry->target) {
+    while (mentry->pending) {
         if (chain[mentry->target]) {
             fprintf(stderr, "IO migrate is circle: Block %u has circle migration dependency, this will result in heavy memory footprint\n", id);
             return true;
@@ -450,6 +450,10 @@ io_migrate_plain_recursive(
 ){
     // fprintf(stderr, "IO migrate plain recursive: %u => %u\n", id, msource->target);
     struct io_migrate_entry *const mtarget = mhelper->entries + msource->target;
+    if (mtarget == msource) {
+        fputs("IO migrate plain recursive: Bad plan! target = source\n", stderr);
+        return -1;
+    }
     if (mtarget->pending && io_migrate_plain_recursive(mhelper, mtarget, msource->target, fd, dry_run)) {
         fputs("IO migrate plain recursive: Failed to recursively migrate\n", stderr);
         return 1;
@@ -487,6 +491,11 @@ io_migrate_circle_recursive(
     bool const dry_run
 ){
     // fprintf(stderr, "IO migrate circle recursive: %u => %u\n", id, msource->target);
+    struct io_migrate_entry *const mtarget = mhelper->entries + msource->target;
+    if (mtarget == msource) {
+        fputs("IO migrate plain recursive: Bad plan! target = source\n", stderr);
+        return -1;
+    }
     if (!(msource->buffer = malloc(mhelper->block * sizeof *msource->buffer))) {
         fputs("IO migrate circle recursive: Failed to allocate memory\n", stderr);
         return 1;
@@ -497,7 +506,6 @@ io_migrate_circle_recursive(
         free(msource->buffer);
         return 2;
     }
-    struct io_migrate_entry *const mtarget = mhelper->entries + msource->target;
     if (mtarget->pending && !mtarget->buffer && io_migrate_circle_recursive(mhelper, mtarget, msource->target, fd, dry_run)) {
         fputs("IO migrate circle recursive: Failed to recursively migrate\n", stderr);
         free(msource->buffer);

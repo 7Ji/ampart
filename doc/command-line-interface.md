@@ -123,6 +123,7 @@ All of the following arguments are listed in the --long-arg/-short-arg ([require
      - **none** don't migrate any partition
      - **essential** only migrate essential partitions (reserved, env, misc, logo, etc)
      - **all** migrate all partitions
+   - Default: essential
  - --strict-device/-s
    - If target is a block device, and --content is set, stick with that, and don't try to find the corresponding whole disk (If not set, and target is, e.g. /dev/reserved, ampart will find its underlying disk /dev/mmcblk0 and operate on that instead)
  - --dry-run/-d

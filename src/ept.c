@@ -30,7 +30,7 @@
 #define EPT_HEADER_VERSION_UINT32_1     (uint32_t)0x30302E30U
 #define EPT_HEADER_VERSION_UINT32_2     (uint32_t)0x00000000U
 
-#define EPT_PARTITION_ESSENTIAL_COUNT 6
+#define EPT_PARTITION_ESSENTIAL_COUNT 17
 #define EPT_PARTITION_CRITICAL_COUNT 2
 
 /* Macro */
@@ -99,13 +99,24 @@ struct ept_table const
     };
 
 char const 
-    ept_partition_essential_names[EPT_PARTITION_ESSENTIAL_COUNT][MAX_PARTITION_NAME_LENGTH] = {
+    ept_partition_essential_names[17][MAX_PARTITION_NAME_LENGTH] = {
         EPT_PARTITION_BOOTLOADER_NAME,
         EPT_PARTITION_RESERVED_NAME,
         EPT_PARTITION_ENV_NAME,
         "logo",
         "misc",
-        "dtbo"
+        "boot",
+        "boot_a",
+        "boot_b",
+        "dtbo",
+        "dtbo_a",
+        "dtbo_b",
+        "vbmeta",
+        "vbmeta_a",
+        "vbmeta_b",
+        "vbmeta_system",
+        "vbmeta_system_a",
+        "vbmeta_system_b"
     };
 
 char const 
@@ -998,7 +1009,7 @@ ept_sanitize_size(
 }
 
 int
-ept_dedit_adjust(
+ept_eedit_adjust(
     struct parg_modifier const * const          modifier,
     struct ept_partition * const   part,
     size_t const                    capacity
@@ -1008,12 +1019,12 @@ ept_dedit_adjust(
         strncpy(part->name, modifier->name, MAX_PARTITION_NAME_LENGTH);
     }
     if (parg_adjustor_adjust_u64(&part->offset, modifier->modify_offset, modifier->offset)) {
-        fprintf(stderr, "EPT dedit adjust: Failed to adjust offset of part %s\n", part->name);
+        fprintf(stderr, "EPT eedit adjust: Failed to adjust offset of part %s\n", part->name);
         return 1;
     }
     ept_sanitize_offset(part, capacity);
     if (parg_adjustor_adjust_u64(&part->size, modifier->modify_size, modifier->size)) {
-        fprintf(stderr, "EPT dedit adjust: Failed to adjust size of part %s\n", part->name);
+        fprintf(stderr, "EPT eedit adjust: Failed to adjust size of part %s\n", part->name);
         return 2;
     }
     ept_sanitize_size(part, capacity);
@@ -1078,12 +1089,12 @@ ept_eedit_each(
         struct ept_partition *const part = ept_eedit_part_select(modifier, table);
         if (!part) {
             parg_report_failed_select(modifier);
-            fputs("EPT dedit each: Failed selector\n", stderr);
+            fputs("EPT eedit each: Failed selector\n", stderr);
             return 1;
         }
         switch (modifier->modify_part) {
             case PARG_MODIFY_PART_ADJUST:
-                if (ept_dedit_adjust(modifier, part, capacity)) {
+                if (ept_eedit_adjust(modifier, part, capacity)) {
                     fputs("EPT eedit each: Failed to adjust partition detail\n", stderr);
                     return 2;
                 }
@@ -1344,12 +1355,24 @@ ept_ecreate_parse(
             fputs("EPT ecreate parse: Failed to parse arguments\n", stderr);
             return 3;
         }
-        uint32_t const pcount_new = dhelper.count > parg_max ? parg_max : dhelper.count;
+        uint32_t const pcount_new = util_safe_partitions_count(dhelper.count);
         struct ept_partition *part_last = table_new->partitions + table_new->partitions_count - 1;
         struct ept_partition *part;
         struct parg_definer *definer;
         for (uint32_t i = 0; i < pcount_new; ++i) {
             definer = dhelper.definers + i;
+            uint32_t const pcount_r = util_safe_partitions_count(table_new->partitions_count);
+            for (uint32_t j = 0; j < pcount_r; ++j) {
+                if (!strncmp(definer->name, table_new->partitions[j].name, MAX_PARTITION_NAME_LENGTH)) {
+                    for (uint32_t k = j; k < pcount_r - 1; ++k) {
+                        table_new->partitions[k] = table_new->partitions[k+1];
+                    }
+                    memset(part_last, 0, sizeof *part_last);
+                    --part_last;
+                    --table_new->partitions_count;
+                    break;
+                }
+            }
             part = part_last + 1;
             strncpy(part->name, definer->name, MAX_PARTITION_NAME_LENGTH);
             if (definer->set_offset) {
@@ -1374,7 +1397,10 @@ ept_ecreate_parse(
                 part->mask_flags = 4;
             }
             part_last = part;
-            ++table_new->partitions_count;
+            if (++table_new->partitions_count > MAX_PARTITIONS_COUNT) {
+                fputs("EPT ecreate parse: Too many partitions!\n", stderr);
+                return 4;
+            }
         }
     } else {
         fputs("EPT ecreate pasrse: No PARGs defined, using only essential partitions got from old table\n", stderr);

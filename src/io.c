@@ -421,6 +421,7 @@ io_seek_and_write(
     return 0;
 }
 
+#ifdef IO_MIGRATE_SEPERATE_CIRCLE_PLAIN
 bool
 io_migrate_is_circle(
     struct io_migrate_helper const *mhelper,
@@ -524,45 +525,53 @@ io_migrate_circle_recursive(
     msource->pending = false;
     return 0;
 }
+#endif /* IO_MIGRATE_SEPERATE_CIRCLE_PLAIN */
 
-// int
-// io_migrate_circle_recursive_dry_run(
-//     struct io_migrate_helper *mhelper,
-//     struct io_migrate_entry *const msource,
-//     uint32_t const id,
-//     int fd
-// ){
-//     fprintf(stderr, "IO migrate recursive dry-run: %u => %u\n", id, msource->target);
-
-//     if (!(msource->buffer = malloc(mhelper->block * sizeof *msource->buffer))) {
-//         fputs("IO migrate recursive dry-run: Failed to allocate memory\n", stderr);
-//         return 1;
-//     }
-//     if (io_seek_and_read(fd, (off_t)mhelper->block * (off_t)id, msource->buffer, mhelper->block * sizeof *msource->buffer)) {
-//         free(msource->buffer);
-//         return 2;
-//     }
-//     struct io_migrate_entry *const mtarget = mhelper->entries + msource->target;
-//     if (mtarget->pending && !mtarget->buffer && io_migrate_recursive_dry_run(mhelper, msource->target, fd)) {
-//         free(msource->buffer);
-//         return 3;
-//     }
-//     free(msource->buffer);
-//     msource->buffer = NULL;
-//     msource->pending = false;
-//     return 0;
-// }
+int
+io_migrate_recursive(
+    struct io_migrate_helper *const mhelper,
+    struct io_migrate_entry *const msource
+){
+    struct io_migrate_entry *const mtarget = mhelper->entries + msource->target;
+    if (mtarget == msource) {
+        fprintf(stderr, "IO migrate recursive: Bad plan! target = source on block %lu\n", msource - mhelper->entries);
+        return -1;
+    }
+    msource->pending = false;
+    if (mtarget->pending) {
+        fprintf(stderr, "IO migrate recursive: Reading block %u\n", msource->target);
+        memset(mhelper->buffer_sub, 0, mhelper->block * sizeof *mhelper->buffer_sub);
+        if (io_seek_and_read(mhelper->fd, (off_t)mhelper->block * (off_t)msource->target, mhelper->buffer_sub, mhelper->block)) {
+            fprintf(stderr, "IO migrate recursive: Failed to seek and read block %u\n", msource->target);
+            return 2;
+        }
+    }
+    fprintf(stderr, "IO migrate recursive: Writing block %u\n", msource->target);
+    if (io_seek_and_write(mhelper->fd, (off_t)mhelper->block * (off_t)msource->target, mhelper->buffer_main, mhelper->block)) {
+        fprintf(stderr, "IO migrate recursive: Failed to seek and read block %u\n", msource->target);
+        return 3;
+    }
+    if (mtarget->pending) {
+        uint8_t *buffer = mhelper->buffer_main;
+        mhelper->buffer_main = mhelper->buffer_sub;
+        mhelper->buffer_sub = buffer;
+        if (io_migrate_recursive(mhelper, mtarget)) {
+            fprintf(stderr, "IO migrate recursive: Failed to recursively migrate block %u\n", msource->target);
+            return 4;
+        }
+    }
+    return 0;
+}
 
 int
 io_migrate(
-    struct io_migrate_helper *const mhelper,
-    int const fd,
-    bool const dry_run
+    struct io_migrate_helper *const mhelper
 ){
-    if (!mhelper || !mhelper->count || fd < 0) {
+    if (!mhelper || !mhelper->count || mhelper->fd < 0) {
         return -1;
     }
     fprintf(stderr, "IO migrate: Start migrating, block size 0x%x, total blocks %u\n", mhelper->block, mhelper->count);
+#ifdef IO_MIGRATE_SEPERATE_CIRCLE_PLAIN
     // int (*plain)(struct io_migrate_helper *, struct io_migrate_entry *, uint32_t, int, bool) = &io_migrate_plain_recursive;
     // int (*circle)(struct io_migrate_helper *, struct io_migrate_entry *, uint32_t, int, bool) = &io_migrate_circle_recursive;
     int (*func)(struct io_migrate_helper *, struct io_migrate_entry *, uint32_t, int, bool);
@@ -582,6 +591,40 @@ io_migrate(
         }
     }
     free(chain);
+#else /* IO_MIGRATE_SEPERATE_CIRCLE_PLAIN */
+    if (!(mhelper->buffer_main = malloc(mhelper->block * sizeof *mhelper->buffer_main))) {
+        fputs("IO migfate: Failed to allocate memory for main buffer\n", stderr);
+        return 1;
+    }
+    if (!(mhelper->buffer_sub = malloc(mhelper->block * sizeof *mhelper->buffer_sub))) {
+        fputs("IO migfate: Failed to allocate memory for sub buffer\n", stderr);
+        free(mhelper->buffer_main);
+        return 2;
+    }
+    struct io_migrate_entry *mentry;
+    for (uint32_t i = 0; i < mhelper->count; ++i) {
+        mentry = mhelper->entries + i;
+        if (mentry->pending) {
+            fprintf(stderr, "IO migrate: Migrating block %u\n", i);
+            memset(mhelper->buffer_main, 0, mhelper->block * sizeof *mhelper->buffer_main);
+            fprintf(stderr, "IO migrate: Reading block %u\n", i);
+            if (io_seek_and_read(mhelper->fd, (off_t)mhelper->block * (off_t)i, mhelper->buffer_main, mhelper->block)) {
+                fprintf(stderr, "IO migrate: Failed to seek and read block %u\n", i);
+                free(mhelper->buffer_main);
+                free(mhelper->buffer_sub);
+                return 3;
+            }
+            if (io_migrate_recursive(mhelper, mentry)) {
+                fprintf(stderr, "IO migrate: Failed to recursively migrate block %u\n", i);
+                free(mhelper->buffer_main);
+                free(mhelper->buffer_sub);
+                return 4;
+            }
+        }
+    }
+    free(mhelper->buffer_main);
+    free(mhelper->buffer_sub);
+#endif /* IO_MIGRATE_SEPERATE_CIRCLE_PLAIN */
     return 0;
 }
 

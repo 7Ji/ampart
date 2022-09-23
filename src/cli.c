@@ -397,6 +397,13 @@ cli_write_dtb(
         fputs("CLI write DTB: Failed to write\n", stderr);
         close(fd);
         free(dtb_new);
+        return 3;
+    }
+    if (fsync(fd)) {
+        fputs("CLI write DTB: Failed to sync\n", stderr);
+        close(fd);
+        free(dtb_new);
+        return 4;
     }
     close(fd);
     free(dtb_new);
@@ -454,7 +461,8 @@ cli_write_ept(
         return 1;
     }
     if (can_migrate) {
-        if (io_migrate(&mhelper, fd, false)) {
+        mhelper.fd = fd;
+        if (io_migrate(&mhelper)) {
             fputs("CLI write EPT: Failed to migrate\n", stderr);
             close(fd);
             free(mhelper.entries);
@@ -472,6 +480,11 @@ cli_write_ept(
         fputs("CLI write EPT: Failed to write\n", stderr);
         close(fd);
         return 4;
+    }
+    if (fsync(fd)) {
+        fputs("CLI write EPT: Failed to sync\n", stderr);
+        close(fd);
+        return 5;
     }
     close(fd);
     fputs("CLI write EPT: Write successful\n", stderr);

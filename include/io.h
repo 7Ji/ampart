@@ -32,7 +32,9 @@ enum
 
 struct
     io_migrate_entry{
+#ifdef IO_MIGRATE_SEPERATE_CIRCLE_PLAIN
         uint8_t *   buffer;
+#endif
         uint32_t    target;
         bool        pending;
     };
@@ -42,6 +44,11 @@ struct
         struct io_migrate_entry *   entries;
         uint32_t                    count;
         uint32_t                    block;
+#ifndef IO_MIGRATE_SEPERATE_CIRCLE_PLAIN
+        uint8_t *                   buffer_main;
+        uint8_t *                   buffer_sub;
+        int                         fd;
+#endif
     };
 
 struct 
@@ -73,9 +80,7 @@ int
 
 int
     io_migrate(
-        struct io_migrate_helper *  mhelper,
-        int                         fd,
-        bool                        dry_run
+        struct io_migrate_helper *  mhelper
     );
     
 int 

@@ -200,7 +200,7 @@ cli_parse_options(
                 return -1;
             case 'h':   // help
                 cli_version();
-                fputs("\nampart does not provide command-line help message due to its complex syntax, please refer to the project Wiki for documentation:\nhttps://github.com/7Ji/ampart/wiki\n\n", stderr);
+                fputs("\nampart does not provide command-line help message, please refer to the project repo for documentation:\nhttps://github.com/7Ji/ampart\n\n", stderr);
                 return -1;
             case 'm':  // mode:
                 if (cli_parse_mode()) {

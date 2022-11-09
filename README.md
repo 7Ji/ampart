@@ -15,6 +15,114 @@ The following SoCs are proven to be compatible with ampart:
 
 Everything is done in a **single session**, without any **repeated execution** or **reboot**  
 
+# Usage
+With ampart, you can safely turn an eMMC partition table that co-exists with MBR/GPT partition tables on Amlogic devices from like this (sc2, s905x4, HK1 Rbox X4) where you dare not create MBR/GPT partitions on:
+```
+===================================================================================
+ID| name            |          offset|(   human)|            size|(   human)| masks
+-----------------------------------------------------------------------------------
+ 0: bootloader                      0 (   0.00B)           400000 (   4.00M)      0
+    (GAP)                                                 2000000 (  32.00M)
+ 1: reserved                  2400000 (  36.00M)          4000000 (  64.00M)      0
+    (GAP)                                                  800000 (   8.00M)
+ 2: cache                     6c00000 ( 108.00M)                0 (   0.00B)      0
+    (GAP)                                                  800000 (   8.00M)
+ 3: env                       7400000 ( 116.00M)           800000 (   8.00M)      0
+    (GAP)                                                  800000 (   8.00M)
+ 4: frp                       8400000 ( 132.00M)           200000 (   2.00M)      1
+    (GAP)                                                  800000 (   8.00M)
+ 5: factory                   8e00000 ( 142.00M)           800000 (   8.00M)     17
+    (GAP)                                                  800000 (   8.00M)
+ 6: vendor_boot_a             9e00000 ( 158.00M)          1800000 (  24.00M)      1
+    (GAP)                                                  800000 (   8.00M)
+ 7: vendor_boot_b             be00000 ( 190.00M)          1800000 (  24.00M)      1
+    (GAP)                                                  800000 (   8.00M)
+ 8: tee                       de00000 ( 222.00M)          2000000 (  32.00M)      1
+    (GAP)                                                  800000 (   8.00M)
+ 9: logo                     10600000 ( 262.00M)           800000 (   8.00M)      1
+    (GAP)                                                  800000 (   8.00M)
+10: misc                     11600000 ( 278.00M)           200000 (   2.00M)      1
+    (GAP)                                                  800000 (   8.00M)
+11: dtbo_a                   12000000 ( 288.00M)           200000 (   2.00M)      1
+    (GAP)                                                  800000 (   8.00M)
+12: dtbo_b                   12a00000 ( 298.00M)           200000 (   2.00M)      1
+    (GAP)                                                  800000 (   8.00M)
+13: cri_data                 13400000 ( 308.00M)           800000 (   8.00M)      2
+    (GAP)                                                  800000 (   8.00M)
+14: param                    14400000 ( 324.00M)          1000000 (  16.00M)      2
+    (GAP)                                                  800000 (   8.00M)
+15: odm_ext_a                15c00000 ( 348.00M)          1000000 (  16.00M)      1
+    (GAP)                                                  800000 (   8.00M)
+16: odm_ext_b                17400000 ( 372.00M)          1000000 (  16.00M)      1
+    (GAP)                                                  800000 (   8.00M)
+17: oem_a                    18c00000 ( 396.00M)          2000000 (  32.00M)      1
+    (GAP)                                                  800000 (   8.00M)
+18: oem_b                    1b400000 ( 436.00M)          2000000 (  32.00M)      1
+    (GAP)                                                  800000 (   8.00M)
+19: boot_a                   1dc00000 ( 476.00M)          4000000 (  64.00M)      1
+    (GAP)                                                  800000 (   8.00M)
+20: boot_b                   22400000 ( 548.00M)          4000000 (  64.00M)      1
+    (GAP)                                                  800000 (   8.00M)
+21: rsv                      26c00000 ( 620.00M)          1000000 (  16.00M)      1
+    (GAP)                                                  800000 (   8.00M)
+22: metadata                 28400000 ( 644.00M)          1000000 (  16.00M)      1
+    (GAP)                                                  800000 (   8.00M)
+23: vbmeta_a                 29c00000 ( 668.00M)           200000 (   2.00M)      1
+    (GAP)                                                  800000 (   8.00M)
+24: vbmeta_b                 2a600000 ( 678.00M)           200000 (   2.00M)      1
+    (GAP)                                                  800000 (   8.00M)
+25: vbmeta_system_a          2b000000 ( 688.00M)           200000 (   2.00M)      1
+    (GAP)                                                  800000 (   8.00M)
+26: vbmeta_system_b          2ba00000 ( 698.00M)           200000 (   2.00M)      1
+    (GAP)                                                  800000 (   8.00M)
+27: super                    2c400000 ( 708.00M)         90000000 (   2.25G)      1
+    (GAP)                                                  800000 (   8.00M)
+28: userdata                 bcc00000 (   2.95G)        68b000000 (  26.17G)      4
+===================================================================================
+```
+with an easy command
+```
+ampart /path/to/your/eMMC/drive/or/dumped/image --mode dclone data::-1:4
+```
+to like this where you can freely create MBR/GPT partitions on (4M-36M, 100M-116M, 117M-end):
+```
+===================================================================================
+ID| name            |          offset|(   human)|            size|(   human)| masks
+-----------------------------------------------------------------------------------
+ 0: bootloader                      0 (   0.00B)           400000 (   4.00M)      0
+    (GAP)                                                 2000000 (  32.00M)
+ 1: reserved                  2400000 (  36.00M)          4000000 (  64.00M)      0
+    (GAP)                                                  800000 (   8.00M)
+ 2: cache                     6c00000 ( 108.00M)                0 (   0.00B)      0
+    (GAP)                                                  800000 (   8.00M)
+ 3: env                       7400000 ( 116.00M)           800000 (   8.00M)      0
+    (GAP)                                                  800000 (   8.00M)
+ 4: data                      8400000 ( 132.00M)        73f800000 (  28.99G)      4
+===================================================================================
+```
+without breaking the partitions node in DTB so post-SC2 devices won't brick after partitioning (since they rely on partitions node in DTB to work)
+
+And if you're willing to break partitions node in DTB, (should be OK for everything before SC2), then a command line like this:
+```
+ampart /path/to/your/eMMC/drive/or/dumped/image --mode ecreate data:::
+```
+to like this where you can freely create MBR partitions on (5M-36M, 100M-end):
+```
+===================================================================================
+ID| name            |          offset|(   human)|            size|(   human)| masks
+-----------------------------------------------------------------------------------
+ 0: bootloader                      0 (   0.00B)           400000 (   4.00M)      0
+ 1: env                        400000 (   4.00M)           800000 (   8.00M)      0
+ 2: cache                      c00000 (  12.00M)                0 (   0.00B)      0
+    (GAP)                                                 1800000 (  24.00M)
+ 3: reserved                  2400000 (  36.00M)          4000000 (  64.00M)      0
+ 4: data                      6400000 ( 100.00M)        741800000 (  29.02G)      4
+===================================================================================
+```
+So you can have more freedom when creating MBR partitions on eMMC, without worrying overwriting existing important partitions like ``reserved``, ``env``, etc
+
+There're many more different modes available in ampart, please refer to the documentation for their corresponding usages.
+
 
 # Documentation
 Please refer to the documentation under [doc](doc) for the usage and details about the arguments. The ampart program itself **does not have built-in CLI help message**, as it is intended to be used in power users and scripts, for which the officially maintained doc in the repo should always be refered to anyway.

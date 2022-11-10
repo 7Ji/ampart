@@ -656,13 +656,17 @@ dtb_snapshot_decimal(
     struct dts_partition_entry const *const part_start = phelper->partitions;
     struct dts_partition_entry const *part_current;
     uint32_t const pcount = util_safe_partitions_count(phelper->partitions_count);
+    uint32_t const pcount_has_space = pcount - 1;
     fputs("DTB snapshot decimal:\n", stderr);
     for (unsigned i = 0; i < pcount; ++i) {
         part_current = part_start + i;
         if (part_current->size == (uint64_t)-1) {
-            printf("%s::-1:%u ", part_current->name, part_current->mask);
+            printf("%s::-1:%u", part_current->name, part_current->mask);
         } else {
-            printf("%s::%lu:%u ", part_current->name, part_current->size, part_current->mask);
+            printf("%s::%lu:%u", part_current->name, part_current->size, part_current->mask);
+        }
+        if (i != pcount_has_space) {
+            fputc(' ', stdout);
         }
     }
     putc('\n', stdout);
@@ -676,13 +680,17 @@ dtb_snapshot_hex(
     struct dts_partition_entry const *const part_start = phelper->partitions;
     struct dts_partition_entry const *part_current;
     uint32_t const pcount = util_safe_partitions_count(phelper->partitions_count);
+    uint32_t const pcount_has_space = pcount - 1;
     fputs("DTB snapshot hex:\n", stderr);
     for (unsigned i = 0; i < pcount; ++i) {
         part_current = part_start + i;
         if (part_current->size == (uint64_t)-1) {
-            printf("%s::-1:%u ", part_current->name, part_current->mask);
+            printf("%s::-1:%u", part_current->name, part_current->mask);
         } else {
-            printf("%s::0x%lx:%u ", part_current->name, part_current->size, part_current->mask);
+            printf("%s::0x%lx:%u", part_current->name, part_current->size, part_current->mask);
+        }
+        if (i != pcount_has_space) {
+            fputc(' ', stdout);
         }
     }
     putc('\n', stdout);
@@ -697,15 +705,19 @@ dtb_snapshot_human(
     struct dts_partition_entry const *const part_start = phelper->partitions;
     struct dts_partition_entry const *part_current;
     uint32_t const pcount = util_safe_partitions_count(phelper->partitions_count);
+    uint32_t const pcount_has_space = pcount - 1;
     size_t size;
     char suffix;
     for (unsigned i = 0; i < pcount; ++i) {
         part_current = part_start + i;
         if (part_current->size == (uint64_t)-1) {
-            printf("%s::-1:%u ", part_current->name, part_current->mask);
+            printf("%s::-1:%u", part_current->name, part_current->mask);
         } else {
             size = util_size_to_human_readable_int(part_current->size, &suffix);
-            printf("%s::%lu%c:%u ", part_current->name, size, suffix, part_current->mask);
+            printf("%s::%lu%c:%u", part_current->name, size, suffix, part_current->mask);
+        }
+        if (i != pcount_has_space) {
+            fputc(' ', stdout);
         }
     }
     putc('\n', stdout);

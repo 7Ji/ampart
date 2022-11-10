@@ -671,9 +671,13 @@ ept_snapshot_decimal(
     struct ept_partition const *const part_start = table->partitions;
     struct ept_partition const *part_current;
     uint32_t const pcount = util_safe_partitions_count(table->partitions_count);
+    uint32_t const pcount_has_space = pcount - 1;
     for (uint32_t i = 0; i < pcount; ++i) {
         part_current = part_start + i;
-        printf("%s:%lu:%lu:%u ", part_current->name, part_current->offset, part_current->size, part_current->mask_flags);
+        printf("%s:%lu:%lu:%u", part_current->name, part_current->offset, part_current->size, part_current->mask_flags);
+        if (i != pcount_has_space) {
+            fputc(' ', stdout);
+        }
     }
     fputc('\n', stdout);
 }
@@ -687,9 +691,13 @@ ept_snapshot_hex(
     struct ept_partition const *const part_start = table->partitions;
     struct ept_partition const *part_current;
     uint32_t const pcount = util_safe_partitions_count(table->partitions_count);
+    uint32_t const pcount_has_space = pcount - 1;
     for (uint32_t i = 0; i < pcount; ++i) {
         part_current = part_start + i;
-        printf("%s:0x%lx:0x%lx:%u ", part_current->name, part_current->offset, part_current->size, part_current->mask_flags);
+        printf("%s:0x%lx:0x%lx:%u", part_current->name, part_current->offset, part_current->size, part_current->mask_flags);
+        if (i != pcount_has_space) {
+            fputc(' ', stdout);
+        }
     }
     fputc('\n', stdout);
 }
@@ -707,11 +715,15 @@ ept_snapshot_human(
     size_t size;
     char suffix_size;
     uint32_t const pcount = util_safe_partitions_count(table->partitions_count);
+    uint32_t const pcount_has_space = pcount - 1;
     for (uint32_t i = 0; i < pcount; ++i) {
         part_current = part_start + i;
         offset = util_size_to_human_readable_int(part_current->offset, &suffix_offset);
         size = util_size_to_human_readable_int(part_current->size, &suffix_size);
-        printf("%s:%lu%c:%lu%c:%u ", part_current->name, offset, suffix_offset, size, suffix_size, part_current->mask_flags);
+        printf("%s:%lu%c:%lu%c:%u", part_current->name, offset, suffix_offset, size, suffix_size, part_current->mask_flags);
+        if (i != pcount_has_space) {
+            fputc(' ', stdout);
+        }
     }
     fputc('\n', stdout);
 }

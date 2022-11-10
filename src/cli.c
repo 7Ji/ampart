@@ -75,7 +75,11 @@ struct cli_options cli_options = {
 
 void 
 cli_version(){
+#ifdef CLI_VERSION
+    fputs("ampart-ng (Amlogic eMMC partition tool) by 7Ji, version "CLI_VERSION"\n", stderr);
+#else
     fputs("ampart-ng (Amlogic eMMC partition tool) by 7Ji, development version, debug usage only\n", stderr);
+#endif
 }
 
 size_t

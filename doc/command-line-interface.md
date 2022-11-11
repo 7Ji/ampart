@@ -29,6 +29,48 @@ ampart --mode dclone /dev/mmcblk0 data::-1:4 system::2G:2
         ^nop1 ^nop1-arg ^target    ^parg1     ^parg2
 ```
 
+## Non-positional arguments
+All of the following arguments are listed in the --long-arg/-short-arg ([required argument]) style, you can use either form
+ - --version/-v
+   - Prints the version and early quit
+ - --help/-h
+   - Prints the help message and early quit
+ - --mode/-m [mode name]
+   - Set ampart to run in one of the following modes:
+     - dtoe (DTB to EPT)
+     - etod (EPT to DTB)
+     - epedantic (is EPT pedantic)
+     - dedit (DTB edit)
+     - eedit (EPT edit)
+     - dsnapshot (DTB snapshot)
+     - esnapshot (EPT snapshot)
+     - dclone (DTB clone)
+     - eclone (EPT clone)
+     - ecreate (EPT create)
+   - Default: none, if no mode is set, ampart will not process the target
+ - --content/-c [content type]
+   - Set the content of the target
+     - **auto** auto-identify target's content
+     - **dtb** force ampart to treat target as DTB
+     - **reserved** force ampart to treat target as reserved partition
+     - **disk** force ampart to treat target as whole disk
+   - Default: auto
+ - --migrate/-M [migrate strategy]
+   - Set the migrate strategy about partitions
+     - **none** don't migrate any partition
+     - **essential** only migrate essential partitions (reserved, env, misc, logo, etc)
+     - **all** migrate all partitions
+   - Default: essential
+ - --strict-device/-s
+   - If target is a block device, and --content is set, stick with that, and don't try to find the corresponding whole disk (If not set, and target is, e.g. /dev/reserved, ampart will find its underlying disk /dev/mmcblk0 and operate on that instead)
+ - --dry-run/-d
+   - Don't do any write
+ - --offset-reserved/-R [offset of reserved partition in disk]
+ - --offset-dtb/-D [offset of dtb in reserved partition]
+ - --gap-partition/-p [gap between partitions]
+ - --gap-reserved/-r [gap before reserved partition]
+
+
 ## Standard Input/Output
 ### stdin
 ampart does **not** accept any input nor read anything from stdin (for now). This will potentially be used in the future for reading instructions piped in, but will **never** be used to read user input, as ampart is **only** intended to be called by scripts (and probabaly by some power-users)
@@ -91,47 +133,6 @@ Partitions in snapshot 2
 As you can see the first and second output is more friendly for script to parse, the last is best for reporting to user
 ### stderr
 Since standard output is used for snapshots only, all logs are printed to standard error
-
-## Non-positional arguments
-All of the following arguments are listed in the --long-arg/-short-arg ([required argument]) style, you can use either form
- - --version/-v
-   - Prints the version and early quit
- - --help/-h
-   - Prints the help message and early quit
- - --mode/-m [mode name]
-   - Set ampart to run in one of the following modes:
-     - dtoe (DTB to EPT)
-     - etod (EPT to DTB)
-     - epedantic (is EPT pedantic)
-     - dedit (DTB edit)
-     - eedit (EPT edit)
-     - dsnapshot (DTB snapshot)
-     - esnapshot (EPT snapshot)
-     - dclone (DTB clone)
-     - eclone (EPT clone)
-     - ecreate (EPT create)
-   - Default: none, if no mode is set, ampart will not process the target
- - --content/-c [content type]
-   - Set the content of the target
-     - **auto** auto-identify target's content
-     - **dtb** force ampart to treat target as DTB
-     - **reserved** force ampart to treat target as reserved partition
-     - **disk** force ampart to treat target as whole disk
-   - Default: auto
- - --migrate/-M [migrate strategy]
-   - Set the migrate strategy about partitions
-     - **none** don't migrate any partition
-     - **essential** only migrate essential partitions (reserved, env, misc, logo, etc)
-     - **all** migrate all partitions
-   - Default: essential
- - --strict-device/-s
-   - If target is a block device, and --content is set, stick with that, and don't try to find the corresponding whole disk (If not set, and target is, e.g. /dev/reserved, ampart will find its underlying disk /dev/mmcblk0 and operate on that instead)
- - --dry-run/-d
-   - Don't do any write
- - --offset-reserved/-R [offset of reserved partition in disk]
- - --offset-dtb/-D [offset of dtb in reserved partition]
- - --gap-partition/-p [gap between partitions]
- - --gap-reserved/-r [gap before reserved partition]
 
 [parg]:partition-argument-mini-language.md
 [modes]:available-modes.md

@@ -19,3 +19,6 @@ The current available documentation:
 
 [emulate eMMC](emulate-emmc-with-only-dtb.md)
  - A special use case for reverse-engineering the partition layout on devices where the eMMC dump could not be gotten
+
+scripting-...
+ - Documentation for official demo scripts under [scripts](../scripts)

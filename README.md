@@ -16,7 +16,7 @@ The following SoCs are proven to be compatible with ampart:
 Everything is done in a **single session**, without any **repeated execution** or **reboot**  
 
 # Usage
-With ampart, you can safely turn an eMMC partition table that co-exists with MBR/GPT partition tables on Amlogic devices from like this (sc2, s905x4, HK1 Rbox X4) where you dare not create MBR/GPT partitions on:
+With ampart, you can safely turn an eMMC partition table that co-exists with MBR/GPT partition tables on Amlogic devices from like this where you dare not create MBR/GPT partitions on:
 ```
 ===================================================================================
 ID| name            |          offset|(   human)|            size|(   human)| masks

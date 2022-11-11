@@ -1,5 +1,7 @@
 ampart
+ampart-git/
 .vscode/
 obj/*
 dtbs
 images/
+releases/

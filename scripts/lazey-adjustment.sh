@@ -1,5 +1,5 @@
 #!/bin/bash
-# Official example script for ampart by 7Ji. Same license as ampart itself (GPLv3)
+# Official demo script for ampart by 7Ji. Same license as ampart itself (GPLv3)
 
 # Usage:
 #  - This script gets the snapshot and report partitions to end-users, and it'll compare the existing snapshot to the expected snapshot, and only adjust the partitions if they are different

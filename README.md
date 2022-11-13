@@ -1,7 +1,7 @@
 # Amlogic emmc partition tool
-**ampart** is a partition tool initially written for **HybridELEC** (a project that brings side-by-side dual-booting support to **CoreELEC**+**EmuELEC**) for easy re-partitioning of internal emmc device for **almost all Amlogic devices** to liberate me from editing the device tree for every device just to achive a custom partition layout. 
+**ampart** is a partition tool initially written for **[HybridELEC](https://github.com/7Ji/HybridELEC)** (a project that brings side-by-side dual-booting support to **[CoreELEC](https://github.com/CoreELEC/CoreELEC)**+**[EmuELEC](https://github.com/EmuELEC/EmuELEC)** for easy re-partitioning of internal emmc device for **almost all Amlogic devices** to liberate me from editing the device tree for every device just to achive a custom partition layout. 
 
-Yet now it has become **the one and only partition tool** for Amlogic's proprietary eMMC partition table format. It is written totally in **C** for portability and therefore **simple, fast yet reliable**, and provides a simple yet powerful argument-driven CLI for easy implementation in scripts.  
+Yet now it has become **the one and only partition tool** for Amlogic's proprietary eMMC partition table format. It is written totally in **C** for portability and therefore **simple, fast yet reliable**, and provides a simple yet powerful argument-driven CLI for easy implementation in scripts  
 
 The following SoCs are proven to be compatible with ampart:
  - gxbb (s905)
@@ -10,9 +10,18 @@ The following SoCs are proven to be compatible with ampart:
  - g12b (s922x)
  - sm1 (s905x3)
  - sc2 (s905x4) 
- 
+
+
 *DTB modes ``dclone`` and ``dedit`` is more suggested for post-sc2 SoC2, as they will break if the partitions node in DTB is broken*
 
+It supports building and running under following platforms:
+ - x86_64 (mainly on dumped images)
+ - aarch64 (either on eMMC directly, or on dumped image)
+
+*Please note for ARM only strict aarch64 host is correctly supported, a partial aarch64 system (e.g. CoreELEC with 64-bit kernel and 32-bit userspace) could be incompatible due to some >=64 bit data types being used, as a workaround you can run the aarch64 static build on a full aarch64 system (e.g. EmuELEC, ArchLinux, Armbian, OpenWrt, etc.) to install it as a guest system. A good news is CoreELEC is ppossibly switching to full aarch64 for their newer builds, but I don't know when that will come*
+
+*Please note **ampart is a partition tool and only a partition tool**, it could be used in installation but it's out of its support scope here, please refer to your corresponding distro for help if it uses ampart for installation. The script `aminstall.py` under [scripts](./scripts/aminstall) is just for **demo usage** as other official demo scripts.*
+ 
 Everything is done in a **single session**, without any **repeated execution** or **reboot**  
 
 # Usage
@@ -102,7 +111,7 @@ ID| name            |          offset|(   human)|            size|(   human)| ma
 ```
 without breaking the partitions node in DTB so post-SC2 devices won't brick after partitioning (since they rely on partitions node in DTB to work)
 
-And if you're willing to break partitions node in DTB, (should be OK for everything before SC2), then a command line like this:
+And if you're willing to break partitions node in DTB, (should be OK for everything before SC2), then with a command line like this:
 ```
 ampart /path/to/your/eMMC/drive/or/dumped/image --mode ecreate data:::
 ```
@@ -145,6 +154,29 @@ cd ampart
 make
 # Installing is optional, you can call ampart with its path directly without installing
 sudo make install
+```
+
+If incorporating in a LibreELEC-derived distro, then the following `package.mk` could be used:
+```
+# SPDX-License-Identifier: GPL-3.0
+# Copyright (C) 2022-present Guoxin "7Ji" Pu (https://github.com/7Ji)
+
+PKG_NAME="ampart"
+PKG_ARCH="x86_64 aarch64" 
+PKG_VERSION="2898ee3b62705132b81bb442ff904bebed4dab4a"
+PKG_SHA256="b543478bedaaf03c4e9eafdfbd8c639245665a2aa3044304af74201336b9b31a"
+PKG_LICENSE="GPL3"
+PKG_SITE="https://github.com/7Ji/ampart"
+PKG_URL="$PKG_SITE/archive/$PKG_VERSION.tar.gz"
+PKG_MAINTAINER="7Ji"
+PKG_LONGDESC="A simple, fast, yet reliable partition tool for Amlogic's proprietary emmc partition format."
+PKG_DEPENDS_TARGET="toolchain zlib u-boot-tools:host"
+PKG_TOOLCHAIN="make"
+PKG_MAKE_OPTS_TARGET="VERSION_CUSTOM=${PKG_VERSION}"
+
+makeinstall_target() {
+  install -Dm755 $PKG_DIR/ampart $INSTALL/usr/sbin/ampart
+}
 ```
 
 # License

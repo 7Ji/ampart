@@ -1,3 +1,6 @@
+**ARCHIVED UNTIL I FINISH MY 2023 POST-GRADUATTE ADMISSION EXAM ON DEC 24TH AND 25TH  
+归档至23考研结束**
+
 # Amlogic eMMC Partition Tool / Amlogic eMMC分区工具
 **ampart** is a partition tool initially written for **[HybridELEC]** (my project that brings side-by-side dual-booting support on the same drive to **[CoreELEC]**+**[EmuELEC])** for easy re-partitioning of internal eMMC device for **almost all Amlogic devices** to liberate me from editing the device tree for every device just to achive a custom partition layout, in an attempt to achieve **Android+CE+EE triple boot on eMMC**.   
 **ampart**是我最初为了在 **[HybridELEC]**（我的实现了 **[CoreELEC]**+**[EmuELEC]** 同驱动器双系统启动的项目）写的分区工具，为了简单地编辑**几乎所有Amlogic设备**的内置eMMC设备重新分区，从而让我从为了实现**安卓+CE+EE在eMMC上三系统启动**的而无尽地修改每个设备树的重复劳动里解放出来

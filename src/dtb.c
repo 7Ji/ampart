@@ -324,7 +324,7 @@ dtb_identify_and_redirect_buffer(
             return gbuffer;
         }
         default:
-            fprintf(stderr, "DTB read partitions and report: Unrecognizable DTB, magic %08x\n", *(uint32_t *)buffer);
+            fprintf(stderr, "DTB read partitions and report: Unrecognizable DTB, magic %08x. Maybe your DTB is encrypted? You can follow the method documented on my blog to try to decrypt it before using ampart: https://7ji.github.io/crack/2023/01/08/decrypt-aml-dtb.html\n", *(uint32_t *)buffer);
             return NULL;
     }
 }

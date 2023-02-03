@@ -193,7 +193,14 @@ int
 
 int
     dtb_snapshot(
-        struct dtb_buffer_helper const * const  bhelper
+        struct dtb_buffer_helper const *    bhelper
+    );
+
+int
+    dtb_webreport(
+        struct dtb_buffer_helper const *    bhelper,
+        char * const                        arg_dsnapshot,
+        uint32_t * const                    len_dsnapshot
     );
 
 #endif

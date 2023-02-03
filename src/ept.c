@@ -33,11 +33,17 @@
 #define EPT_PARTITION_ESSENTIAL_COUNT 17
 #define EPT_PARTITION_CRITICAL_COUNT 2
 
+#define EPT_WEBREPORT_ARG           "esnapshot="
+#define EPT_WEBREPORT_ARG_MAXLEN    0x800
+
 /* Macro */
 #define EPT_IS_PARTITION_ESSENTIAL(part) !ept_is_partition_not_essential(part)
 #define EPT_IS_PARTITION_CRITICAL(part) !ept_is_partition_not_critical(part)
 
 /* Variable */
+
+uint32_t const
+    len_ept_webreport_arg = strlen(EPT_WEBREPORT_ARG);
 
 uint32_t const
     ept_header_version_uint32[] = {
@@ -739,6 +745,52 @@ ept_snapshot(
     ept_snapshot_decimal(table);
     ept_snapshot_hex(table);
     ept_snapshot_human(table);
+    return 0;
+}
+
+int
+ept_webreport(
+    struct ept_table const * const  table,
+    char * const                    arg_esnapshot,
+    uint32_t * const                len_dsnapshot
+) {
+    if (!table || !table->partitions_count) {
+        fputs("EPT snapshot: EPT invalid\n", stderr);
+        return 1;
+    }
+    // Initial esnapshot= part
+    strncpy(arg_esnapshot, EPT_WEBREPORT_ARG, len_ept_webreport_arg);
+    char *current = arg_esnapshot + len_ept_webreport_arg;
+    uint32_t len_available = EPT_WEBREPORT_ARG_MAXLEN - len_ept_webreport_arg;
+    // For each partition
+    struct ept_partition const * part;
+    uint32_t const pcount = util_safe_partitions_count(table->partitions_count);
+    int len_this;
+    bool started = false;
+    for (uint32_t i = 0; i < pcount; ++i) {
+        if (started) {
+            if (len_available <= 4) {
+                fputs("EPT webreport: Not enough space for connector\n", stderr);
+                return 2;
+            }
+            strncpy(current, "\%20", 3);
+            current += 3;
+            len_available -= 3;
+        }
+        part = table->partitions + i;
+        len_this = snprintf(current, len_available, "%s:%lu:%lu:%u", part->name, part->offset, part->size, part->mask_flags);
+        if (len_this >= 0 && (uint32_t)len_this >= len_available) {
+            fputs("EPT webreport: Argument truncated\n", stderr);
+            return 3;
+        } else if (len_this < 0) {
+            fputs("EPT webreport: Output error encountered\n", stderr);
+            return 4;
+        }
+        len_available -= len_this;
+        current += len_this;
+        started = true;
+    }
+    *len_dsnapshot = EPT_WEBREPORT_ARG_MAXLEN- len_available;
     return 0;
 }
 

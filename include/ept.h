@@ -196,4 +196,11 @@ int
         struct ept_table const *    table
     );
 
+int
+    ept_webreport(
+        struct ept_table const *    table,
+        char * const                arg_esnapshot,
+        uint32_t * const            len_dsnapshot
+    );
+    
 #endif 

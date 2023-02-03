@@ -32,6 +32,7 @@ enum
         CLI_MODE_EEDIT,
         CLI_MODE_DSNAPSHOT,
         CLI_MODE_ESNAPSHOT,
+        CLI_MODE_WEBREPORT,
         CLI_MODE_DCLONE,
         CLI_MODE_ECLONE,
         CLI_MODE_ECREATE

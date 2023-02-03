@@ -27,6 +27,9 @@
 
 #define CLI_LAZY_WRITE
 
+#define CLI_WEBREPORT_URL           "https://7ji.github.io/ampart-web-reporter/?%s&%s"
+#define CLI_WEBREPORT_URL_MAXLEN    0x800
+
 /* Variable */
 
 char const  cli_mode_strings[][10] = {
@@ -38,6 +41,7 @@ char const  cli_mode_strings[][10] = {
     "eedit",
     "dsnapshot",
     "esnapshot",
+    "webreport",
     "dclone",
     "eclone",
     "ecreate"
@@ -831,6 +835,51 @@ cli_mode_esnapshot(
 
 static inline
 int
+cli_mode_webreport(
+    struct dtb_buffer_helper const * const  bhelper,
+    struct ept_table const * const          table
+) {
+    fputs("CLI mode webreport: Print a URL that can be opened in browser to get well-formatted partitio info\n", stderr);
+    if (!bhelper || !bhelper->dtb_count) {
+        fputs("CLI mode webreport: DTB not correct or invalid\n", stderr);
+        return 1;
+    }
+    if (!table || !table->partitions_count || ept_valid_table(table)) {
+        fputs("CLI mode webreport: EPT does not exist or is invalid, refuse to work\n", stderr);
+        return 2;
+    }
+    // The reported URL should look this:
+    // https://7ji.github.io/ampart-web-reporter/?esnapshot=bootloader:0:4194304:0%20reserved:37748736:67108864:0%20cache:113246208:754974720:2%20env:876609536:8388608:0%20logo:893386752:33554432:1%20recovery:935329792:33554432:1%20rsv:977272832:8388608:1%20tee:994050048:8388608:1%20crypt:1010827264:33554432:1%20misc:1052770304:33554432:1%20instaboot:1094713344:536870912:1%20boot:1639972864:33554432:1%20system:1681915904:1073741824:1%20params:2764046336:67108864:2%20bootfiles:2839543808:754974720:2%20data:3602907136:4131389440:4&dsnapshot=logo::33554432:1%20recovery::33554432:1%20rsv::8388608:1%20tee::8388608:1%20crypt::33554432:1%20misc::33554432:1%20instaboot::536870912:1%20boot::33554432:1%20system::1073741824:1%20cache::536870912:2%20params::67108864:2%20data::-1:4    
+    char arg_dsnapshot[CLI_WEBREPORT_URL_MAXLEN] = "";
+    char arg_esnapshot[CLI_WEBREPORT_URL_MAXLEN] = "";
+    unsigned len_dsnapshot = 0;
+    unsigned len_esnapshot = 0;
+    int r = dtb_webreport(bhelper, arg_dsnapshot, &len_dsnapshot);
+    if (r) {
+        fputs("CLI mode webreport: Failed to prepare dsnapshot argument\n", stderr);
+        return 2 + r;
+    }
+    r = ept_webreport(table, arg_esnapshot, &len_esnapshot);
+    if (r) {
+        fputs("CLI mode webreport: Failed to prepare esnapshot argument\n", stderr);
+        return 6 + r;
+    }
+    char url[2048];
+    r = snprintf(url, CLI_WEBREPORT_URL_MAXLEN, CLI_WEBREPORT_URL, arg_dsnapshot, arg_esnapshot);
+    if (r >= CLI_WEBREPORT_URL_MAXLEN) {
+        fputs("CLI mode webreport: URL truncated\n", stderr);
+        return 10;
+    } else if (r < 0) {
+        fputs("CLI mode webreport: Error occured during output\n", stderr);
+        return 11;
+    }
+    fputs("CLI mode webreport: Please copy the following URL to your browser to check the well-formatted partition info:\n", stderr);
+    puts(url);
+    return 0;
+}
+
+static inline
+int
 cli_mode_dclone(
     struct dtb_buffer_helper const * const  bhelper,
     struct ept_table const * const          table,
@@ -992,6 +1041,8 @@ cli_dispatcher(
             return cli_mode_dsnapshot(bhelper);
         case CLI_MODE_ESNAPSHOT:
             return cli_mode_esnapshot(table);
+        case CLI_MODE_WEBREPORT:
+            return cli_mode_webreport(bhelper, table);
         case CLI_MODE_DCLONE:
             return cli_mode_dclone(bhelper, table, argc, argv);
         case CLI_MODE_ECLONE:

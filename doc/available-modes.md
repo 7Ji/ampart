@@ -259,6 +259,21 @@ Take a snapshot of the EPT and output it to standard output, 3 inter-changable s
 - Reserved / 保留分区 √
 - Disk / 全盘 √
 
+## webreport (WEB report mode / 网页汇报模式)
+Generate a URL on standard output that can be opened on browser to get a well-formatted webpage of partition info, powered by my another project [ampart-web-reporter]. The device running this mode does not need to be online.  
+在标准输出上生成一个URL，可以在浏览器打开网页查看格式整齐的分区信息，由我的另一个项目[ampart-web-reporter]驱动。运行这一模式的设备本身不需要联网。
+
+[ampart-web-reporter]: https://github.com/7Ji/ampart-web-reporter
+
+### Partition arguments / 分区参数:
+ - No (all partition arguments will be ignored)  
+ 无（所有的分区参数都会被忽略）
+
+### Acceptable content / 可接受内容
+- DTB / 设备树 X
+- Reserved / 保留分区 √
+- Disk / 全盘 √
+
 ## dclone (DTB clone mode / DTB克隆模式)
 Restore a snapshot taken in `dsnapshot` mode, or also define the partitions if you like. If the target is Reserved or Disk, and the corresponding pedantic EPT is different from the existing EPT, the EPT will also be updated  
 恢复一个`dsnapshot`模式里获得快照，或者如果你想的话也能定义分区。如果目标为保留分区或者全盘，并且对应的迂腐EPT和现存的EPT不同的话，EPT也会一并更新

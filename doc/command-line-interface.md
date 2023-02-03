@@ -57,6 +57,7 @@ All of the following arguments are listed in the --long-arg/-short-arg ([require
      - eedit (EPT edit / EPT编辑)
      - dsnapshot (DTB snapshot / DTB快照)
      - esnapshot (EPT snapshot / EPT快照)
+     - webreport (WEB report / 网页汇报)
      - dclone (DTB clone / DTB克隆)
      - eclone (EPT clone / EPT克隆)
      - ecreate (EPT create / EPT创建)

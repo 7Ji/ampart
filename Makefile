@@ -4,9 +4,16 @@ DIR_SOURCE = src
 DIR_OBJECT = obj
 CC ?= gcc
 STRIP ?= strip
-CFLAGS = -I$(DIR_INCLUDE) -Wall -Wextra
-
 LDFLAGS = -lz
+CFLAGS = -I$(DIR_INCLUDE) -Wall -Wextra
+STATIC ?= 0
+DEBUG ?= 0
+ifeq ($(DEBUG), 1)
+	CFLAGS += -g
+endif
+ifeq ($(STATIC), 1)
+	LDFLAGS += -static
+endif
 
 INCLUDES = $(wildcard $(DIR_INCLUDE)/*.h)
 
@@ -33,10 +40,12 @@ endif
 
 $(BINARY): $(OBJECTS)
 	$(CC) -o $@ $^ $(CFLAGS) $(LDFLAGS)
+ifneq ($(DEBUG), 1)
+	$(STRIP) $(BINARY)
+endif
 
 $(DIR_OBJECT)/cli.o: $(DIR_SOURCE)/cli.c $(INCLUDES)
 	$(CC) -c -o $@ $< $(CFLAGS) -DCLI_VERSION=\"$(CLI_VERSION)\"
-
 
 $(DIR_OBJECT)/%.o: $(DIR_SOURCE)/%.c $(INCLUDES)
 	$(CC) -c -o $@ $< $(CFLAGS)

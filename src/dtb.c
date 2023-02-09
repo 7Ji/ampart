@@ -775,7 +775,10 @@ dtb_webreport(
             len_available -= 3;
         }
         pentry = phelper->partitions + i;
-        len_this = snprintf(current, len_available, "%s::%lu:%u", pentry->name, pentry->size, pentry->mask);
+        len_this = 
+            pentry->size == (uint64_t)-1 ?
+                snprintf(current, len_available, "%s::-1:%u", pentry->name, pentry->mask) :
+                snprintf(current, len_available, "%s::%lu:%u", pentry->name, pentry->size, pentry->mask);
         if (len_this >= 0 && (uint32_t)len_this >= len_available) {
             fputs("DTB webreport: Argument truncated\n", stderr);
             return 3;

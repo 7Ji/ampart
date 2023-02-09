@@ -13,13 +13,41 @@ jobs:
 
     steps:
     - uses: actions/checkout@v3
-    - name: make
+    - name: Static build for x86_64
       run: make STATIC=1
+    - name: Rename for x86_64
+      run: mv ampart ampart-x86_64
+    - name: Clean between arches
+      run: make clean
+    - name: Install cross toolchain for aarch64
+      run: |
+        sudo dpkg --add-architecture arm64
+        CODENAME=$(lsb_release -c -s)
+        sudo bash -c "echo -e '\
+          deb [arch=arm64] http://ports.ubuntu.com/ $CODENAME main restricted \n\
+          deb [arch=arm64] http://ports.ubuntu.com/ $CODENAME-updates main restricted \n\
+          deb [arch=arm64] http://ports.ubuntu.com/ $CODENAME universe \n\
+          deb [arch=arm64] http://ports.ubuntu.com/ $CODENAME-updates universe \n\
+          deb [arch=arm64] http://ports.ubuntu.com/ $CODENAME multiverse \n\
+          deb [arch=arm64] http://ports.ubuntu.com/ $CODENAME-updates multiverse \n\
+          deb [arch=arm64] http://ports.ubuntu.com/ $CODENAME-backports main restricted universe multiverse \n' > /etc/apt/sources.list.d/arm64-cross.list"
+        sudo sed -i 's/deb http/deb [arch=amd64] http/g' /etc/apt/sources.list
+        sudo apt-get update
+        sudo apt-get install \
+          gcc-aarch64-linux-gnu \
+          binutils-aarch64-linux-gnu \
+          linux-libc-dev:arm64 \
+          zlib1g-dev:arm64
+    - name: Static build for aarch64
+      run: make CC=aarch64-linux-gnu-gcc STRIP=aarch64-linux-gnu-strip STATIC=1
+    - name: Rename for aarch64
+      run: mv ampart ampart-aarch64
     - name: Upload a Build Artifact
       uses: actions/upload-artifact@v3.1.2
       with:
-        # Artifact name
         name: static-build
-        path: ampart
+        path: ampart-*
         if-no-files-found: error
         retention-days: 0
+
+# sudo apt install linux-libc-dev:arm64 zlib1g-dev:arm64

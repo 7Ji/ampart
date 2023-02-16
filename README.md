@@ -84,6 +84,14 @@ ID| name            |          offset|(   human)|            size|(   human)| ma
  4: data                      6400000 ( 100.00M)        741800000 (  29.02G)      4
 ===================================================================================
 ```
+# Download / 下载
+Release versions can be downloaded from the [release page]. The static versions are recommended if you're not using ArchLinux.  
+发布版本可以从[发布页][release page]下载。如果你使用的不是ArchLinux，建议下载静态编译版本
+
+The Github actions in this repo is also configured to compile ampart to x86_64 and aarch64 static binaries on each push, you can download these builds by clicking the green `√` the top middle of this page  
+本仓库的Github actions也配置为每次推送更新时自动构建x86_64和aarch64的静态二进制文件，你可以点击本页面中间上面的绿色`√`来下载
+
+
 # Building / 构建
 
 ## Officially maintained package / 官方维护的软件包
@@ -133,7 +141,7 @@ You're free to include ampart in your project as long as it meets [the license][
 [scripts]: scripts/aminstall
 
 
-
+[release page]: https://github.com/7Ji/ampart/releases
 [ArchLinuxARM]:https://github.com/7Ji/amlogic-s9xxx-archlinuxarm
 [Armbian]:https://github.com/ophub/amlogic-s9xxx-armbian
 [CoreELEC]:https://github.com/CoreELEC/CoreELEC

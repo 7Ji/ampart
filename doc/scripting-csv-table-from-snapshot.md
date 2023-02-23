@@ -22,4 +22,4 @@ bootloader:0B:4M:0 reserved:36M:64M:0 cache:108M:0B:0 env:116M:8M:0 frp:132M:2M:
 ```
 The result .csv file:
 
-![result](../imgs/emulate-emmc-with-only-dtb-results.png)
+![result](imgs/emulate-emmc-with-only-dtb-results.png)

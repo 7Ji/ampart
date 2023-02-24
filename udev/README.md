@@ -18,6 +18,25 @@ example dmesg output:
 ```
 example lsblk output:
 ```
+mmcblk2      179:32   0   7.3G  0 disk 
+├─mmcblk2p1  179:33   0    64M  0 part 
+├─mmcblk2p2  179:34   0   512M  0 part 
+├─mmcblk2p3  179:35   0     8M  0 part 
+├─mmcblk2p4  179:36   0    32M  0 part 
+├─mmcblk2p5  179:37   0    32M  0 part 
+├─mmcblk2p6  179:38   0     8M  0 part 
+├─mmcblk2p7  179:39   0     8M  0 part 
+├─mmcblk2p8  179:40   0    32M  0 part 
+├─mmcblk2p9  179:41   0    32M  0 part 
+├─mmcblk2p10 179:42   0   512M  0 part 
+├─mmcblk2p11 179:43   0    32M  0 part 
+├─mmcblk2p12 179:44   0     1G  0 part 
+├─mmcblk2p13 179:45   0    64M  0 part 
+└─mmcblk2p14 179:46   0   4.8G  0 part
+```
+
+example symbol links under `/dev/block`:
+```
 total 0
 lrwxrwxrwx  1 root root   13 Feb 18 08:41 boot -> ../mmcblk2p11
 lrwxrwxrwx  1 root root   12 Feb 18 08:41 cache -> ../mmcblk2p2

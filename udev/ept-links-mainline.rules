@@ -1,0 +1,1 @@
+SUBSYSTEM=="block", KERNEL=="mmcblk2p*", ENV{DEVTYPE}=="partition", SYMLINK+="block/$env{PARTNAME}"

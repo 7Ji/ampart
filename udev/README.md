@@ -1,9 +1,9 @@
 The rules here is useful if you want to create symbol links under `/dev/block` on a mainline kernel with ept names as link names
 
 The kernel would need the following patchset and `CONFIG_AMLOGIC_PARTITION=y` to natively support such partitions (choose one convinient for your use case):
- - [compare](https://github.com/7Ji/linux-6.1.y/compare/54968e71b3d75d34117442db5fd1fc3f0761439e%5E...f51821c5dc09619495172afeeab2fd19d9d38787)
- - [patch](https://github.com/7Ji/linux-6.1.y/compare/54968e71b3d75d34117442db5fd1fc3f0761439e%5E...f51821c5dc09619495172afeeab2fd19d9d38787.patch)
- - [diff](https://github.com/7Ji/linux-6.1.y/compare/54968e71b3d75d34117442db5fd1fc3f0761439e%5E...f51821c5dc09619495172afeeab2fd19d9d38787.diff)
+ - https://github.com/7Ji/linux/commit/049bddc86d7e2d1a7727bbc6d268be9cf5e779d2
+
+Also remember to set `apt_blkdevs=all` or `apt_blkdevs=mmcblk2` in your kernel command line
 
 **Do not use the patchset or the udev rules if you're on CoreELEC or EmuELEC, the vendor kernel they use already supports such partitions and will create block devices under `/dev` with correct names**
 

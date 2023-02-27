@@ -29,8 +29,12 @@ else
 	VERSION_GIT_COMMIT := $(shell git rev-list --abbrev-commit --tags --max-count=1)
 	VERSION_GIT_DATE := $(shell git log -1 --format=%cd --date=format:"%Y%m%d")
 	CLI_VERSION := $(VERSION_GIT_TAG_NO_V)-$(VERSION_GIT_COMMIT)-$(VERSION_GIT_DATE)
+	GIT_STAT := $(shell git diff --stat)
 	ifeq ($(CLI_VERSION),--)
 		CLI_VERSION := unknown
+	endif
+	ifneq ($(GIT_STAT),)
+		CLI_VERSION := $(CLI_VERSION)-DIRTY
 	endif
 endif
 

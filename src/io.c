@@ -628,4 +628,20 @@ io_migrate(
     return 0;
 }
 
+int
+io_rereadpart(
+    int fd
+){
+    if (fd <= 0) {
+        fprintf(stderr, "IO rereadpart: File descriptor not greater than 0 (%d), give up\n", fd);
+        return -1;
+    }
+    if (ioctl(fd, BLKRRPART) == -1) {
+        fprintf(stderr, "IO rereadpart: Failed to send ioctl BLKRRPART to kernel, errno: %d, error: %s\n", errno, strerror(errno));
+        return 1;
+    }
+    fputs("IO rereadpart: success\n", stderr);
+    return 0;
+}
+
 /* io.c: IO-related functions, type-recognition is also here */

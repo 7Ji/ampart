@@ -47,6 +47,7 @@ struct
         enum cli_migrate        migrate;
         bool                    dry_run;
         bool                    strict_device;
+        bool                    rereadpart;
         uint8_t                 write;
         uint64_t                offset_reserved;
         uint64_t                offset_dtb;

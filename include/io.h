@@ -90,6 +90,11 @@ int
         size_t  size
     );
 
+int
+    io_rereadpart(
+        int fd
+    );
+
 off_t
     io_seek_dtb(
         int fd

@@ -66,6 +66,7 @@ struct cli_options cli_options = {
     .migrate = CLI_MIGRATE_ESSENTIAL,
     .dry_run = false,
     .strict_device = false,
+    .rereadpart = true,
     .write = CLI_WRITE_DTB | CLI_WRITE_TABLE | CLI_WRITE_MIGRATES,
     .offset_reserved = EPT_PARTITION_GAP_RESERVED + EPT_PARTITION_BOOTLOADER_SIZE,
     .offset_dtb = DTB_PARTITION_OFFSET,
@@ -310,6 +311,14 @@ cli_options_complete_target_info(){
             return 3;
         }
     }
+    if ((cli_options.rereadpart =
+            cli_options.rereadpart &&
+            target_type.file == IO_TARGET_TYPE_FILE_BLOCKDEVICE &&
+            cli_options.content == CLI_CONTENT_TYPE_DISK)) {
+        fputs("CLI interface: Target is block device for a whole drive and we will try to re-read partitions after adjusting EPT\n", stderr);
+    } else {
+        fputs("CLI interface: Will not attempt to re-read partitions after adjusting EPT\n", stderr);
+    }
     return 0;
 }
 
@@ -494,8 +503,13 @@ cli_write_ept(
         close(fd);
         return 5;
     }
-    close(fd);
     fputs("CLI write EPT: Write successful\n", stderr);
+    if (cli_options.rereadpart) {
+        fputs("CLI write EPT: Trying to tell kernel to re-read partitions\n", stderr);
+        /* Just don't care about return value */
+        io_rereadpart(fd);
+    }
+    close(fd);
     return 0;
 }
 

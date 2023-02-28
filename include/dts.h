@@ -20,6 +20,10 @@
 #define DTS_NOP_ACTUAL          0x04000000U
 #define DTS_END_ACTUAL          0x09000000U
 
+#define DTS_NO_PHANDLE          0b00000000U    
+#define DTS_HAS_PHANDLE         0b00000001U
+#define DTS_HAS_LINUX_PHANDLE   0b00000010U
+
 /* Structure */
 
 struct 
@@ -55,13 +59,19 @@ struct
         uint32_t                            partitions_count;
     };
 
+struct
+    dts_phandle_entry {
+        uint8_t *   node;
+        uint8_t     status;
+    };
+
 struct 
     dts_phandle_list {
-        uint8_t *   phandles;
-        uint32_t    min_phandle;
-        uint32_t    max_phandle;
-        uint32_t    allocated_count;
-        bool        have_linux_phandle;
+        struct dts_phandle_entry *  entries;
+        uint32_t                    min;
+        uint32_t                    max;
+        uint32_t                    allocated;
+        uint8_t                     status;
     };
 
 /* Function */

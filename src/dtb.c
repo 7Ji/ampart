@@ -820,7 +820,7 @@ dtb_buffer_entry_implement_partitions(
         fputs("DTB buffer entry implement partitions: Warning: Failed to get offset of linux,phandle\n", stderr);
         // Warning
     }
-    struct dts_phandle_list plist;
+    struct dts_phandle_list plist = {0};
     // printf("phandle: %lx, linux,phandle: %lx\n", offset_phandle, offset_linux_phandle);
     if (dts_get_phandles(&plist, old->buffer + dh.off_dt_struct, dh.size_dt_struct, offset_phandle, offset_linux_phandle)) {
         fputs("DTB buffer entry implement partitions: Failed to get phandles\n", stderr);
@@ -828,13 +828,13 @@ dtb_buffer_entry_implement_partitions(
     }
     if (old->has_partitions && dts_drop_partitions_phandles(&plist, &old->phelper)) {
         fputs("DTB buffer entry implement partitions: Failed to drop phandles occupied by partitions node\n", stderr);
-        free(plist.phandles);
+        free(plist.entries);
         return 4;
     }
     shelper.allocated_length = util_nearest_upper_bound_with_multiply_long(shelper.length, 0x1000, 2);
     char *const sbuffer = malloc(shelper.allocated_length * sizeof *sbuffer);
     if (!sbuffer) {
-        free(plist.phandles);
+        free(plist.entries);
         return 5;
     }
     memcpy(sbuffer, shelper.stringblock, shelper.length * sizeof *shelper.stringblock);
@@ -845,7 +845,7 @@ dtb_buffer_entry_implement_partitions(
     if (dts_compose_partitions_node(&node, &len_node, &plist, phelper, &shelper, offset_phandle, offset_linux_phandle) || !node) {
         fputs("DTB buffer entry implement partitions: Failed to compose new partitions node\n", stderr);
         free(shelper.stringblock);
-        free(plist.phandles);
+        free(plist.entries);
         return 5;
     }
     uint8_t *node_start, *end_start;
@@ -860,7 +860,7 @@ dtb_buffer_entry_implement_partitions(
         if (*(uint32_t*)node_start != DTS_END_NODE_ACTUAL || *(uint32_t *)(node_start + 4) != DTS_END_ACTUAL) {
             free(node);
             free(shelper.stringblock);
-            free(plist.phandles);
+            free(plist.entries);
             return 6;
         }
         len_existing_node = 0;
@@ -886,7 +886,7 @@ dtb_buffer_entry_implement_partitions(
     if (!dbuffer) {
         free(node);
         free(shelper.stringblock);
-        free(plist.phandles);
+        free(plist.entries);
         return 7;
     }
     // puts("Allocate success\n");
@@ -907,7 +907,7 @@ dtb_buffer_entry_implement_partitions(
     // new->size = size_new;
     free(node);
     free(shelper.stringblock);
-    free(plist.phandles);
+    free(plist.entries);
     // char name[40];
     // snprintf(name, 40, "DTBhot_%s.dtb", old->target);
     // FILE *fp = fopen(name, "w");

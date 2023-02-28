@@ -753,18 +753,18 @@ int
 dts_phandle_list_realloc(
     struct dts_phandle_list * const plist
 ){
-    if (!plist || !plist->phandles || !plist->allocated_count) {
+    if (!plist || !plist->entries || !plist->allocated) {
         return -1;
     }
-    uint8_t *buffer = realloc(plist->phandles, plist->allocated_count * 2 * sizeof *buffer);
+    struct dts_phandle_entry *buffer = realloc(plist->entries, plist->allocated * 2 * sizeof *buffer);
     if (buffer) {
-        memset(buffer + plist->allocated_count, 0, plist->allocated_count * sizeof *buffer);
-        plist->phandles = buffer;
+        memset(buffer + plist->allocated, 0, plist->allocated * sizeof *buffer);
+        plist->entries = buffer;
     } else {
         fputs("DTS phandle list realloc: Failed to re-allocate memory\n", stderr);
         return 1;
     }
-    plist->allocated_count *= 2;
+    plist->allocated *= 2;
     return 0;
 }
 
@@ -772,6 +772,7 @@ static inline
 int
 dts_get_phandles_recursive_parse_prop(
     uint32_t const * const          current,
+    uint8_t const * const           node,
     uint32_t * const                i,
     uint32_t const                  offset_phandle,
     uint32_t const                  offset_linux_phandle,
@@ -783,13 +784,26 @@ dts_get_phandles_recursive_parse_prop(
     if (name_off == offset_phandle || name_off == offset_linux_phandle) {
         if (len_prop == 4) {
             uint32_t const phandle = bswap_32(*(current+3));
-            while (phandle >= plist->allocated_count) {
+            while (phandle >= plist->allocated) {
                 if (dts_phandle_list_realloc(plist)) {
                     fputs("DTS get phandles recursive: Failed to re-allocate memory\n", stderr);
                     return 1;
                 }
             }
-            ++(plist->phandles[phandle]);
+            struct dts_phandle_entry * const entry = plist->entries + phandle;
+            if (entry->node) {
+                if (entry->node != node) {
+                    fprintf(stderr, "DTS get phandles recursive: phandle %"PRIu32" already encountered before, but previous node (%p) != current node (%p)\n", phandle, entry->node, node);
+                    return 1;
+                }
+            } else {
+                entry->node = (uint8_t *)node;
+            }
+            if (name_off == offset_phandle) {
+                entry->status |= DTS_HAS_PHANDLE;
+            } else {
+                entry->status |= DTS_HAS_LINUX_PHANDLE;
+            }
         } else {
             fputs("DTS get phandles recursive: phandle not of length 4\n", stderr);
             return 1;
@@ -828,7 +842,7 @@ dts_get_phandles_recursive(
             case DTS_END_NODE_ACTUAL:
                 return i + start - (const uint32_t *)node;
             case DTS_PROP_ACTUAL:
-                if (dts_get_phandles_recursive_parse_prop(current, &i, offset_phandle, offset_linux_phandle, plist)) {
+                if (dts_get_phandles_recursive_parse_prop(current, node, &i, offset_phandle, offset_linux_phandle, plist)) {
                     return 0;
                 }
                 break;
@@ -841,69 +855,51 @@ dts_get_phandles_recursive(
     }
     fputs("DTS get phandles recursive: Node not properly ended\n", stderr);
     return 0;
-
 }
 
-static inline 
-int
-dts_phandle_list_finish_entry(
-    struct dts_phandle_list * const plist,
-    uint32_t const                  i,
-    bool * const                    init,
-    bool * const                    have_1,
-    bool * const                    have_2
-){
-    if (plist->phandles[i]) {
-        switch (plist->phandles[i]) {
-            case 1:
-                *have_1 = true;
-                break;
-            case 2:
-                *have_2 = true;
-                break;
-            default:
-                fprintf(stderr, "DTS phandle list finish: phandle %u/%x appears %u times, which is illegal\n", i, i, plist->phandles[i]);
-                return 1;
-        }
-        if (*init)  {
-            if (i<plist->min_phandle) {
-                plist->min_phandle = i;
-            }
-            if (i>plist->max_phandle) {
-                plist->max_phandle = i;
-            }
-        } else {
-            *init = true;
-            plist->min_phandle = i;
-            plist->max_phandle = i;
-        }
-    }
-    return 0;
-}
 
 int
 dts_phandle_list_finish(
     struct dts_phandle_list * const plist
 ){
-    bool init = false;
-    bool have_1 = false;
-    bool have_2 = false;
-    for (uint32_t i = 0; i < plist->allocated_count; ++i) {
-        if (dts_phandle_list_finish_entry(plist, i, &init, &have_1, &have_2)) {
-            return 1;
-        }
+    if (plist->entries->node) {
+        fputs("DTS phandle list finish: phandle 0 has corresponding node, this is impossible\n", stderr);
+        return 1;
     }
-    if (!init) {
-        fputs("DTS phandle list finish: Not yet initialized\n", stderr);
+    if (plist->entries->status) {
+        fputs("DTS phandle list finish: phandle 0 is marked as existing (either phandle or linux,phandle), this is impossible\n", stderr);
         return 2;
     }
-    if (have_1) {
-        if (have_2) {
-            fputs("DTS phandle list finish: Both 1 and 2 apperance counts for phandle, which is illegal\n", stderr);
-            return 3;
+    for (uint32_t i = 1; i < plist->allocated; ++i) {
+        struct dts_phandle_entry const *const entry = plist->entries + i;
+        if (entry->node) {
+            if (entry->status == DTS_NO_PHANDLE) {
+                fprintf(stderr, "DTS phandle list finish: node %p recorded for phandle %u but status is no, this is impossible\n", entry->node, i);
+                return 3;
+            }
+            plist->status |= entry->status;
+            plist->max = i;
+            if (!plist->min) {
+                plist->min = i;
+            }
+        } else {
+            if (entry->status != DTS_NO_PHANDLE) {
+                fprintf(stderr, "DTS phandle list finish: phandle %u does not have corresponding node but it's marked as existing, impossible\n", i);
+                return 4;
+            }
         }
-    } else if (have_2) {
-        plist->have_linux_phandle = true;
+    }
+    if (plist->status == DTS_NO_PHANDLE) {
+        fputs("DTS phandle list finish: no phandle nor linux,phandle marked for whole DTS, which is impossible\n", stderr);
+        return 5;
+    }
+    if (!plist->max) {
+        fputs("DTS phandle list finish: did not find max phandle, which is impossible\n", stderr);
+        return 6;
+    }
+    if (!plist->min) {
+        fputs("DTS phandle list finish: did not find min phanle, which is impossible", stderr);
+        return 7;
     }
     return 0;
 }
@@ -1082,15 +1078,14 @@ dts_get_phandles(
         return -1;
     }
     memset(plist, 0, sizeof *plist);
-    plist->phandles = malloc(128 * sizeof *plist->phandles);
-    if (!plist->phandles) {
+    if (!(plist->entries = malloc(128 * sizeof *plist->entries))) {
         fputs("DTS get phandles: Failed to allocate memory for phandle list\n", stderr);
         return 1;
     }
-    memset(plist->phandles, 0, 128 * sizeof *plist->phandles);
-    plist->allocated_count = 128;
+    memset(plist->entries, 0, 128 * sizeof *plist->entries);
+    plist->allocated = 128;
     if (!dts_get_phandles_recursive(plist, start + 4, max_offset - (start - dts) - 4, offset_phandle, offset_linux_phandle)) {
-        free(plist->phandles);
+        free(plist->entries);
         fputs("DTS get phandles: Failed to get phandle list\n", stderr);
         return 2;
     }
@@ -1098,7 +1093,7 @@ dts_get_phandles(
     //     printf("phandle %u: %u\n", i, plist->phandles[i]);
     // }
     if (dts_phandle_list_finish(plist)) {
-        free(plist->phandles);
+        free(plist->entries);
         fputs("DTS get phandles: Failed to finish phandle list\n", stderr);
         return 3;
     }
@@ -1110,51 +1105,52 @@ dts_drop_partitions_phandles(
     struct dts_phandle_list * const             plist,
     struct dts_partitions_helper const * const  phelper
 ){
-    if (!plist || !phelper || !plist->phandles) {
+    if (!plist || !phelper || !plist->entries) {
         return -1;
     }
-    uint8_t const step = plist->have_linux_phandle ? 2 : 1;
     struct dts_partition_entry const *dts_part;
+    struct dts_phandle_entry *phandle_entry;
     uint32_t phandle;
     uint32_t const pcount = util_safe_partitions_count(phelper->partitions_count);
     for (uint32_t i = 0; i < pcount; ++i) {
         if (!(phandle = (dts_part = phelper->partitions + i)->phandle)) {
             continue;
         }
-        plist->phandles[phandle] -= step;
-        if (plist->phandles[phandle]) {
-            fprintf(stderr, "DTS drop partitions phandles: Phandle 0x%x still used after droping it from partition %s, this is impossile, give up\n", phandle, dts_part->name);
+        if (phandle >= plist->allocated) {
+            fprintf(stderr, "DTS drop partitions phandles: Phandle 0x%x used by partitions not found in phandle list, which is impossible\n", phandle);
             return 1;
         }
+        phandle_entry = plist->entries + phandle;
+        phandle_entry->node = NULL;
+        phandle_entry->status = DTS_NO_PHANDLE;
         fprintf(stderr, "DTS drop partitions phandles: Phandle 0x%x previously used by partition %s can be used now\n", phandle, dts_part->name);
     }
     if ((phandle = phelper->phandle_root)) {
-        plist->phandles[phandle] -= step;
-        if (plist->phandles[phandle]) {
-            fprintf(stderr, "DTS drop partitions phandles: Phandle 0x%x still used after dropping it from partitions root node, this is impossile, give up\n", phandle);
-            return 5;
-        }
+        phandle_entry = plist->entries + phandle;
+        phandle_entry->node = NULL;
+        phandle_entry->status = DTS_NO_PHANDLE;
         fprintf(stderr, "DTS drop partitions phandles: Phandle 0x%x previously used by partitions root node can be used now\n", phandle);
     }
     return 0;
 }
 
 uint32_t
-dts_assign_available_phanle(
+dts_assign_available_phandle(
     struct dts_phandle_list * const plist
 ){
-    if (!plist || !plist->phandles || !plist->allocated_count) {
+    if (!plist || !plist->entries || !plist->allocated) {
         return 0;
     }
     for (uint32_t i = 1;; ++i){
-        while (i >= plist->allocated_count) {
+        while (i >= plist->allocated) {
             if (dts_phandle_list_realloc(plist)) {
                 fputs("DTS assign available phandle: Failed to re-allocate memory\n", stderr);
                 return 0;
             }
         }
-        if (!plist->phandles[i]) {
-            plist->phandles[i] += (plist->have_linux_phandle) ? 2 : 1;
+        if (!plist->entries[i].node) {
+            plist->entries[i].node = (uint8_t *)-1;
+            plist->entries[i].status = plist->status;
             return i;
         }
     }
@@ -1183,7 +1179,7 @@ dts_compose_partitions_node(
     off_t const                                         offset_phandle,
     off_t const                                         offset_linux_phandle
 ){
-    if (!node || !len_node || !plist || !phelper || !shelper || !plist->phandles || !plist->allocated_count || !phelper->partitions_count || offset_phandle < 0 || (plist->have_linux_phandle && offset_linux_phandle < 0)) {
+    if (!node || !len_node || !plist || !phelper || !shelper || !plist->entries || !plist->allocated || !phelper->partitions_count || offset_phandle < 0 || (plist->status & DTS_HAS_LINUX_PHANDLE && offset_linux_phandle < 0)) {
         fputs("DTS compose partitions node: Illegal arguments\n", stderr);
         return -1;
     }
@@ -1208,9 +1204,10 @@ dts_compose_partitions_node(
     struct dts_compose_partition_helper *chelper;
     struct dts_partition_entry_simple const *dentry;
     char partn[] = "part-NN";
+    bool have_linux_phandle = plist->status & DTS_HAS_LINUX_PHANDLE;
     // Basic length of the node, excluding the start BEGIN_NODE and end END_NODE, 12 for partitions\0\0\0 as name, len 16 property (4 PROP_NODE, 4 len_prop, 4 name_off, 4 u32 value) for: 1 for parts, 1 for each part-N (storing phandle), 1 for phandle, optional 1 for linux,phandle. Then basic length of the partition sub-node, 8 (4 BEGIN_NODE + 4 END_NODE) + 12 (4 PROP_NODE, 4 len_prop, 4 name_off) for 4 or 5 props (pname, size, mask, phandle, optionally linux,phandle) + 8 for u64 size + 4 for u32 mask + 4 for u32 phandle + 4 optionally for u32 linux,phandle
     uint32_t const pcount = util_safe_partitions_count(phelper->partitions_count);
-    *len_node = 12 + 16 * (1 + pcount + 1 + plist->have_linux_phandle) + pcount * (8 + 12 * (4 + plist->have_linux_phandle) + 8 + 4 + 4 + 4 * plist->have_linux_phandle);
+    *len_node = 12 + 16 * (1 + pcount + 1 + have_linux_phandle) + pcount * (8 + 12 * (4 + have_linux_phandle) + 8 + 4 + 4 + 4 * have_linux_phandle);
     for (uint32_t i = 0; i < pcount; ++i) {
         dentry = phelper->partitions + i;
         memset(partn + 5, 0, 3);
@@ -1220,11 +1217,11 @@ dts_compose_partitions_node(
         chelper->len_pname = chelper->len_name + 1;
         chelper->len_node_name = util_nearest_upper_bound_ulong(chelper->len_pname, 4);
         chelper->offset_partn = stringblock_append_string_safely(shelper, partn, 0);
-        chelper->phandle = dts_assign_available_phanle(plist);
+        chelper->phandle = dts_assign_available_phandle(plist);
         chelper->phandle_be32 = bswap_32(chelper->phandle);
         *len_node += 2 * chelper->len_node_name;
     }
-    uint32_t const phandle_root = dts_assign_available_phanle(plist);
+    uint32_t const phandle_root = dts_assign_available_phandle(plist);
     uint32_t const phandle_root_be32 = bswap_32(phandle_root);
     *node = malloc(*len_node); // Excluding the beginning BEGIN_NODE and endding END_NODE
     if (!*node) {
@@ -1238,7 +1235,7 @@ dts_compose_partitions_node(
         dts_add_property_be32(&current, bswap_32(chelper->offset_partn), bswap_32(chelper->phandle));
     }
     dts_add_property_be32(&current, offsets_be32[DTS_ESSENTIAL_OFFSET_PHANDLE], phandle_root_be32);
-    if (plist->have_linux_phandle) {
+    if (have_linux_phandle) {
         dts_add_property_be32(&current, offsets_be32[DTS_ESSENTIAL_OFFSET_LINUX_PHANDLE], phandle_root_be32);
     }
     for (uint32_t i = 0; i < pcount; ++i) {
@@ -1265,7 +1262,7 @@ dts_compose_partitions_node(
         // phandle
         dts_add_property_be32(&current, offsets_be32[DTS_ESSENTIAL_OFFSET_PHANDLE], chelper->phandle_be32);
         // linux,phandle
-        if (plist->have_linux_phandle) {
+        if (have_linux_phandle) {
             dts_add_property_be32(&current, offsets_be32[DTS_ESSENTIAL_OFFSET_LINUX_PHANDLE], chelper->phandle_be32);
         }
         *(current++) = DTS_END_NODE_ACTUAL;

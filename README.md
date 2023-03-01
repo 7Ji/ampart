@@ -115,19 +115,6 @@ You're free to include ampart in your project as long as it meets [the license][
  * You should have received a copy of the GNU General Public License along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 [license]: #license
-
 [doc]: doc
-[scripts]: scripts/aminstall
-
-
 [release page]: https://github.com/7Ji/ampart/releases
-[ArchLinuxARM]:https://github.com/7Ji/amlogic-s9xxx-archlinuxarm
-[Armbian]:https://github.com/ophub/amlogic-s9xxx-armbian
-[CoreELEC]:https://github.com/CoreELEC/CoreELEC
-[EmuELEC]:https://github.com/EmuELEC/EmuELEC
-[HybridELEC]:https://github.com/7Ji/HybridELEC
-[LibreELEC]:https://github.com/LibreELEC/LibreELEC.tv
-[Makefile]:Makefile
-[OpenWrt]:https://github.com/ophub/amlogic-s9xxx-openwrt
 [ampart-git]:https://aur.archlinux.org/packages/ampart-git
-[soon™]:https://discourse.coreelec.org/t/does-odroid-n2-still-worth/19585/13

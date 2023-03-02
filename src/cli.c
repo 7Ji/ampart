@@ -182,6 +182,54 @@ cli_parse_migrate(){
 }
 
 static inline
+void
+cli_help() {
+    fputs(
+        "\n"
+        "ampart ([nop 1] ([nop 1 arg]) [nop 2] ([nop 2 arg])...) [target] [parg 1] [parg 2]...\n\n"
+        " => [nop]: non-positional argument, can be written anywhere\n"
+        "  -> if a nop has its required argument, that required argument must be right after that very nop.\n"
+        "   --version/-v\t\tprint the version and early quit\n"
+        "   --help/-h\t\tprint this help message and early quit\n"
+        "   --mode/-m [mode]\tset ampart to run in one of the following modes:\n"
+        "\t\t\t -> dtoe: generate EPT from DTB\n"
+        "\t\t\t -> etod: generate DTB partitions from EPT\n"
+        "\t\t\t -> epedantic: check if EPT is pedantic\n"
+        "\t\t\t -> dedit: edit partitions in DTB\n"
+        "\t\t\t -> eedit: edit EPT\n"
+        "\t\t\t -> dsnapshot: take a snapshot of current partitions in DTB\n"
+        "\t\t\t -> esnapshot: take a snapshot of current EPT\n"
+        "\t\t\t -> webreport: report partitions on web with ampart-web-report\n"
+        "\t\t\t -> dclone: clone-in a previously taken dsnapshot\n"
+        "\t\t\t -> eclone: clone-in a previously taken esnapshot\n"
+        "\t\t\t -> ecreate: create partitions in a YOLO way\n"
+        "   --content/-c [type]\tset the content type of [target] to one of the following:\n"
+        "\t\t\t -> auto: auto-identifying (default)\n"
+        "\t\t\t -> dtb: content is DTB, either plain, multi or gzipped\n"
+        "\t\t\t -> reserved: content is Amlogic reserved partition\n"
+        "\t\t\t -> disk: content is a whole eMMC (dump)\n"
+        "   --migrate/-M [style]\thow to migrate partitions:\n"
+        "\t\t\t -> none: don't migrate any partitions\n"
+        "\t\t\t -> essential: only migrate essential partitions (reserved, env, misc, logo, etc) (default)\n"
+        "\t\t\t -> all: migrate all partitions\n"
+        "   --strict-device/-s\tif target is a block device and --content is set, stick with that, don't try to find corresponding block device for whole eMMC\n"
+        "   --dry-run/-d\t\tdon't write anything\n"
+        "   --offset-reserved/-R [value]\toffset of reserved partition in disk\n"
+        "   --offset-dtb/-D [value]\toffset of dtb in reserved partition\n"
+        "   --gap-partition/-p [value]\tgap between partitions\n"
+        "   --gap-reserved/-r [value]\tgap before reserved partition\n"
+        "\n"
+        " => [target]: target file or block device to operate on\n"
+        "  -> could be or contain content of either DTB, reserved partition, or the whole disk\n"
+        "\n"
+        " => [parg]: partition argument\n"
+        "\n"
+        "since writing too much help message will make the result binary too large, the full documentation can't be provided in CLI help message, please refer to the project repo for documentation:\nhttps://github.com/7Ji/ampart\n\n", 
+        stderr
+    );
+}
+
+static inline
 int
 cli_parse_options(
     int const * const       argc,
@@ -209,7 +257,7 @@ cli_parse_options(
                 return -1;
             case 'h':   // help
                 cli_version();
-                fputs("\nampart does not provide command-line help message, please refer to the project repo for documentation:\nhttps://github.com/7Ji/ampart\n\n", stderr);
+                cli_help();
                 return -1;
             case 'm':  // mode:
                 if (cli_parse_mode()) {

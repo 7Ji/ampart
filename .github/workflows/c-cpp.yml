@@ -14,11 +14,9 @@ jobs:
     steps:
     - uses: actions/checkout@v3
     - name: Static build for x86_64
-      run: make STATIC=1
+      run: make fresh STATIC=1
     - name: Rename for x86_64
       run: mv ampart ampart-x86_64
-    - name: Clean between arches
-      run: make clean
     - name: Install cross toolchain for aarch64
       run: |
         sudo dpkg --add-architecture arm64
@@ -39,7 +37,7 @@ jobs:
           linux-libc-dev:arm64 \
           zlib1g-dev:arm64
     - name: Static build for aarch64
-      run: make CC=aarch64-linux-gnu-gcc STRIP=aarch64-linux-gnu-strip STATIC=1
+      run: make fresh CC=aarch64-linux-gnu-gcc STRIP=aarch64-linux-gnu-strip STATIC=1
     - name: Rename for aarch64
       run: mv ampart ampart-aarch64
     - name: Upload a Build Artifact

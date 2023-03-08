@@ -21,43 +21,42 @@ INCLUDES = $(wildcard $(DIR_INCLUDE)/*.h)
 _OBJECTS = $(wildcard $(DIR_SOURCE)/*.c)
 OBJECTS = $(patsubst $(DIR_SOURCE)/%.c,$(DIR_OBJECT)/%.o,$(_OBJECTS))
 
-ifdef VERSION_CUSTOM
-	CLI_VERSION := $(VERSION_CUSTOM)
-else
+ifndef VERSION
 	VERSION_GIT_TAG := $(shell git describe --abbrev=0 --tags ${TAG_COMMIT} 2>/dev/null || true)
 	VERSION_GIT_TAG_NO_V := $(VERSION_GIT_TAG:v%=%)
 	VERSION_GIT_COMMIT := $(shell git rev-list --abbrev-commit --tags --max-count=1)
 	VERSION_GIT_DATE := $(shell git log -1 --format=%cd --date=format:"%Y%m%d")
-	CLI_VERSION := $(VERSION_GIT_TAG_NO_V)-$(VERSION_GIT_COMMIT)-$(VERSION_GIT_DATE)
+	VERSION := $(VERSION_GIT_TAG_NO_V)-$(VERSION_GIT_COMMIT)-$(VERSION_GIT_DATE)
 	GIT_STAT := $(shell git diff --stat)
-	ifeq ($(CLI_VERSION),--)
-		CLI_VERSION := unknown
+	ifeq ($(VERSION),--)
+		VERSION := unknown
 	endif
 	ifneq ($(GIT_STAT),)
-		CLI_VERSION := $(CLI_VERSION)-DIRTY
+		VERSION := $(VERSION)-DIRTY
 	endif
 endif
 
-ifeq ($(CLI_VERSION),)
-	CLI_VERSION := unknown
-endif
-
-$(BINARY): $(OBJECTS)
+$(BINARY): $(OBJECTS) | version
 	$(CC) -o $@ $^ $(CFLAGS) $(LDFLAGS)
 ifneq ($(DEBUG), 1)
 	$(STRIP) $(BINARY)
 endif
 
-$(DIR_OBJECT)/cli.o: $(DIR_SOURCE)/cli.c $(INCLUDES)
-	$(CC) -c -o $@ $< $(CFLAGS) -DCLI_VERSION=\"$(CLI_VERSION)\"
+$(DIR_OBJECT)/version.o: $(DIR_SOURCE)/version.c $(INCLUDES) version | prepare
+	$(CC) -c -o $@ $< $(CFLAGS) -DVERSION=\"$(VERSION)\"
 
-$(DIR_OBJECT)/%.o: $(DIR_SOURCE)/%.c $(INCLUDES)
+$(DIR_OBJECT)/%.o: $(DIR_SOURCE)/%.c $(INCLUDES) | prepare
 	$(CC) -c -o $@ $< $(CFLAGS)
 
-.PHONY: clean
+.PHONY: version clean prepare fresh
 
 clean:
-	rm -f $(DIR_OBJECT)/*.o $(BINARY)
+	rm -rf $(DIR_OBJECT) $(BINARY)
+
+prepare:
+	mkdir -p $(DIR_OBJECT)
+
+fresh: clean $(BINARY)
 
 # ifeq ($(PREFIX),)
 #     PREFIX := /usr/sbin

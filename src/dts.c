@@ -145,7 +145,7 @@ dts_report_invalid_token(
     const char * const      name,
     const uint32_t * const  current
 ){
-    fprintf(stderr, "DTS %s: Invalid token %"PRIu32" (address %p)\n", name, bswap_32(*current), current);
+    pr_error("DTS %s: Invalid token %"PRIu32" (address %p)\n", name, bswap_32(*current), current);
 }
 
 static inline
@@ -153,7 +153,7 @@ void
 dts_report_not_properly_end(
     const char * const  name
 ){
-    fprintf(stderr, "DTS %s: Node not properly ended\n", name);
+    pr_error("DTS %s: Node not properly ended\n", name);
 }
 
 /**
@@ -288,7 +288,7 @@ dts_get_property_actual(
             case DTS_NOP_ACTUAL:
                 break;
             default:
-                fprintf(stderr, "DTS get property: Invalid token %"PRIu32"\n", bswap_32(*current));
+                pr_error("DTS get property: Invalid token %"PRIu32"\n", bswap_32(*current));
                 return 1;
         }
     }
@@ -434,7 +434,7 @@ dts_stringblock_essential_offset_get(
     const off_t offset = stringblock_find_string(shelper, name);
     if (offset < 0) {
         ++(*invalids);
-        fprintf(stderr, "DTS stringblock essential offset: can not find %s in stringblock\n", name);
+        pr_error("DTS stringblock essential offset: can not find %s in stringblock\n", name);
     }
     return offset;
 }
@@ -477,7 +477,7 @@ dts_parse_partitions_node_begin(
         *partition = phelper->partitions + phelper->partitions_count++;
         size_t const len_node_name = strlen((const char *)(current + 1));
         if (len_node_name > 15) {
-            fprintf(stderr, "DTS parse partitions node begin: partition name '%s' too long\n", (const char *)(current + 1));
+            pr_error("DTS parse partitions node begin: partition name '%s' too long\n", (const char *)(current + 1));
             return 3;
         }
         *i += (len_node_name + 1) / 4;
@@ -496,7 +496,7 @@ dts_parse_partitions_node_end(
     struct dts_partition_entry * const          partition
 ){
     if (partition && partition->phandle && partition->linux_phandle && partition->phandle != partition->linux_phandle) {
-        fprintf(stderr, "DTS parse partitions end: partition '%s' has different phandle (%"PRIu32") and linux,phandle (%"PRIu32")\n", partition->name, partition->phandle, partition->linux_phandle);
+        pr_error("DTS parse partitions end: partition '%s' has different phandle (%"PRIu32") and linux,phandle (%"PRIu32")\n", partition->name, partition->phandle, partition->linux_phandle);
         return 1;
     }
     return 0;
@@ -522,19 +522,19 @@ dts_parse_partitions_node_prop_root(
             phelper->linux_phandle_root = bswap_32(*(current+3));
         } else {
             if (strncmp(shelper->stringblock + name_off, "part-", 5)) {
-                fprintf(stderr, "DTS parse partitions node prop root: invalid propertey '%s' in partitions node\n", shelper->stringblock + name_off);
+                pr_error("DTS parse partitions node prop root: invalid propertey '%s' in partitions node\n", shelper->stringblock + name_off);
                 return 1;
             } else {
                 unsigned long phandle_id = strtoul(shelper->stringblock + name_off + 5, NULL , 10);
                 if (phandle_id > MAX_PARTITIONS_COUNT - 1) {
-                    fprintf(stderr, "DTS parse partitions node prop root: invalid part id %lu in partitions node\n", phandle_id);
+                    pr_error("DTS parse partitions node prop root: invalid part id %lu in partitions node\n", phandle_id);
                     return 2;
                 }
                 phelper->phandles[phandle_id] = bswap_32(*(current+3));
             }
         }
     } else {
-        fprintf(stderr, "DTS parse partitions node prop root: %s property of partitions node is not of length 4\n", shelper->stringblock + name_off);
+        pr_error("DTS parse partitions node prop root: %s property of partitions node is not of length 4\n", shelper->stringblock + name_off);
         return 3;
     }
     return 0;
@@ -553,11 +553,11 @@ dts_parse_partitions_node_prop_child(
 ){
     if (name_off == offsets->pname) {
         if (len_prop > 16) {
-            fprintf(stderr, "DTS parse partitions node prop child: partition name '%s' too long\n", (const char *)(current + 3));
+            pr_error("DTS parse partitions node prop child: partition name '%s' too long\n", (const char *)(current + 3));
             return 1;
         }
         if (strcmp(partition->name, (const char *)(current + 3))) {
-            fprintf(stderr, "DTS parse partitions node prop child: pname property %s different from partition node name %s\n", (const char *)(current + 3), partition->name);
+            pr_error("DTS parse partitions node prop child: pname property %s different from partition node name %s\n", (const char *)(current + 3), partition->name);
             return 2;
         }
     } else if (name_off == offsets->size) {
@@ -589,7 +589,7 @@ dts_parse_partitions_node_prop_child(
             return 6;
         }
     } else {
-        fprintf(stderr, "DTS parse partitions node prop child: invalid property for partition, ignored: %s\n", shelper->stringblock+name_off);
+        pr_error("DTS parse partitions node prop child: invalid property for partition, ignored: %s\n", shelper->stringblock+name_off);
         free(phelper);
         return 7;
     }
@@ -664,7 +664,7 @@ dts_get_partitions_from_node(
             case DTS_NOP_ACTUAL:
                 break;
             default:
-                fprintf(stderr, "DTB get partitions: invalid token 0x%08x\n", bswap_32(*current));
+                pr_error("DTB get partitions: invalid token 0x%08x\n", bswap_32(*current));
                 return 6;
         }
     }
@@ -684,7 +684,7 @@ dts_sort_partitions(
     }
     uint32_t const pcount = util_safe_partitions_count(phelper->partitions_count);
     if (pcount != phelper->record_count) {
-        fprintf(stderr, "DTB sort partitions: partitions node count (%"PRIu32") != record count (%"PRIu32")\n", phelper->partitions_count, phelper->record_count);
+        pr_error("DTB sort partitions: partitions node count (%"PRIu32") != record count (%"PRIu32")\n", phelper->partitions_count, phelper->record_count);
         return 3;
     }
     struct dts_partition_entry buffer;
@@ -709,17 +709,17 @@ dts_report_partitions(
     struct dts_partitions_helper const * const  phelper
 ){
     uint32_t const pcount = util_safe_partitions_count(phelper->partitions_count);
-    fprintf(stderr, "DTS report partitions: %u partitions in the DTB:\n=======================================================\nID| name            |            size|(   human)| masks\n-------------------------------------------------------\n", pcount);
+    pr_error("DTS report partitions: %u partitions in the DTB:\n=======================================================\nID| name            |            size|(   human)| masks\n-------------------------------------------------------\n", pcount);
     const struct dts_partition_entry *part;
     double num_size;
     char suffix_size;
     for (uint32_t i=0; i < pcount; ++i) {
         part = phelper->partitions + i;
         if (part->size == (uint64_t)-1) {
-            fprintf(stderr, "%2d: %-16s                  (AUTOFILL) %6"PRIu32"\n", i, part->name, part->mask);
+            pr_error("%2d: %-16s                  (AUTOFILL) %6"PRIu32"\n", i, part->name, part->mask);
         } else {
             num_size = util_size_to_human_readable(part->size, &suffix_size);
-            fprintf(stderr, "%2d: %-16s %16"PRIx64" (%7.2lf%c) %6"PRIu32"\n", i, part->name, part->size, num_size, suffix_size, part->mask);
+            pr_error("%2d: %-16s %16"PRIx64" (%7.2lf%c) %6"PRIu32"\n", i, part->name, part->size, num_size, suffix_size, part->mask);
         }
     }
     fputs("=======================================================\n", stderr);
@@ -732,17 +732,17 @@ dts_report_partitions_simple(
     struct dts_partitions_helper_simple const * phelper
 ){
     uint32_t const pcount = util_safe_partitions_count(phelper->partitions_count);
-    fprintf(stderr, "DTS report partitions: %u partitions in the DTB:\n=======================================================\nID| name            |            size|(   human)| masks\n-------------------------------------------------------\n", pcount);
+    pr_error("DTS report partitions: %u partitions in the DTB:\n=======================================================\nID| name            |            size|(   human)| masks\n-------------------------------------------------------\n", pcount);
     const struct dts_partition_entry_simple *part;
     double num_size;
     char suffix_size;
     for (uint32_t i=0; i < pcount; ++i) {
         part = phelper->partitions + i;
         if (part->size == (uint64_t)-1) {
-            fprintf(stderr, "%2d: %-16s                  (AUTOFILL) %6"PRIu32"\n", i, part->name, part->mask);
+            pr_error("%2d: %-16s                  (AUTOFILL) %6"PRIu32"\n", i, part->name, part->mask);
         } else {
             num_size = util_size_to_human_readable(part->size, &suffix_size);
-            fprintf(stderr, "%2d: %-16s %16"PRIx64" (%7.2lf%c) %6"PRIu32"\n", i, part->name, part->size, num_size, suffix_size, part->mask);
+            pr_error("%2d: %-16s %16"PRIx64" (%7.2lf%c) %6"PRIu32"\n", i, part->name, part->size, num_size, suffix_size, part->mask);
         }
     }
     fputs("=======================================================\n", stderr);
@@ -793,7 +793,7 @@ dts_get_phandles_recursive_parse_prop(
             struct dts_phandle_entry * const entry = plist->entries + phandle;
             if (entry->node) {
                 if (entry->node != node) {
-                    fprintf(stderr, "DTS get phandles recursive: phandle %"PRIu32" already encountered before, but previous node (%p) != current node (%p)\n", phandle, entry->node, node);
+                    pr_error("DTS get phandles recursive: phandle %"PRIu32" already encountered before, but previous node (%p) != current node (%p)\n", phandle, entry->node, node);
                     return 1;
                 }
             } else {
@@ -849,7 +849,7 @@ dts_get_phandles_recursive(
             case DTS_NOP_ACTUAL:
                 break;
             default:
-                fprintf(stderr, "DTS get phandles recursive: Invalid token %"PRIu32"\n", bswap_32(*current));
+                pr_error("DTS get phandles recursive: Invalid token %"PRIu32"\n", bswap_32(*current));
                 return 0;
         }
     }
@@ -874,7 +874,7 @@ dts_phandle_list_finish(
         struct dts_phandle_entry const *const entry = plist->entries + i;
         if (entry->node) {
             if (entry->status == DTS_NO_PHANDLE) {
-                fprintf(stderr, "DTS phandle list finish: node %p recorded for phandle %u but status is no, this is impossible\n", entry->node, i);
+                pr_error("DTS phandle list finish: node %p recorded for phandle %u but status is no, this is impossible\n", entry->node, i);
                 return 3;
             }
             plist->status |= entry->status;
@@ -884,7 +884,7 @@ dts_phandle_list_finish(
             }
         } else {
             if (entry->status != DTS_NO_PHANDLE) {
-                fprintf(stderr, "DTS phandle list finish: phandle %u does not have corresponding node but it's marked as existing, impossible\n", i);
+                pr_error("DTS phandle list finish: phandle %u does not have corresponding node but it's marked as existing, impossible\n", i);
                 return 4;
             }
         }
@@ -1117,19 +1117,19 @@ dts_drop_partitions_phandles(
             continue;
         }
         if (phandle >= plist->allocated) {
-            fprintf(stderr, "DTS drop partitions phandles: Phandle 0x%x used by partitions not found in phandle list, which is impossible\n", phandle);
+            pr_error("DTS drop partitions phandles: Phandle 0x%x used by partitions not found in phandle list, which is impossible\n", phandle);
             return 1;
         }
         phandle_entry = plist->entries + phandle;
         phandle_entry->node = NULL;
         phandle_entry->status = DTS_NO_PHANDLE;
-        fprintf(stderr, "DTS drop partitions phandles: Phandle 0x%x previously used by partition %s can be used now\n", phandle, dts_part->name);
+        pr_error("DTS drop partitions phandles: Phandle 0x%x previously used by partition %s can be used now\n", phandle, dts_part->name);
     }
     if ((phandle = phelper->phandle_root)) {
         phandle_entry = plist->entries + phandle;
         phandle_entry->node = NULL;
         phandle_entry->status = DTS_NO_PHANDLE;
-        fprintf(stderr, "DTS drop partitions phandles: Phandle 0x%x previously used by partitions root node can be used now\n", phandle);
+        pr_error("DTS drop partitions phandles: Phandle 0x%x previously used by partitions root node can be used now\n", phandle);
     }
     return 0;
 }
@@ -1337,10 +1337,10 @@ dts_dedit_part_select(
 // ){
 //     switch (modifier->select) {
 //         case PARG_SELECT_NAME:
-//             fprintf(stderr, "DTS deidt report failed select: No partition selected by Name selector %s\n", modifier->select_name);
+//             pr_error("DTS deidt report failed select: No partition selected by Name selector %s\n", modifier->select_name);
 //             break;
 //         case PARG_SELECT_RELATIVE:
-//             fprintf(stderr, "DTS deidt report failed select: No partition selected by Relative selector %d\n", modifier->select_relative);
+//             pr_error("DTS deidt report failed select: No partition selected by Relative selector %d\n", modifier->select_relative);
 //             break;
 //     }
 // }
@@ -1355,7 +1355,7 @@ dts_dedit_adjust(
         strncpy(dpart->name, modifier->name, MAX_PARTITION_NAME_LENGTH);
     }
     if (parg_adjustor_adjust_u64(&dpart->size, modifier->modify_size, modifier->size)) {
-        fprintf(stderr, "DTS dedit adjust: Failed to adjust size of part %s\n", dpart->name);
+        pr_error("DTS dedit adjust: Failed to adjust size of part %s\n", dpart->name);
         return 1;
     }
     if (modifier->modify_masks == PARG_MODIFY_DETAIL_SET) {
@@ -1373,7 +1373,7 @@ dts_dedit_place(
     uint32_t const pcount = util_safe_partitions_count(dparts->partitions_count);
     int place_target = parg_get_place_target(modifier, dpart - dparts->partitions, pcount);
     if (place_target < 0 || (unsigned)place_target >= pcount) {
-        fprintf(stderr, "DTS dedit place: Target place %i overflows (minumum 0 as start, maximum %u as end)\n", place_target, pcount);
+        pr_error("DTS dedit place: Target place %i overflows (minumum 0 as start, maximum %u as end)\n", place_target, pcount);
         return 1;
     }
     struct dts_partition_entry_simple * const dpart_target = dparts->partitions + place_target;
@@ -1518,6 +1518,6 @@ dts_valid_partitions_simple(
             strncpy(unique_names[name_id++], dentry->name, MAX_PARTITION_NAME_LENGTH);
         }
     }
-    fprintf(stderr, "DTS valid partitions simple: %d partitions have illegal names, %d partitions have duplicated names\n", illegal, dups);
+    pr_error("DTS valid partitions simple: %d partitions have illegal names, %d partitions have duplicated names\n", illegal, dups);
     return illegal + dups;
 }

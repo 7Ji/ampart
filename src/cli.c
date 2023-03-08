@@ -81,7 +81,7 @@ struct cli_options cli_options = {
 
 void 
 cli_version(){
-    fprintf(stderr, "ampart-ng (Amlogic eMMC partition tool) by 7Ji, version %s\n", version);
+    pr_error("ampart-ng (Amlogic eMMC partition tool) by 7Ji, version %s\n", version);
 }
 
 size_t
@@ -92,7 +92,7 @@ cli_human_readable_to_size_and_report(
     const size_t size = util_human_readable_to_size(literal);
     char suffix;
     const double size_d = util_size_to_human_readable(size, &suffix);
-    fprintf(stderr, "CLI interface: Setting %s to %zu / 0x%lx (%lf%c)\n", name, size, size, size_d, suffix);
+    pr_error("CLI interface: Setting %s to %zu / 0x%lx (%lf%c)\n", name, size, size, size_d, suffix);
     return size;
 }
 
@@ -104,7 +104,7 @@ cli_describe_options() {
     double gap_partition = util_size_to_human_readable(cli_options.gap_partition, &suffix_gap_partition);
     double offset_reserved = util_size_to_human_readable(cli_options.offset_reserved, &suffix_offset_reserved);
     double offset_dtb = util_size_to_human_readable(cli_options.offset_dtb, &suffix_offset_dtb);
-    fprintf(stderr, "CLI describe options: mode %s, operating on %s, content type %s, migration strategy: %s, dry run: %s, reserved gap: %lu (%lf%c), generic gap: %lu (%lf%c), reserved offset: %lu (%lf%c), dtb offset: %lu (%lf%c)\n", cli_mode_strings[cli_options.mode], cli_options.target, cli_content_type_strings[cli_options.content], cli_migrate_strings[cli_options.migrate], cli_options.dry_run ? "yes" : "no", cli_options.gap_reserved, gap_reserved, suffix_gap_reserved, cli_options.gap_partition, gap_partition, suffix_gap_partition, cli_options.offset_reserved, offset_reserved, suffix_offset_reserved, cli_options.offset_dtb, offset_dtb, suffix_offset_dtb);
+    pr_error("CLI describe options: mode %s, operating on %s, content type %s, migration strategy: %s, dry run: %s, reserved gap: %lu (%lf%c), generic gap: %lu (%lf%c), reserved offset: %lu (%lf%c), dtb offset: %lu (%lf%c)\n", cli_mode_strings[cli_options.mode], cli_options.target, cli_content_type_strings[cli_options.content], cli_migrate_strings[cli_options.migrate], cli_options.dry_run ? "yes" : "no", cli_options.gap_reserved, gap_reserved, suffix_gap_reserved, cli_options.gap_partition, gap_partition, suffix_gap_partition, cli_options.offset_reserved, offset_reserved, suffix_offset_reserved, cli_options.offset_dtb, offset_dtb, suffix_offset_dtb);
 }
 
 static inline
@@ -141,12 +141,12 @@ int
 cli_parse_mode(){
     for (enum cli_modes mode = CLI_MODE_INVALID; mode <= CLI_MODE_ECREATE; ++mode) {
         if (!strcmp(cli_mode_strings[mode], optarg)) {
-            fprintf(stderr, "CLI interface: Mode is set to %s\n", optarg);
+            pr_error("CLI interface: Mode is set to %s\n", optarg);
             cli_options.mode = mode;
             return 0;
         }
     }
-    fprintf(stderr, "CLI interface: Invalid mode %s\n", optarg);
+    pr_error("CLI interface: Invalid mode %s\n", optarg);
     return 1;
 }
 
@@ -155,12 +155,12 @@ int
 cli_parse_content(){
     for (enum cli_content_types content = CLI_CONTENT_TYPE_AUTO; content <= CLI_CONTENT_TYPE_DISK; ++content) {
         if (!strcmp(cli_content_type_strings[content], optarg)) {
-            fprintf(stderr, "CLI interface: Content type is set to %s\n", optarg);
+            pr_error("CLI interface: Content type is set to %s\n", optarg);
             cli_options.content = content;
             return 0;
         }
     }
-    fprintf(stderr, "CLI interface: Invalid type %s\n", optarg);
+    pr_error("CLI interface: Invalid type %s\n", optarg);
     return 1;
 }
 
@@ -169,12 +169,12 @@ int
 cli_parse_migrate(){
     for (enum cli_migrate migrate = CLI_MIGRATE_ESSENTIAL; migrate <= CLI_MIGRATE_ALL; ++migrate) {
         if (!strcmp(cli_migrate_strings[migrate], optarg)) {
-            fprintf(stderr, "CLI interface: Migration strategy is set to %s\n", optarg);
+            pr_error("CLI interface: Migration strategy is set to %s\n", optarg);
             cli_options.migrate = migrate;
             return 0;
         }
     }
-    fprintf(stderr, "CLI interface: Invalid migration strategy %s\n", optarg);
+    pr_error("CLI interface: Invalid migration strategy %s\n", optarg);
     return 1;
 }
 
@@ -292,7 +292,7 @@ cli_parse_options(
                 cli_options.gap_reserved = cli_human_readable_to_size_and_report(optarg, "gap between bootloader and reserved partitions");
                 break;
             default:
-                fprintf(stderr, "CLI interface: Unrecognizable option %s\n", argv[optind-1]);
+                pr_error("CLI interface: Unrecognizable option %s\n", argv[optind-1]);
                 return 3;
         }
     }
@@ -304,10 +304,10 @@ int
 cli_find_disk(){
     char *path_disk = io_find_disk(cli_options.target);
     if (!path_disk) {
-        fprintf(stderr, "CLI interface: Failed to get the corresponding disk of %s, try to force the target type or enable strict-device mode to disable auto-identification\n", cli_options.target);
+        pr_error("CLI interface: Failed to get the corresponding disk of %s, try to force the target type or enable strict-device mode to disable auto-identification\n", cli_options.target);
         return 1;
     }
-    fprintf(stderr, "CLI interface: Operating on '%s' instead, content type is now disk\n", path_disk);
+    pr_error("CLI interface: Operating on '%s' instead, content type is now disk\n", path_disk);
     free(cli_options.target);
     cli_options.target = path_disk;
     cli_options.content = CLI_CONTENT_TYPE_DISK;
@@ -319,7 +319,7 @@ int
 cli_options_complete_target_info(){
     struct io_target_type target_type;
     if (io_identify_target_type(&target_type, cli_options.target)) {
-        fprintf(stderr, "CLI interface: failed to identify the type of target '%s'\n", cli_options.target);
+        pr_error("CLI interface: failed to identify the type of target '%s'\n", cli_options.target);
         return 1;
     }
     cli_options.size = target_type.size;
@@ -341,7 +341,7 @@ cli_options_complete_target_info(){
                 cli_options.content = CLI_CONTENT_TYPE_DTB;
                 break;
             case IO_TARGET_TYPE_CONTENT_UNSUPPORTED:
-                fprintf(stderr, "CLI interface: failed to identify the content type of target '%s', please set its type manually\n", cli_options.target);
+                pr_error("CLI interface: failed to identify the content type of target '%s', please set its type manually\n", cli_options.target);
                 return 2;
         }
         if (target_type.file == IO_TARGET_TYPE_FILE_BLOCKDEVICE && target_type.content != IO_TARGET_TYPE_CONTENT_DISK) {
@@ -383,10 +383,10 @@ cli_complete_options(
     if (optind < argc) {
         cli_options.target = strdup(argv[optind++]);
         if (!cli_options.target) {
-            fprintf(stderr, "CLI interface: Failed to duplicate target string '%s'\n", argv[optind-1]);
+            pr_error("CLI interface: Failed to duplicate target string '%s'\n", argv[optind-1]);
             return 2;
         }
-        fprintf(stderr, "CLI interface: Operating on target file/block device '%s'\n", cli_options.target);
+        pr_error("CLI interface: Operating on target file/block device '%s'\n", cli_options.target);
         int const r = cli_options_complete_target_info();
         if (r) {
             return 3;
@@ -432,7 +432,7 @@ cli_write_dtb(
         fputs("CLI write DTB: Failed to generate new DTBs\n", stderr);
         return 1;
     }
-    fprintf(stderr, "CLI write DTB: size of new DTB (as a whole) is 0x%lx\n", dtb_new_size);
+    pr_error("CLI write DTB: size of new DTB (as a whole) is 0x%lx\n", dtb_new_size);
     if (cli_options.content != CLI_CONTENT_TYPE_DTB && dtb_as_partition(&dtb_new, &dtb_new_size)) {
         fputs("CLI write DTB: Failed to package DTB in partition\n", stderr);
         return 2;
@@ -564,11 +564,11 @@ cli_get_capacity(
     struct ept_table const * const  table
 ){
     if (cli_options.content == CLI_CONTENT_TYPE_DISK) {
-        fprintf(stderr, "CLI get capacity: Using target file/block device size %zu as the capacity, since it's full disk\n", cli_options.size);
+        pr_error("CLI get capacity: Using target file/block device size %zu as the capacity, since it's full disk\n", cli_options.size);
         return cli_options.size;
     } else {
         size_t const capacity = ept_get_capacity(table);
-        fprintf(stderr, "CLI get capacity: Using max partition end %zu as the capacity, since target is %s and is not full disk\n", capacity, cli_content_type_strings[cli_options.content]);
+        pr_error("CLI get capacity: Using max partition end %zu as the capacity, since target is %s and is not full disk\n", capacity, cli_content_type_strings[cli_options.content]);
         return capacity;
     }
 }
@@ -685,7 +685,7 @@ cli_check_parg_count(
         return -1;
     }
     if (max > 0 && argc > max) {
-        fprintf(stderr, "CLI check PARG count: Too many PARGS, only %d is allowed yet you've defined %d\n", max, argc);
+        pr_error("CLI check PARG count: Too many PARGS, only %d is allowed yet you've defined %d\n", max, argc);
         return 1;
     }
     return 0;
@@ -1081,7 +1081,7 @@ cli_dispatcher(
         fputs("CLI dispatcher: invalid mode\n", stderr);
         return -1;
     } else {
-        fprintf(stderr, "CLI dispatcher: Dispatch to mode %s\n", cli_mode_strings[cli_options.mode]);
+        pr_error("CLI dispatcher: Dispatch to mode %s\n", cli_mode_strings[cli_options.mode]);
     }
     switch (cli_options.mode) {
         case CLI_MODE_INVALID:

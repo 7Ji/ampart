@@ -49,7 +49,7 @@ dtb_checksum(
     for (uint32_t i=0; i<DTB_PARTITION_CHECKSUM_COUNT; ++i) {
         checksum += dtb_as_uint[i];
     }
-    fprintf(stderr, "DTB checksum: Calculated %08x, Recorded %08x\n", checksum, dtb->checksum);
+    pr_error("DTB checksum: Calculated %08x, Recorded %08x\n", checksum, dtb->checksum);
     return checksum;
 }
 
@@ -62,7 +62,7 @@ dtb_checksum_partition(
     for (uint32_t i=0; i<DTB_PARTITION_CHECKSUM_COUNT; ++i) {
         dtb->checksum += dtb_as_uint[i];
     }
-    fprintf(stderr, "DTB checksum: Calculated %08x\n", dtb->checksum);
+    pr_error("DTB checksum: Calculated %08x\n", dtb->checksum);
 }
 
 static inline
@@ -96,7 +96,7 @@ dtb_get_multi_header_property_length(
         case 2:
             return DTB_MULTI_HEADER_PROPERTY_LENGTH_V2;
         default:
-            fprintf(stderr, "DTB parse multi entries: version not supported, only v1 and v2 supported yet the version is %"PRIu32"\n", header->version);
+            pr_error("DTB parse multi entries: version not supported, only v1 and v2 supported yet the version is %"PRIu32"\n", header->version);
             return 0;
     }
 }
@@ -138,7 +138,7 @@ dtb_pasre_multi_entries_each(
     strncpy(mhelper->entries[i].platform, target[1], DTB_MULTI_HEADER_PROPERTY_LENGTH_V2);
     strncpy(mhelper->entries[i].variant, target[2], DTB_MULTI_HEADER_PROPERTY_LENGTH_V2);
     snprintf(mhelper->entries[i].target, DTB_MULTI_TARGET_LENGTH_V2, "%s_%s_%s", target[0], target[1], target[2]);
-    fprintf(stderr, "DTB parse multi entries: Entry %uth of %u, %s, for SoC %s, platform %s, variant %s\n", i+1, mhelper->entry_count, mhelper->entries[i].target, mhelper->entries[i].soc, mhelper->entries[i].platform, mhelper->entries[i].variant);
+    pr_error("DTB parse multi entries: Entry %uth of %u, %s, for SoC %s, platform %s, variant %s\n", i+1, mhelper->entry_count, mhelper->entries[i].target, mhelper->entries[i].soc, mhelper->entries[i].platform, mhelper->entries[i].variant);
 }
 
 int
@@ -330,7 +330,7 @@ dtb_identify_and_redirect_buffer(
             return gbuffer;
         }
         default:
-            fprintf(stderr, "DTB read partitions and report: Unrecognizable DTB, magic %08x. Maybe your DTB is encrypted? You can follow the method documented on my blog to try to decrypt it before using ampart: https://7ji.github.io/crack/2023/01/08/decrypt-aml-dtb.html\n", *(uint32_t *)buffer);
+            pr_error("DTB read partitions and report: Unrecognizable DTB, magic %08x. Maybe your DTB is encrypted? You can follow the method documented on my blog to try to decrypt it before using ampart: https://7ji.github.io/crack/2023/01/08/decrypt-aml-dtb.html\n", *(uint32_t *)buffer);
             return NULL;
     }
 }
@@ -341,7 +341,7 @@ dtb_get_size(
     uint8_t const * const   dtb
 ){
     size_t const size = bswap_32(((struct dtb_header *)dtb)->totalsize);
-    fprintf(stderr, "DTB get size: size recorded in header is 0x%lx\n", size);
+    pr_error("DTB get size: size recorded in header is 0x%lx\n", size);
     return size;
 }
 
@@ -392,7 +392,7 @@ dtb_get_target(
         return 2;
     }
     dts_get_property_string(node, off_target, target, 36);
-    fprintf(stderr, "DTB get target: target is %s\n", target);
+    pr_error("DTB get target: target is %s\n", target);
     return 0;
 }
 
@@ -420,7 +420,7 @@ dtb_entry_split_target_string(
     strncpy(entry->soc, key[0], DTB_MULTI_HEADER_PROPERTY_LENGTH_V2);
     strncpy(entry->platform, key[1], DTB_MULTI_HEADER_PROPERTY_LENGTH_V2);
     strncpy(entry->variant, key[2], DTB_MULTI_HEADER_PROPERTY_LENGTH_V2);
-    fprintf(stderr, "DTB entry split target string: SoC %s, platform %s, variant %s\n", entry->soc, entry->platform, entry->variant);
+    pr_error("DTB entry split target string: SoC %s, platform %s, variant %s\n", entry->soc, entry->platform, entry->variant);
     return 0;
 }
 
@@ -545,7 +545,7 @@ dtb_read_into_buffer_helper(
         memset(bhelper->dtbs, 0, bhelper->dtb_count * sizeof *bhelper->dtbs);
         for (unsigned i = 0; i < bhelper->dtb_count; ++i) {
             if (dtb_parse_entry(bhelper->dtbs + i, mhelper.entries[i].dtb) > 0) {
-                fprintf(stderr, "DTB read into buffer helper: Failed to parse entry %u of %u\n", i + 1, bhelper->dtb_count);
+                pr_error("DTB read into buffer helper: Failed to parse entry %u of %u\n", i + 1, bhelper->dtb_count);
                 for (unsigned j = 0; j < i; ++j) {
                     free(bhelper->dtbs[j].buffer);
                 }
@@ -556,7 +556,7 @@ dtb_read_into_buffer_helper(
                 return 8;
             }
             if (strncmp((bhelper->dtbs + i)->target, mhelper.entries[i].target, DTB_MULTI_HEADER_PROPERTY_LENGTH_V2 * 3)) {
-                fprintf(stderr, "DTB read into buffer helper: Target name in header is different from amlogic-dt-id in DTS: %s != %s\n", mhelper.entries[i].target, (bhelper->dtbs + i)->target);
+                pr_error("DTB read into buffer helper: Target name in header is different from amlogic-dt-id in DTS: %s != %s\n", mhelper.entries[i].target, (bhelper->dtbs + i)->target);
                 for (unsigned j = 0; j <= i; ++j) {
                     free(bhelper->dtbs[j].buffer);
                 }
@@ -642,7 +642,7 @@ dtb_read_into_buffer_helper_and_report(
         return 2;
     }
     for (unsigned i = 0; i < bhelper->dtb_count; ++i) {
-        fprintf(stderr, "DTB read into buffer helper and report: DTB %u of %u\n", i + 1, bhelper->dtb_count);
+        pr_error("DTB read into buffer helper and report: DTB %u of %u\n", i + 1, bhelper->dtb_count);
         if (bhelper->dtbs[i].has_partitions) {
             dts_report_partitions(&bhelper->dtbs[i].phelper);
         }
@@ -881,7 +881,7 @@ dtb_buffer_entry_implement_partitions(
     size_t const size_dt_struct = size_before - dh.off_dt_struct + size_after + len_node + 8;
     size_t const offset_dt_strings = dh.off_dt_strings + size_dt_struct - dh.size_dt_struct; 
     size_t const size_new = util_nearest_upper_bound_ulong(old->size - dh.size_dt_struct + size_dt_struct - dh.size_dt_strings + shelper.length, 4);
-    fprintf(stderr, "DTB buffer entry implement partitions: Old DTB size 0x%lx, existing partitions node in it size is 0x%lx, DT struct offset 0x%x, size 0x%x. New node size 0x%lx, will insert between %p (off 0x%lx) and %p (off 0x%lx), size before insertion is 0x%lx, size after insertion is 0x%lx, size of new DT struct is 0x%lx, new DT strings offset 0x%lx, size 0x%lx. Total size of new DTB is 0x%lx\n", old->size, len_existing_node, dh.off_dt_struct, dh.size_dt_struct, len_node, node_start, node_start - old->buffer, end_start, end_start - old->buffer, size_before, size_after, size_dt_struct, offset_dt_strings, shelper.length, size_new);
+    pr_error("DTB buffer entry implement partitions: Old DTB size 0x%lx, existing partitions node in it size is 0x%lx, DT struct offset 0x%x, size 0x%x. New node size 0x%lx, will insert between %p (off 0x%lx) and %p (off 0x%lx), size before insertion is 0x%lx, size after insertion is 0x%lx, size of new DT struct is 0x%lx, new DT strings offset 0x%lx, size 0x%lx. Total size of new DTB is 0x%lx\n", old->size, len_existing_node, dh.off_dt_struct, dh.size_dt_struct, len_node, node_start, node_start - old->buffer, end_start, end_start - old->buffer, size_before, size_after, size_dt_struct, offset_dt_strings, shelper.length, size_new);
     uint8_t *dbuffer = malloc(size_new * sizeof *dbuffer);
     if (!dbuffer) {
         free(node);
@@ -898,7 +898,7 @@ dtb_buffer_entry_implement_partitions(
     *(uint32_t *)(offset_hot += len_node) = DTS_END_NODE_ACTUAL;
     memcpy((offset_hot += 4), end_start, size_after);
     memcpy((offset_hot += size_after), shelper.stringblock, shelper.length);
-    // fprintf(stderr, "Calculated offset of DT string: 0x%lx, Actual offset: 0x%lx\n", offset_dt_strings, offset_hot - dbuffer);
+    // pr_error("Calculated offset of DT string: 0x%lx, Actual offset: 0x%lx\n", offset_dt_strings, offset_hot - dbuffer);
     struct dtb_header *dh_new = (struct dtb_header *)dbuffer;
     dh_new->totalsize = bswap_32(size_new);
     dh_new->size_dt_struct = bswap_32(size_dt_struct);
@@ -990,7 +990,7 @@ dtb_buffer_helper_implement_partitions(
         struct dtb_buffer_entry const *const entry_old = old->dtbs + i;
         struct dtb_buffer_entry *const entry_new = new->dtbs + i;
         if (dtb_buffer_entry_implement_partitions(entry_new, entry_old, phelper)) {
-            fprintf(stderr, "DTB buffer helper implement partitions: Failed to implement new partitions into DTB %u of %u\n", i + 1, new->dtb_count);
+            pr_error("DTB buffer helper implement partitions: Failed to implement new partitions into DTB %u of %u\n", i + 1, new->dtb_count);
             for (unsigned j = 0; j < i; ++j) {
                 free((new->dtbs + j)->buffer);
             }
@@ -1089,7 +1089,7 @@ dtb_buffer_helper_remove_partitions(
         struct dtb_buffer_entry const *const entry_old = old->dtbs + i;
         struct dtb_buffer_entry *const entry_new = new->dtbs + i;
         if (dtb_buffer_entry_remove_partitions(entry_new, entry_old)) {
-            fprintf(stderr, "DTB buffer helper remove partitions: Failed to remove partitions into DTB %u of %u\n", i + 1, new->dtb_count);
+            pr_error("DTB buffer helper remove partitions: Failed to remove partitions into DTB %u of %u\n", i + 1, new->dtb_count);
             for (unsigned j = 0; j < i; ++j) {
                 free((new->dtbs + j)->buffer);
             }
@@ -1250,7 +1250,7 @@ dtb_compose(
         }
     }
     if (*size > DTB_PARTITION_DATA_SIZE) {
-        fprintf(stderr, "DTB compose: DTB size too large (0x%lx), trying to gzip it\n", *size);
+        pr_error("DTB compose: DTB size too large (0x%lx), trying to gzip it\n", *size);
         uint8_t *buffer;
         if (!(*size = gzip_zip(*dtb, *size, &buffer))) {
             fputs("DTB compose: Failed to compose Gzipped multi-DTB\n", stderr);
@@ -1259,7 +1259,7 @@ dtb_compose(
             return 6;
         }
         if (*size > DTB_PARTITION_DATA_SIZE) {
-            fprintf(stderr, "DTB compose: Gzipped DTB still too large (0x%lx), giving up\n", *size);
+            pr_error("DTB compose: Gzipped DTB still too large (0x%lx), giving up\n", *size);
             free(buffer);
             free(*dtb);
             dtb_free_buffer_helper(&bhelper_new);

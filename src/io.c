@@ -38,7 +38,7 @@ io_can_retry(
         case EINTR:
             return true;
         default:
-            fprintf(stderr, "IO: can not retry with errno %d: %s\n", id, strerror(id));
+            pr_error("IO: can not retry with errno %d: %s\n", id, strerror(id));
             return false;
     }
 
@@ -89,11 +89,11 @@ io_find_disk(
     char const * const  path
 ){
     const char* const name = basename(path);
-    fprintf(stderr, "IO find disk: Trying to find corresponding full disk drive of '%s' (name %s) so more advanced operations (partition migration, actual table manipulation, partprobe, etc) can be performed\n", path, name);
+    pr_error("IO find disk: Trying to find corresponding full disk drive of '%s' (name %s) so more advanced operations (partition migration, actual table manipulation, partprobe, etc) can be performed\n", path, name);
     const size_t len_name = strlen(name);
     struct stat st;
     if (stat(path, &st)) {
-        fprintf(stderr, "IO find disk: Failed to get stat of '%s', errno: %d, error: %s\n", path, errno, strerror(errno));
+        pr_error("IO find disk: Failed to get stat of '%s', errno: %d, error: %s\n", path, errno, strerror(errno));
         return NULL;
     }
     char major_minor[23];
@@ -124,13 +124,13 @@ io_find_disk(
                     return NULL;
                 }
                 snprintf(path_real, 6 + len_entry, "/dev/%s", dir_entry->d_name);
-                fprintf(stderr, "IO find disk: Corresponding disk drive for '%s' is '%s'\n", path, path_real);
+                pr_error("IO find disk: Corresponding disk drive for '%s' is '%s'\n", path, path_real);
                 closedir(dir);
                 return path_real;
             }
         }
     }
-    fprintf(stderr, "IO find disk: Could not find corresponding disk drive for '%s'\n", path);
+    pr_error("IO find disk: Could not find corresponding disk drive for '%s'\n", path);
     closedir(dir);
     return NULL;
 }
@@ -141,7 +141,7 @@ io_describe_target_type(
     char const * const      path
 ){
     if (path) {
-        fprintf(stderr, "IO identify target type: '%s' is a ", path);
+        pr_error("IO identify target type: '%s' is a ", path);
     } else {
         fputs("IO identify target type: target is a ", stderr);
     }
@@ -156,7 +156,7 @@ io_describe_target_type(
             fputs("unsupported file", stderr);
             break;
     }
-    fprintf(stderr, " with a size of %zu bytes, and contains the content of ", type->size);
+    pr_error(" with a size of %zu bytes, and contains the content of ", type->size);
     switch (type->content) {
         case IO_TARGET_TYPE_CONTENT_UNSUPPORTED:
             fputs("unsupported", stderr);
@@ -183,26 +183,26 @@ io_identify_target_type_get_basic_stat(
 ){
     struct stat st;
     if (fstat(fd, &st)) {
-        fprintf(stderr, "IO identify target type: Failed to get stat of '%s', errno: %d, error: %s\n", path, errno, strerror(errno));
+        pr_error("IO identify target type: Failed to get stat of '%s', errno: %d, error: %s\n", path, errno, strerror(errno));
         return 1;
     }
     if (S_ISBLK(st.st_mode)) {
-        fprintf(stderr, "IO identify target type: '%s' is a block device, getting its size via ioctl\n", path);
+        pr_error("IO identify target type: '%s' is a block device, getting its size via ioctl\n", path);
         type->file = IO_TARGET_TYPE_FILE_BLOCKDEVICE;
         if (ioctl(fd, BLKGETSIZE64, &type->size)) {
-            fprintf(stderr, "IO identify target type: Failed to get size of '%s' via ioctl, errno: %d, error: %s\n", path, errno, strerror(errno));
+            pr_error("IO identify target type: Failed to get size of '%s' via ioctl, errno: %d, error: %s\n", path, errno, strerror(errno));
             return 2;
         }
     } else if (S_ISREG(st.st_mode)) {
-        fprintf(stderr, "IO identify target type: '%s' is a regular file, getting its size via stat\n", path);
+        pr_error("IO identify target type: '%s' is a regular file, getting its size via stat\n", path);
         type->file = IO_TARGET_TYPE_FILE_REGULAR;
         type->size = st.st_size;
     } else {
-        fprintf(stderr, "IO identify target type: '%s' is neither a regular file nor a block device, assuming its size as 0\n", path);
+        pr_error("IO identify target type: '%s' is neither a regular file nor a block device, assuming its size as 0\n", path);
         type->file = IO_TARGET_TYPE_FILE_UNSUPPORTED;
         type->size = 0;
     }
-    fprintf(stderr, "IO identify target type: size of '%s' is %zu\n", path, type->size);
+    pr_error("IO identify target type: size of '%s' is %zu\n", path, type->size);
     return 0;
 }
 
@@ -309,7 +309,7 @@ io_identify_target_type(
     }
     int fd = open(path, O_RDONLY);
     if (fd < 0) {
-        fprintf(stderr, "IO identify target type: Failed to open '%s' as read-only\n", path);
+        pr_error("IO identify target type: Failed to open '%s' as read-only\n", path);
         return 2;
     }
     memset(type, 0, sizeof *type);
@@ -341,9 +341,9 @@ io_seek_dtb(
             fputs("IO seek DTB: Ilegal target content type (auto), this should not happen\n", stderr);
             return -1;
     }
-    fprintf(stderr, "IO seek DTB: Seeking to %ld\n", offset);
+    pr_error("IO seek DTB: Seeking to %ld\n", offset);
     if ((offset = lseek(fd, offset, SEEK_SET)) < 0) {
-        fprintf(stderr, "IO seek DTB: Failed to seek for DTB, errno: %d, error: %s\n", errno, strerror(errno));
+        pr_error("IO seek DTB: Failed to seek for DTB, errno: %d, error: %s\n", errno, strerror(errno));
         return -1;
     }
     return offset;
@@ -362,12 +362,12 @@ io_seek_ept(
             offset = cli_options.offset_reserved;
             break;
         default:
-            fprintf(stderr, "IO seek EPT: Ilegal target content type (%s), this should not happen\n", cli_mode_strings[cli_options.content]);
+            pr_error("IO seek EPT: Ilegal target content type (%s), this should not happen\n", cli_mode_strings[cli_options.content]);
             return -1;
     }
-    fprintf(stderr, "IO seek EPT: Seeking to %ld\n", offset);
+    pr_error("IO seek EPT: Seeking to %ld\n", offset);
     if ((offset = lseek(fd, offset, SEEK_SET)) < 0) {
-        fprintf(stderr, "IO seek EPT: Failed to seek for EPT, errno: %d, error: %s\n", errno, strerror(errno));
+        pr_error("IO seek EPT: Failed to seek for EPT, errno: %d, error: %s\n", errno, strerror(errno));
         return -1;
     }
     return offset;
@@ -382,14 +382,14 @@ io_seek_and_read(
     size_t          size
 
 ){
-    // fprintf(stderr, "IO seek and read: Trying to seek to 0x%lx to read 0x%lx\n", offset, size);
+    // pr_error("IO seek and read: Trying to seek to 0x%lx to read 0x%lx\n", offset, size);
     off_t r_seek = lseek(fd, offset, SEEK_SET);
     if (r_seek < 0) {
         fputs("IO seek and read: Failed to seek\n", stderr);
         return 1;
     }
     if (r_seek != offset) {
-        fprintf(stderr, "IO seek and read: Seeked offset different from expected: Result 0x%lx, expected 0x%lx\n", r_seek, offset);
+        pr_error("IO seek and read: Seeked offset different from expected: Result 0x%lx, expected 0x%lx\n", r_seek, offset);
         return 2;
     }
     if (io_read_till_finish(fd, buffer, size)) {
@@ -433,7 +433,7 @@ io_migrate_is_circle(
     chain[id] = true;
     while (mentry->pending) {
         if (chain[mentry->target]) {
-            fprintf(stderr, "IO migrate is circle: Block %u has circle migration dependency, this will result in heavy memory footprint\n", id);
+            pr_error("IO migrate is circle: Block %u has circle migration dependency, this will result in heavy memory footprint\n", id);
             return true;
         }
         mentry = mhelper->entries + mentry->target;
@@ -449,7 +449,7 @@ io_migrate_plain_recursive(
     int const fd,
     bool const dry_run
 ){
-    // fprintf(stderr, "IO migrate plain recursive: %u => %u\n", id, msource->target);
+    // pr_error("IO migrate plain recursive: %u => %u\n", id, msource->target);
     struct io_migrate_entry *const mtarget = mhelper->entries + msource->target;
     if (mtarget == msource) {
         fputs("IO migrate plain recursive: Bad plan! target = source\n", stderr);
@@ -464,13 +464,13 @@ io_migrate_plain_recursive(
         fputs("IO migrate plain recursive: Failed to allocate memory\n", stderr);
         return 2;
     }
-    fprintf(stderr, "IO migrate plain recursive: Block %u reading\n", id);
+    pr_error("IO migrate plain recursive: Block %u reading\n", id);
     if (io_seek_and_read(fd, (off_t)mhelper->block * (off_t)id, buffer, mhelper->block * sizeof *buffer)) {
         fputs("IO migrate plain recursive: Failed to seek and read\n", stderr);
         free(buffer);
         return 3;
     }
-    fprintf(stderr, "IO migrate plain recursive: Block %u writing to %u\n", id, msource->target);
+    pr_error("IO migrate plain recursive: Block %u writing to %u\n", id, msource->target);
     if (dry_run) {
         fputs("IO migrate plain recursive: Dry-run, skipped writing\n", stderr);
     } else if (io_seek_and_write(fd, (off_t)mhelper->block * (off_t)msource->target, buffer, mhelper->block * sizeof *buffer)) {
@@ -491,7 +491,7 @@ io_migrate_circle_recursive(
     int const fd,
     bool const dry_run
 ){
-    // fprintf(stderr, "IO migrate circle recursive: %u => %u\n", id, msource->target);
+    // pr_error("IO migrate circle recursive: %u => %u\n", id, msource->target);
     struct io_migrate_entry *const mtarget = mhelper->entries + msource->target;
     if (mtarget == msource) {
         fputs("IO migrate plain recursive: Bad plan! target = source\n", stderr);
@@ -501,7 +501,7 @@ io_migrate_circle_recursive(
         fputs("IO migrate circle recursive: Failed to allocate memory\n", stderr);
         return 1;
     }
-    fprintf(stderr, "IO migrate circle recursive: Block %u reading\n", id);
+    pr_error("IO migrate circle recursive: Block %u reading\n", id);
     if (io_seek_and_read(fd, (off_t)mhelper->block * (off_t)id, msource->buffer, mhelper->block * sizeof *msource->buffer)) {
         fputs("IO migrate circle recursive: Failed to seek and read\n", stderr);
         free(msource->buffer);
@@ -512,7 +512,7 @@ io_migrate_circle_recursive(
         free(msource->buffer);
         return 3;
     }
-    fprintf(stderr, "IO migrate circle recursive: Block %u writing to %u\n", id, msource->target);
+    pr_error("IO migrate circle recursive: Block %u writing to %u\n", id, msource->target);
     if (dry_run) {
         fputs("IO migrate circle recursive: Dry-run, skipped writing\n", stderr);
     } else if (io_seek_and_write(fd, (off_t)mhelper->block * (off_t)msource->target, msource->buffer, mhelper->block * sizeof *msource->buffer)) {
@@ -534,21 +534,21 @@ io_migrate_recursive(
 ){
     struct io_migrate_entry *const mtarget = mhelper->entries + msource->target;
     if (mtarget == msource) {
-        fprintf(stderr, "IO migrate recursive: Bad plan! target = source on block %lu\n", msource - mhelper->entries);
+        pr_error("IO migrate recursive: Bad plan! target = source on block %lu\n", msource - mhelper->entries);
         return -1;
     }
     msource->pending = false;
     if (mtarget->pending) {
-        fprintf(stderr, "IO migrate recursive: Reading block %u\n", msource->target);
+        pr_error("IO migrate recursive: Reading block %u\n", msource->target);
         memset(mhelper->buffer_sub, 0, mhelper->block * sizeof *mhelper->buffer_sub);
         if (io_seek_and_read(mhelper->fd, (off_t)mhelper->block * (off_t)msource->target, mhelper->buffer_sub, mhelper->block)) {
-            fprintf(stderr, "IO migrate recursive: Failed to seek and read block %u\n", msource->target);
+            pr_error("IO migrate recursive: Failed to seek and read block %u\n", msource->target);
             return 2;
         }
     }
-    fprintf(stderr, "IO migrate recursive: Writing block %u\n", msource->target);
+    pr_error("IO migrate recursive: Writing block %u\n", msource->target);
     if (io_seek_and_write(mhelper->fd, (off_t)mhelper->block * (off_t)msource->target, mhelper->buffer_main, mhelper->block)) {
-        fprintf(stderr, "IO migrate recursive: Failed to seek and read block %u\n", msource->target);
+        pr_error("IO migrate recursive: Failed to seek and read block %u\n", msource->target);
         return 3;
     }
     if (mtarget->pending) {
@@ -556,7 +556,7 @@ io_migrate_recursive(
         mhelper->buffer_main = mhelper->buffer_sub;
         mhelper->buffer_sub = buffer;
         if (io_migrate_recursive(mhelper, mtarget)) {
-            fprintf(stderr, "IO migrate recursive: Failed to recursively migrate block %u\n", msource->target);
+            pr_error("IO migrate recursive: Failed to recursively migrate block %u\n", msource->target);
             return 4;
         }
     }
@@ -570,7 +570,7 @@ io_migrate(
     if (!mhelper || !mhelper->count || mhelper->fd < 0) {
         return -1;
     }
-    fprintf(stderr, "IO migrate: Start migrating, block size 0x%x, total blocks %u\n", mhelper->block, mhelper->count);
+    pr_error("IO migrate: Start migrating, block size 0x%x, total blocks %u\n", mhelper->block, mhelper->count);
 #ifdef IO_MIGRATE_SEPERATE_CIRCLE_PLAIN
     // int (*plain)(struct io_migrate_helper *, struct io_migrate_entry *, uint32_t, int, bool) = &io_migrate_plain_recursive;
     // int (*circle)(struct io_migrate_helper *, struct io_migrate_entry *, uint32_t, int, bool) = &io_migrate_circle_recursive;
@@ -581,10 +581,10 @@ io_migrate(
     }
     for (uint32_t i = 0; i < mhelper->count; ++i) {
         if ((mhelper->entries + i)->pending){
-            fprintf(stderr, "IO migrate: Migrating block %u\n", i);
+            pr_error("IO migrate: Migrating block %u\n", i);
             func = io_migrate_is_circle(mhelper, chain, i) ? &io_migrate_circle_recursive : &io_migrate_plain_recursive;
             if ((*func)(mhelper, mhelper->entries + i, i, fd, dry_run)) {
-                fprintf(stderr, "IO migrate: Failed to migrate block %u\n", i);
+                pr_error("IO migrate: Failed to migrate block %u\n", i);
                 free(chain);
                 return 2;
             }
@@ -605,17 +605,17 @@ io_migrate(
     for (uint32_t i = 0; i < mhelper->count; ++i) {
         mentry = mhelper->entries + i;
         if (mentry->pending) {
-            fprintf(stderr, "IO migrate: Migrating block %u\n", i);
+            pr_error("IO migrate: Migrating block %u\n", i);
             memset(mhelper->buffer_main, 0, mhelper->block * sizeof *mhelper->buffer_main);
-            fprintf(stderr, "IO migrate: Reading block %u\n", i);
+            pr_error("IO migrate: Reading block %u\n", i);
             if (io_seek_and_read(mhelper->fd, (off_t)mhelper->block * (off_t)i, mhelper->buffer_main, mhelper->block)) {
-                fprintf(stderr, "IO migrate: Failed to seek and read block %u\n", i);
+                pr_error("IO migrate: Failed to seek and read block %u\n", i);
                 free(mhelper->buffer_main);
                 free(mhelper->buffer_sub);
                 return 3;
             }
             if (io_migrate_recursive(mhelper, mentry)) {
-                fprintf(stderr, "IO migrate: Failed to recursively migrate block %u\n", i);
+                pr_error("IO migrate: Failed to recursively migrate block %u\n", i);
                 free(mhelper->buffer_main);
                 free(mhelper->buffer_sub);
                 return 4;
@@ -633,11 +633,11 @@ io_rereadpart(
     int fd
 ){
     if (fd <= 0) {
-        fprintf(stderr, "IO rereadpart: File descriptor not greater than 0 (%d), give up\n", fd);
+        pr_error("IO rereadpart: File descriptor not greater than 0 (%d), give up\n", fd);
         return -1;
     }
     if (ioctl(fd, BLKRRPART) == -1) {
-        fprintf(stderr, "IO rereadpart: Failed to send ioctl BLKRRPART to kernel, errno: %d, error: %s\n", errno, strerror(errno));
+        pr_error("IO rereadpart: Failed to send ioctl BLKRRPART to kernel, errno: %d, error: %s\n", errno, strerror(errno));
         return 1;
     }
     fputs("IO rereadpart: success\n", stderr);

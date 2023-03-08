@@ -17,7 +17,7 @@
 /* Macro */
 
 #define pr_error(format, arg...) \
-    fprintf(stderr, "%s:%d: "format, __FUNCTION__, __LINE__, ##arg)
+    fprintf(stderr, format, ##arg)
 
 #define pr_error_with_errno(format, arg...) \
     pr_error(format", errno: %d, error: %s\n", ##arg, errno, strerror(errno))

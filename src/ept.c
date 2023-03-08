@@ -164,11 +164,11 @@ ept_valid_header(
 ){
     int ret = 0;
     if (header->partitions_count > 32) {
-        fprintf(stderr, "EPT valid header: Partitions count invalid, only integer 0~32 is acceppted, actual: %d\n", header->partitions_count);
+        pr_error("EPT valid header: Partitions count invalid, only integer 0~32 is acceppted, actual: %d\n", header->partitions_count);
         ++ret;
     }
     if (header->magic_uint32 != EPT_HEADER_MAGIC_UINT32) {
-        fprintf(stderr, "EPT valid header: Magic invalid, expect: %"PRIx32", actual: %"PRIx32"\n", header->magic_uint32, EPT_HEADER_MAGIC_UINT32);
+        pr_error("EPT valid header: Magic invalid, expect: %"PRIx32", actual: %"PRIx32"\n", header->magic_uint32, EPT_HEADER_MAGIC_UINT32);
         ++ret;
     }
     bool version_invalid = false;
@@ -179,12 +179,12 @@ ept_valid_header(
         }
     }
     if (version_invalid) {
-        fprintf(stderr, "EPT valid header: Version invalid, expect (little endian) 0x%08x%08x%08x ("EPT_HEADER_VERSION_STRING"), actual: 0x%08"PRIx32"%08"PRIx32"%08"PRIx32"\n", EPT_HEADER_VERSION_UINT32_2, EPT_HEADER_VERSION_UINT32_1, EPT_HEADER_VERSION_UINT32_0, header->version_uint32[2], header->version_uint32[1], header->version_uint32[0]);
+        pr_error("EPT valid header: Version invalid, expect (little endian) 0x%08x%08x%08x ("EPT_HEADER_VERSION_STRING"), actual: 0x%08"PRIx32"%08"PRIx32"%08"PRIx32"\n", EPT_HEADER_VERSION_UINT32_2, EPT_HEADER_VERSION_UINT32_1, EPT_HEADER_VERSION_UINT32_0, header->version_uint32[2], header->version_uint32[1], header->version_uint32[0]);
         ret += 1;
     }
     const uint32_t checksum = ept_checksum_partitions(((const struct ept_table *)header)->partitions, util_safe_partitions_count(header->partitions_count));
     if (header->checksum != checksum) {
-        fprintf(stderr, "EPT valid header: Checksum mismatch, calculated: %"PRIx32", actual: %"PRIx32"\n", checksum, header->checksum);
+        pr_error("EPT valid header: Checksum mismatch, calculated: %"PRIx32", actual: %"PRIx32"\n", checksum, header->checksum);
         ret += 1;
     }
     return ret;
@@ -218,7 +218,7 @@ ept_valid_partition_name(
         term = false;
     }
     if (ret) {
-        fprintf(stderr, "EPT valid partition name: %u illegal characters found in partition name '%s'\n", ret, name);
+        pr_error("EPT valid partition name: %u illegal characters found in partition name '%s'\n", ret, name);
         if (term) {
             fputc('\n', stderr);
         } else {
@@ -270,7 +270,7 @@ ept_valid_table(
             strncpy(unique_names[name_id++], part->name, MAX_PARTITION_NAME_LENGTH);
         }
     }
-    fprintf(stderr, "EPT valid table: %u partitions have illegal names, %u partitions have duplicated names\n", illegal, dups);
+    pr_error("EPT valid table: %u partitions have illegal names, %u partitions have duplicated names\n", illegal, dups);
     return ret + dups;
 }
 
@@ -282,7 +282,7 @@ ept_report(
         return;
     }
     uint32_t const pcount = util_safe_partitions_count(table->partitions_count);
-    fprintf(stderr, "EPT report: %d partitions in the table:\n===================================================================================\nID| name            |          offset|(   human)|            size|(   human)| masks\n-----------------------------------------------------------------------------------\n", pcount);
+    pr_error("EPT report: %d partitions in the table:\n===================================================================================\nID| name            |          offset|(   human)|            size|(   human)| masks\n-----------------------------------------------------------------------------------\n", pcount);
     const struct ept_partition *part;
     double num_offset, num_size;
     char suffix_offset, suffix_size;
@@ -292,22 +292,22 @@ ept_report(
         if (part->offset > last_end) {
             diff = part->offset - last_end;
             num_offset = util_size_to_human_readable(diff, &suffix_offset);
-            fprintf(stderr, "    (GAP)                                        %16"PRIx64" (%7.2lf%c)\n", diff, num_offset, suffix_offset);
+            pr_error("    (GAP)                                        %16"PRIx64" (%7.2lf%c)\n", diff, num_offset, suffix_offset);
         } else if (part->offset < last_end) {
             diff = last_end - part->offset;
             num_offset = util_size_to_human_readable(diff, &suffix_offset);
-            fprintf(stderr, "    (OVERLAP)                                    %16"PRIx64" (%7.2lf%c)\n", diff, num_offset, suffix_offset);
+            pr_error("    (OVERLAP)                                    %16"PRIx64" (%7.2lf%c)\n", diff, num_offset, suffix_offset);
         }
         num_offset = util_size_to_human_readable(part->offset, &suffix_offset);
         num_size = util_size_to_human_readable(part->size, &suffix_size);
-        fprintf(stderr, "%2d: %-16s %16"PRIx64" (%7.2lf%c) %16"PRIx64" (%7.2lf%c) %6"PRIu32"\n", i, part->name, part->offset, num_offset, suffix_offset, part->size, num_size, suffix_size, part->mask_flags);
+        pr_error("%2d: %-16s %16"PRIx64" (%7.2lf%c) %16"PRIx64" (%7.2lf%c) %6"PRIu32"\n", i, part->name, part->offset, num_offset, suffix_offset, part->size, num_size, suffix_size, part->mask_flags);
         last_end = part->offset + part->size;
     }
     fputs("===================================================================================\n", stderr);
     uint32_t const block = ept_get_minimum_block(table);
     char suffix;
     double block_h = util_size_to_human_readable(block, &suffix);
-    fprintf(stderr, "EPT report: Minumum block in table: 0x%x, %u, %lf%c\n", block, block, block_h, suffix);
+    pr_error("EPT report: Minumum block in table: 0x%x, %u, %lf%c\n", block, block, block_h, suffix);
     return;
 }
 
@@ -323,7 +323,7 @@ ept_pedantic_offsets(
         return 1;
     }
     if (strncmp(table->partitions[0].name, EPT_PARTITION_BOOTLOADER_NAME, MAX_PARTITION_NAME_LENGTH) || strncmp(table->partitions[1].name, EPT_PARTITION_RESERVED_NAME, MAX_PARTITION_NAME_LENGTH) || strncmp(table->partitions[2].name, EPT_PARTITION_CACHE_NAME, MAX_PARTITION_NAME_LENGTH) || strncmp(table->partitions[3].name, EPT_PARTITION_ENV_NAME, MAX_PARTITION_NAME_LENGTH)) {
-        fprintf(stderr, "EPT pedantic offsets: refuse to fill-in offsets for a table where the first 4 partitions are not bootloader, reserved, cache, env (%s, %s, %s, %s instead)\n", table->partitions[0].name, table->partitions[1].name, table->partitions[2].name, table->partitions[3].name);
+        pr_error("EPT pedantic offsets: refuse to fill-in offsets for a table where the first 4 partitions are not bootloader, reserved, cache, env (%s, %s, %s, %s instead)\n", table->partitions[0].name, table->partitions[1].name, table->partitions[2].name, table->partitions[3].name);
         return 2;
     }
     table->partitions[0].offset = 0;
@@ -334,7 +334,7 @@ ept_pedantic_offsets(
         part_current= table->partitions + i;
         part_current->offset = part_last->offset + part_last->size + cli_options.gap_partition;
         if (part_current->offset > capacity) {
-            fprintf(stderr, "EPT pedantic offsets: partition %"PRIu32" (%s) overflows, its offset (%"PRIu64") is larger than eMMC capacity (%zu)\n", i, part_current->name, part_current->offset, capacity);
+            pr_error("EPT pedantic offsets: partition %"PRIu32" (%s) overflows, its offset (%"PRIu64") is larger than eMMC capacity (%zu)\n", i, part_current->name, part_current->offset, capacity);
             return 3;
         }
         if (part_current->size == (uint64_t)-1 || part_current->offset + part_current->size > capacity) {
@@ -614,7 +614,7 @@ ept_is_not_pedantic(
         offset = current->offset + current->size + cli_options.gap_partition;
         current = table->partitions + i;
         if (current->offset != offset) {
-            fprintf(stderr, "EPT is not pedantic: Part %u (%s) has a non-pedantic offset\n", i, current->name);
+            pr_error("EPT is not pedantic: Part %u (%s) has a non-pedantic offset\n", i, current->name);
             return 10 + i;
         }
     }
@@ -651,7 +651,7 @@ ept_eclone_parse(
         part_end = part->offset + part->size;
         if (part_end > capacity) {
             part->size -= (part_end - capacity);
-            fprintf(stderr, "EPT eclone parse: Warning, part %u (%s) overflows, shrink its size to %lu\n", i, part->name, part->size);
+            pr_error("EPT eclone parse: Warning, part %u (%s) overflows, shrink its size to %lu\n", i, part->name, part->size);
         }
         part->mask_flags = definer->masks;
     }
@@ -854,19 +854,19 @@ ept_get_minimum_block(
         for (uint32_t i = 0; i < pcount; ++i) {
             part = table->partitions + i;
             if (part->offset % block) {
-                fprintf(stderr, "EPT get minumum block: Shift down block size from 0x%x due to part %u (%s)'s offset 0x%lx\n", block, i + 1, part->name, part->offset);
+                pr_error("EPT get minumum block: Shift down block size from 0x%x due to part %u (%s)'s offset 0x%lx\n", block, i + 1, part->name, part->offset);
                 block >>= 1;
                 change = true;
             }
             if (part->size % block) {
-                fprintf(stderr, "EPT get minumum block: Shift down block size from 0x%x due to part %u (%s)'s size 0x%lx\n", block, i + 1, part->name, part->size);
+                pr_error("EPT get minumum block: Shift down block size from 0x%x due to part %u (%s)'s size 0x%lx\n", block, i + 1, part->name, part->size);
                 block >>= 1;
                 change = true;
             }
         }
 #ifdef EPT_GET_MINUMUM_BLOCK_AVOID_LAST_SIZE
         if (part_last->offset % block) {
-            fprintf(stderr, "EPT get minumum block: Shift down block size from 0x%x due to part %u (%s)'s offset 0x%lx\n", block, table->partitions_count, part_last->name, part_last->offset);
+            pr_error("EPT get minumum block: Shift down block size from 0x%x due to part %u (%s)'s offset 0x%lx\n", block, table->partitions_count, part_last->name, part_last->offset);
             block >>= 1;
             change = true;
         }
@@ -960,7 +960,7 @@ ept_migrate_plan(
     uint32_t entry_start, entry_count, entry_end, target_start, target_end;
     struct io_migrate_entry *mentry;
     uint32_t blocks = 0;
-    fprintf(stderr, "EPT migrate plan: Start planning, using block size 0x%x (source 0x%lx, target 0x%lx), count %u\n", mhelper->block, block_source, block_target, mhelper->count);
+    pr_error("EPT migrate plan: Start planning, using block size 0x%x (source 0x%lx, target 0x%lx), count %u\n", mhelper->block, block_source, block_target, mhelper->count);
     uint32_t const pcount_source = util_safe_partitions_count(source->partitions_count);
     uint32_t const pcount_target = util_safe_partitions_count(target->partitions_count);
     for (i = 0; i < pcount_source; ++i){
@@ -968,7 +968,7 @@ ept_migrate_plan(
         if (all || (!all && EPT_IS_PARTITION_ESSENTIAL(part_source))) {
             for (j = 0; j < pcount_target; ++j) {
                 part_target = target->partitions + j;
-                // fprintf(stderr, "EPT migrate plan: Checking source %s against target %s\n", part_source->name, part_target->name);
+                // pr_error("EPT migrate plan: Checking source %s against target %s\n", part_source->name, part_target->name);
                 if (!strncmp(part_source->name, part_target->name, MAX_PARTITION_NAME_LENGTH) && part_source->offset != part_target->offset) {
                     if ((entry_start = part_source->offset / mhelper->block) > block_id_max_source || ((target_start = part_target->offset / mhelper->block) > block_id_max_target)) {
                         fputs("EPT migrate plan: Block ID overflows!\n", stderr);
@@ -983,7 +983,7 @@ ept_migrate_plan(
                             continue;
                         }
                         entry_count = entry_end - entry_start;
-                        fprintf(stderr, "EPT migrate plan: Warning, expected migrate end point of part %s exceeds the capacity of source drive, shrinked migrate block count, this may result in partition damaged since it will be incomplete\n", part_source->name);
+                        pr_error("EPT migrate plan: Warning, expected migrate end point of part %s exceeds the capacity of source drive, shrinked migrate block count, this may result in partition damaged since it will be incomplete\n", part_source->name);
                     }
                     target_end = target_start + entry_count;
                     if (target_end > block_total_target) {
@@ -992,15 +992,15 @@ ept_migrate_plan(
                             continue;
                         }
                         entry_count = entry_end - target_start;
-                        fprintf(stderr, "EPT migrate plan: Warning, expected migrate end point of part %s exceeds the capacity of target drive, shrinked migrate block count, this may result in partition damaged since it will be incomplete\n", part_source->name);
+                        pr_error("EPT migrate plan: Warning, expected migrate end point of part %s exceeds the capacity of target drive, shrinked migrate block count, this may result in partition damaged since it will be incomplete\n", part_source->name);
                     }
                     // printf("%08x, %08x, %08x\n", entry_start, entry_count, entry_end);
-                    fprintf(stderr, "EPT migrate plan: Part %s (%u of %u in old table, %u of %u in new table) should be migrated, from offset 0x%lx(block %u) to 0x%lx(block %u), block count %u\n", part_source->name, i + 1, pcount_source, j + 1, pcount_target, part_source->offset, entry_start, part_target->offset, target_start, entry_count);
+                    pr_error("EPT migrate plan: Part %s (%u of %u in old table, %u of %u in new table) should be migrated, from offset 0x%lx(block %u) to 0x%lx(block %u), block count %u\n", part_source->name, i + 1, pcount_source, j + 1, pcount_target, part_source->offset, entry_start, part_target->offset, target_start, entry_count);
                     for (k = 0; k < entry_count; ++k) {
                         mentry = mhelper->entries + entry_start + k;
                         mentry->target = target_start + k;
                         // if ((mentry->target = target_start + k) > block_id_max_target) {
-                        //     fprintf(stderr, "EPT migrate plan: Warning, expected migrate end point of part %s exceeds the capacity of target drive, shrinked migrate block count, this may result in partition damaged since it will be incomplete\n", part_target->name);
+                        //     pr_error("EPT migrate plan: Warning, expected migrate end point of part %s exceeds the capacity of target drive, shrinked migrate block count, this may result in partition damaged since it will be incomplete\n", part_target->name);
                         //     mentry->target = 0;
                         //     break;
                         // }
@@ -1015,7 +1015,7 @@ ept_migrate_plan(
     double const size_each_d = util_size_to_human_readable(mhelper->block, &suffix_each);
     size_t const size_total = (size_t)blocks * (size_t)mhelper->block;
     double const size_total_d = util_size_to_human_readable(size_total, &suffix_total);
-    fprintf(stderr, "EPT migrate plan: %u blocks should be migrated, each size 0x%x (%lf%c), total size 0x%lx (%lf%c). In the worst scenario you will need the SAME amount of memory for the migration\n", blocks, mhelper->block, size_each_d, suffix_each, size_total, size_total_d, suffix_total);
+    pr_error("EPT migrate plan: %u blocks should be migrated, each size 0x%x (%lf%c), total size 0x%lx (%lf%c). In the worst scenario you will need the SAME amount of memory for the migration\n", blocks, mhelper->block, size_each_d, suffix_each, size_total, size_total_d, suffix_total);
     return 0;
 }
 
@@ -1056,7 +1056,7 @@ ept_sanitize_offset(
     size_t const                    capacity
 ){
     if (part->offset > capacity) {
-        fprintf(stderr, "EPT sanitize offset: Warning: part %s offset overflows, limitting it to 0x%lx\n", part->name, capacity);
+        pr_error("EPT sanitize offset: Warning: part %s offset overflows, limitting it to 0x%lx\n", part->name, capacity);
         part->offset = capacity;
     }
 }
@@ -1068,7 +1068,7 @@ ept_sanitize_size(
 ){
     if (part->offset + part->size > capacity) {
         part->size -= part->offset + part->size - capacity;
-        fprintf(stderr, "EPT sanitize size: Warning: part %s size overflows, limitting it to 0x%lx\n", part->name, part->size);
+        pr_error("EPT sanitize size: Warning: part %s size overflows, limitting it to 0x%lx\n", part->name, part->size);
     }
 }
 
@@ -1083,12 +1083,12 @@ ept_eedit_adjust(
         strncpy(part->name, modifier->name, MAX_PARTITION_NAME_LENGTH);
     }
     if (parg_adjustor_adjust_u64(&part->offset, modifier->modify_offset, modifier->offset)) {
-        fprintf(stderr, "EPT eedit adjust: Failed to adjust offset of part %s\n", part->name);
+        pr_error("EPT eedit adjust: Failed to adjust offset of part %s\n", part->name);
         return 1;
     }
     ept_sanitize_offset(part, capacity);
     if (parg_adjustor_adjust_u64(&part->size, modifier->modify_size, modifier->size)) {
-        fprintf(stderr, "EPT eedit adjust: Failed to adjust size of part %s\n", part->name);
+        pr_error("EPT eedit adjust: Failed to adjust size of part %s\n", part->name);
         return 2;
     }
     ept_sanitize_size(part, capacity);
@@ -1122,7 +1122,7 @@ ept_eedit_place(
             return -1;
     }
     if (place_target < 0 || (unsigned)place_target >= pcount) {
-        fprintf(stderr, "EPT eedit place: Target place %i overflows (minumum 0 as start, maximum %u as end)\n", place_target, pcount);
+        pr_error("EPT eedit place: Target place %i overflows (minumum 0 as start, maximum %u as end)\n", place_target, pcount);
         return 1;
     }
     struct ept_partition * const part_target = table->partitions + place_target;
@@ -1306,12 +1306,12 @@ ept_ungap(
             }
         }
         // for (uint32_t i = 0; i < non_critical_count; ++i) {
-        //     fprintf(stderr, "Part %s, Size 0x%lx\n", non_critical[i]->name, non_critical[i]->size);
+        //     pr_error("Part %s, Size 0x%lx\n", non_critical[i]->name, non_critical[i]->size);
         // }
         bool strategy_best[MAX_PARTITIONS_COUNT - 2] = {0};
         size_t gap_minimum = gap;
         for (uint32_t i = 0; i < non_critical_count; ++i) { // Find best strategy, gready algorithm, go from biggest
-            // fprintf(stderr, "Strategy try %u\n", i);
+            // pr_error("Strategy try %u\n", i);
             size_t gap_remaining = gap;
             bool strategy_current[MAX_PARTITIONS_COUNT - 2] = {0};
             for (uint32_t j = i; j < non_critical_count; ++j) {
@@ -1411,7 +1411,7 @@ ept_ecreate_parse(
     if (argc > 0) {
         uint32_t const parg_max = MAX_PARTITIONS_COUNT - table_new->partitions_count;
         if ((unsigned)argc > parg_max) {
-            fprintf(stderr, "EPT ecreate parse: Too many PARGs, you've defined %d yet only %u is supported, since there's %u used by existing partitions:\n", argc, parg_max, table_new->partitions_count);
+            pr_error("EPT ecreate parse: Too many PARGs, you've defined %d yet only %u is supported, since there's %u used by existing partitions:\n", argc, parg_max, table_new->partitions_count);
             return 3;
         }
         struct parg_definer_helper_static dhelper;

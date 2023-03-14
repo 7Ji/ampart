@@ -29,10 +29,11 @@ ifndef VERSION
 	VERSION := $(VERSION_GIT_TAG_NO_V)-$(VERSION_GIT_COMMIT)-$(VERSION_GIT_DATE)
 	GIT_STAT := $(shell git diff --stat)
 	ifeq ($(VERSION),--)
-		VERSION := unknown
-	endif
-	ifneq ($(GIT_STAT),)
-		VERSION := $(VERSION)-DIRTY
+		undefine VERSION
+	else
+		ifneq ($(GIT_STAT),)
+			VERSION := $(VERSION)-DIRTY
+		endif
 	endif
 endif
 
@@ -42,8 +43,10 @@ ifneq ($(DEBUG), 1)
 	$(STRIP) $(BINARY)
 endif
 
+ifdef VERSION
 $(DIR_OBJECT)/version.o: $(DIR_SOURCE)/version.c $(INCLUDES) version | prepare
 	$(CC) -c -o $@ $< $(CFLAGS) -DVERSION=\"$(VERSION)\"
+endif
 
 $(DIR_OBJECT)/%.o: $(DIR_SOURCE)/%.c $(INCLUDES) | prepare
 	$(CC) -c -o $@ $< $(CFLAGS)

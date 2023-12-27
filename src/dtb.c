@@ -542,6 +542,33 @@ dtb_read_into_buffer_helper(
             free(buffer_read);
             return 7;
         }
+
+        //dump dtb files from mhelper to local current dir
+        for(int i=0;i<mhelper.entry_count;i++){
+            char sname[256] = {""};
+
+            sprintf(sname,"/tmp/%s-%s-%s-%s-%d.dtb",mhelper.entries[i].platform,mhelper.entries[i].soc
+                ,mhelper.entries[i].target,mhelper.entries[i].variant,mhelper.entries[i].size);
+            
+
+            fputs("DUMP DTB : Filename->\t", stdout);
+            fputs(sname, stdout);
+            fputs("\n", stdout);
+            
+            int fdtb = open(sname,O_WRONLY|O_CREAT);
+            if (fd < 0) {
+                fputs("DUMP DTB Err: Failed to open target\n", stderr);
+                return 11;
+            }
+            ssize_t re = write(fdtb,mhelper.entries[i].dtb,mhelper.entries[i].size);
+            // if(re != mhelper.entries[i].size){
+            //     fputs("DUMP DTB Err: Failed to write target\n", stderr);
+            //     return 12;
+            // }
+            close(fdtb);
+
+        }
+
         memset(bhelper->dtbs, 0, bhelper->dtb_count * sizeof *bhelper->dtbs);
         for (unsigned i = 0; i < bhelper->dtb_count; ++i) {
             if (dtb_parse_entry(bhelper->dtbs + i, mhelper.entries[i].dtb) > 0) {

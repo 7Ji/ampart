@@ -480,7 +480,6 @@ ept_compare_partition(
         fputs("EPT compare partitions: Masks different\n", stderr);
         return 8;
     }
-    // fputs("EPT compare partitions: All same\n", stderr);
     return 0;
 }
 
@@ -968,7 +967,6 @@ ept_migrate_plan(
         if (all || (!all && EPT_IS_PARTITION_ESSENTIAL(part_source))) {
             for (j = 0; j < pcount_target; ++j) {
                 part_target = target->partitions + j;
-                // pr_error("EPT migrate plan: Checking source %s against target %s\n", part_source->name, part_target->name);
                 if (!strncmp(part_source->name, part_target->name, MAX_PARTITION_NAME_LENGTH) && part_source->offset != part_target->offset) {
                     if ((entry_start = part_source->offset / mhelper->block) > block_id_max_source || ((target_start = part_target->offset / mhelper->block) > block_id_max_target)) {
                         fputs("EPT migrate plan: Block ID overflows!\n", stderr);
@@ -994,16 +992,10 @@ ept_migrate_plan(
                         entry_count = entry_end - target_start;
                         pr_error("EPT migrate plan: Warning, expected migrate end point of part %s exceeds the capacity of target drive, shrinked migrate block count, this may result in partition damaged since it will be incomplete\n", part_source->name);
                     }
-                    // printf("%08x, %08x, %08x\n", entry_start, entry_count, entry_end);
                     pr_error("EPT migrate plan: Part %s (%u of %u in old table, %u of %u in new table) should be migrated, from offset 0x%lx(block %u) to 0x%lx(block %u), block count %u\n", part_source->name, i + 1, pcount_source, j + 1, pcount_target, part_source->offset, entry_start, part_target->offset, target_start, entry_count);
                     for (k = 0; k < entry_count; ++k) {
                         mentry = mhelper->entries + entry_start + k;
                         mentry->target = target_start + k;
-                        // if ((mentry->target = target_start + k) > block_id_max_target) {
-                        //     pr_error("EPT migrate plan: Warning, expected migrate end point of part %s exceeds the capacity of target drive, shrinked migrate block count, this may result in partition damaged since it will be incomplete\n", part_target->name);
-                        //     mentry->target = 0;
-                        //     break;
-                        // }
                         mentry->pending = true;
                     }
                     blocks += entry_count;
@@ -1305,13 +1297,9 @@ ept_ungap(
                 }
             }
         }
-        // for (uint32_t i = 0; i < non_critical_count; ++i) {
-        //     pr_error("Part %s, Size 0x%lx\n", non_critical[i]->name, non_critical[i]->size);
-        // }
         bool strategy_best[MAX_PARTITIONS_COUNT - 2] = {0};
         size_t gap_minimum = gap;
         for (uint32_t i = 0; i < non_critical_count; ++i) { // Find best strategy, gready algorithm, go from biggest
-            // pr_error("Strategy try %u\n", i);
             size_t gap_remaining = gap;
             bool strategy_current[MAX_PARTITIONS_COUNT - 2] = {0};
             for (uint32_t j = i; j < non_critical_count; ++j) {
@@ -1407,7 +1395,6 @@ ept_ecreate_parse(
         fputs("EPT ecreate parse: Failed to remove gap\n", stderr);
         return 2;
     }
-    // ept_report(table_new);
     if (argc > 0) {
         uint32_t const parg_max = MAX_PARTITIONS_COUNT - table_new->partitions_count;
         if ((unsigned)argc > parg_max) {

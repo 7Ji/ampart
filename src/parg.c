@@ -468,7 +468,6 @@ int
 parg_parse_modifier(
     struct parg_modifier * const    modifier,
     char const * const              arg,
-    // bool const                      allow_operator_delete,
     bool const                      allow_adjustor_offset
 ) {
     if (!modifier || util_string_is_empty(arg)) {
@@ -484,10 +483,6 @@ parg_parse_modifier(
         pr_error("PARG parse modifier: Selector/operator invalid/incomplete: %s\n", arg);
         return 2;
     }
-    // if (!allow_operator_delete && modifier->modify_part == PARG_MODIFY_PART_DELETE) {
-    //     pr_error("PARG pasrse modifier: Delete operator used when not allowed: %s\n", arg);
-    //     return 3;
-    // }
     if (parg_parse_modifier_get_selector(modifier, arg + 1, select_end - arg - 1)) {
         pr_error("PARG parse modifier: Selector invalid: %s\n", arg);
         return 4;
@@ -502,7 +497,6 @@ int
 parg_parse_editor(
     struct parg_editor *    editor,
     char const * const      arg,
-    // bool const              allow_operator_delete,
     bool const              eedit
 ){
     if (!editor || util_string_is_empty(arg)) {

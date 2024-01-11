@@ -178,7 +178,6 @@ dts_skip_node(
     uint32_t offset_child;
     for (uint32_t i = 0; i < count; ++i) {
         current = start + i;
-        // printf("0x%08x\n", bswap_32(*current));
         switch (*current) {
             case DTS_BEGIN_NODE_ACTUAL:
                 offset_child = dts_skip_node((const uint8_t *)(current + 1), max_offset - 4*i);
@@ -230,7 +229,6 @@ dts_get_node(
     uint32_t offset_child;
     for (uint32_t i = 0; i < count; ++i) {
         current = start + i;
-        // printf("0x%08x\n", bswap_32(*current));
         switch (*current) {
             case DTS_BEGIN_NODE_ACTUAL:
                 offset_child = dts_get_node((uint8_t const *)(current + 1), max_offset - 4*i, name + len_name, layers - 1, target);
@@ -652,7 +650,6 @@ dts_get_partitions_from_node(
                     }
                     in_partition = false;
                 } else {
-                    // phelper->node = (uint8_t *)node;
                     return 0;
                 }
                 break;
@@ -1089,9 +1086,6 @@ dts_get_phandles(
         fputs("DTS get phandles: Failed to get phandle list\n", stderr);
         return 2;
     }
-    // for (unsigned i = 0; i < plist->allocated_count; ++i) {
-    //     printf("phandle %u: %u\n", i, plist->phandles[i]);
-    // }
     if (dts_phandle_list_finish(plist)) {
         free(plist->entries);
         fputs("DTS get phandles: Failed to finish phandle list\n", stderr);
@@ -1267,7 +1261,6 @@ dts_compose_partitions_node(
         }
         *(current++) = DTS_END_NODE_ACTUAL;
     }
-    // printf("Start: %p, length %lx, current %p\n", *node, *len_node, current);
     return 0;
 }
 
@@ -1330,20 +1323,6 @@ dts_dedit_part_select(
     }
     return NULL;
 }
-
-// void
-// dts_dedit_report_failed_select(
-//     struct parg_modifier const * const modifier
-// ){
-//     switch (modifier->select) {
-//         case PARG_SELECT_NAME:
-//             pr_error("DTS deidt report failed select: No partition selected by Name selector %s\n", modifier->select_name);
-//             break;
-//         case PARG_SELECT_RELATIVE:
-//             pr_error("DTS deidt report failed select: No partition selected by Relative selector %d\n", modifier->select_relative);
-//             break;
-//     }
-// }
 
 int
 dts_dedit_adjust(

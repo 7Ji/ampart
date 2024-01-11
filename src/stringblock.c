@@ -78,7 +78,6 @@ stringblock_append_string_safely(
     char const * const                  string, 
     size_t const                        slength
 ){
-    // printf("length of sblock: 0x%lx, allocated length of sblock: 0x%lx, head: %s\n", shelper->length, shelper->allocated_length, shelper->stringblock);
     off_t const offset = stringblock_find_string(shelper, string);
     if (offset>=0) {
         return offset;

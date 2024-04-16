@@ -32,5 +32,10 @@ add_executable(ampart
 
 target_link_libraries(ampart
     z)
+
 target_include_directories(ampart PRIVATE
     "include")
+ 
+target_compile_options(ampart PRIVATE
+    -Wall
+    -Wextra)

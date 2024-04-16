@@ -1,3 +1,21 @@
+cmake_minimum_required(VERSION 3.5)
+
+project(ampart C)
+
+if ("${VERSION}" STREQUAL "")
+    execute_process(
+        COMMAND bash scripts/build-only-version.sh
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+        OUTPUT_VARIABLE VERSION
+        ERROR_QUIET)
+    message("-- Version generated: ${VERSION}")
+else()
+    message("-- Version defined: ${VERSION}")
+endif()
+
+set_source_files_properties(src/version.c
+    PROPERTIES COMPILE_DEFINITIONS VERSION=\"${VERSION}\")
+
 add_executable(ampart
     src/cli.c
     src/dtb.c

@@ -17,24 +17,11 @@ endif
 
 INCLUDES = $(wildcard $(DIR_INCLUDE)/*.h)
 
-# _OBJECTS = alloc.o drive.o escape.o logging.o main.o sort.o systemd.o
 _OBJECTS = $(wildcard $(DIR_SOURCE)/*.c)
 OBJECTS = $(patsubst $(DIR_SOURCE)/%.c,$(DIR_OBJECT)/%.o,$(_OBJECTS))
 
 ifndef VERSION
-	VERSION_GIT_TAG := $(shell git describe --abbrev=0 --tags ${TAG_COMMIT} 2>/dev/null || true)
-	VERSION_GIT_TAG_NO_V := $(VERSION_GIT_TAG:v%=%)
-	VERSION_GIT_COMMIT := $(shell git rev-list --abbrev-commit --tags --max-count=1)
-	VERSION_GIT_DATE := $(shell git log -1 --format=%cd --date=format:"%Y%m%d")
-	VERSION := $(VERSION_GIT_TAG_NO_V)-$(VERSION_GIT_COMMIT)-$(VERSION_GIT_DATE)
-	GIT_STAT := $(shell git diff --stat)
-	ifeq ($(VERSION),--)
-		undefine VERSION
-	else
-		ifneq ($(GIT_STAT),)
-			VERSION := $(VERSION)-DIRTY
-		endif
-	endif
+	VERSION:=$(shell bash scripts/build-only-version.sh)
 endif
 
 $(BINARY): $(OBJECTS) | version
@@ -60,12 +47,3 @@ prepare:
 	mkdir -p $(DIR_OBJECT)
 
 fresh: clean $(BINARY)
-
-# ifeq ($(PREFIX),)
-#     PREFIX := /usr/sbin
-# endif
-
-# install: $(BINARY)
-# 	install -d $(DESTDIR)$(PREFIX)
-# 	install -m 755 $< $(DESTDIR)$(PREFIX)/
-# 	$(STRIP) $(DESTDIR)$(PREFIX)/$<

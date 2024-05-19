@@ -27,16 +27,11 @@
 #define DTB_PARTITION_VERSION           1
 #define DTB_PARTITION_MAGIC             0x00447E41U
 #define DTB_WEBREPORT_ARG_MAXLEN        0x800U
-#define DTB_WEBREPORT_ARG               "dsnapshot="
 
 /* Macro */
 
 #define DTB_GET_PARTITIONS_NODE_FROM_DTS(dts, max_offset) \
     dts_get_node_from_path(dts, max_offset, "/partitions", 11)
-
-/* Variable */
-size_t const 
-    len_dtb_webreport_arg = strlen(DTB_WEBREPORT_ARG);
 
 /* Function */
 
@@ -699,10 +694,8 @@ dtb_webreport(
         fputs("DTB webreport: DTB invalid\n", stderr);
         return 1;
     }
-    // Initial dsnapshot= part
-    strncpy(arg_dsnapshot, DTB_WEBREPORT_ARG, len_dtb_webreport_arg);
-    char *current = arg_dsnapshot + len_dtb_webreport_arg;
-    uint32_t len_available = DTB_WEBREPORT_ARG_MAXLEN - len_dtb_webreport_arg;
+    char *current = arg_dsnapshot;
+    uint32_t len_available = DTB_WEBREPORT_ARG_MAXLEN;
     // For each partition
     struct dts_partitions_helper const *const phelper = &bhelper->dtbs->phelper;
     uint32_t const pcount = util_safe_partitions_count(phelper->partitions_count);

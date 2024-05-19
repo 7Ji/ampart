@@ -43,9 +43,6 @@
 /* Variable */
 
 uint32_t const
-    len_ept_webreport_arg = strlen(EPT_WEBREPORT_ARG);
-
-uint32_t const
     ept_header_version_uint32[] = {
         EPT_HEADER_VERSION_UINT32_0,
         EPT_HEADER_VERSION_UINT32_1,
@@ -757,10 +754,8 @@ ept_webreport(
         fputs("EPT snapshot: EPT invalid\n", stderr);
         return 1;
     }
-    // Initial esnapshot= part
-    strncpy(arg_esnapshot, EPT_WEBREPORT_ARG, len_ept_webreport_arg);
-    char *current = arg_esnapshot + len_ept_webreport_arg;
-    uint32_t len_available = EPT_WEBREPORT_ARG_MAXLEN - len_ept_webreport_arg;
+    char *current = arg_esnapshot;
+    uint32_t len_available = EPT_WEBREPORT_ARG_MAXLEN;
     // For each partition
     struct ept_partition const * part;
     uint32_t const pcount = util_safe_partitions_count(table->partitions_count);

@@ -4,6 +4,7 @@
 
 /* System */
 
+#include <bits/getopt_core.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <getopt.h>
@@ -77,7 +78,7 @@ struct cli_options cli_options = {
     .gap_partition = EPT_PARTITION_GAP_GENERIC,
     .gap_reserved = EPT_PARTITION_GAP_RESERVED,
     .size = 0,
-    .target = NULL
+    .target = ""
 };
 
 /* Function */
@@ -303,6 +304,17 @@ cli_parse_options(
 }
 
 static inline
+void
+cli_option_replace_target(
+    // struct cli_options *const restrict cli_options,
+    char const *const restrict target
+){
+    size_t len_target = strnlen(target, (sizeof cli_options.target) - 1);
+    memcpy(cli_options.target, target, len_target);
+    cli_options.target[len_target] = '\0';
+}
+
+static inline
 int
 cli_find_disk(){
     char *path_disk = io_find_disk(cli_options.target);
@@ -311,8 +323,8 @@ cli_find_disk(){
         return 1;
     }
     pr_error("CLI interface: Operating on '%s' instead, content type is now disk\n", path_disk);
-    free(cli_options.target);
-    cli_options.target = path_disk;
+    cli_option_replace_target(path_disk);
+    free(path_disk);
     cli_options.content = CLI_CONTENT_TYPE_DISK;
     return 0;
 }
@@ -384,11 +396,7 @@ cli_complete_options(
         cli_options.write = CLI_WRITE_NOTHING;
     }
     if (optind < argc) {
-        cli_options.target = strdup(argv[optind++]);
-        if (!cli_options.target) {
-            pr_error("CLI interface: Failed to duplicate target string '%s'\n", argv[optind-1]);
-            return 2;
-        }
+        cli_option_replace_target(argv[optind++]);
         pr_error("CLI interface: Operating on target file/block device '%s'\n", cli_options.target);
         int const r = cli_options_complete_target_info();
         if (r) {

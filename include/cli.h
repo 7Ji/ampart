@@ -2,7 +2,12 @@
 #define HAVE_CLI_H
 #include "common.h"
 
+/* System */
+
+#include <linux/limits.h>
+
 /* Local */
+
 #include "ept.h"
 
 /* Enumerable */
@@ -54,7 +59,7 @@ struct
         uint64_t                gap_partition;
         uint64_t                gap_reserved;
         size_t                  size;
-        char *                  target;
+        char                    target[PATH_MAX];
     };
 
 /* Variable */

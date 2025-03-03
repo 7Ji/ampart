@@ -1,5 +1,5 @@
 project('ampart', 'c',
-    version : run_command('bash', 'scripts/build-only-version.sh').stdout().strip())
+    version : run_command('bash', 'scripts/build-only-version.sh', check: true).stdout().strip())
 incdir = include_directories('include')
 zlibdep = dependency('zlib')
 

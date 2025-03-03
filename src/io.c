@@ -7,6 +7,7 @@
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <libgen.h>
 #include <limits.h>
 #include <string.h>
 #include <unistd.h>
@@ -88,7 +89,8 @@ char *
 io_find_disk(
     char const * const  path
 ){
-    const char* const name = basename(path);
+    char* path_copy = strdup(path);
+    const char* const name = basename(path_copy);
     pr_error("IO find disk: Trying to find corresponding full disk drive of '%s' (name %s) so more advanced operations (partition migration, actual table manipulation, partprobe, etc) can be performed\n", path, name);
     const size_t len_name = strlen(name);
     struct stat st;
@@ -121,17 +123,20 @@ io_find_disk(
             if (!strcmp(major_minor, dev_content)) {
                 char *path_real = malloc((6 + len_entry) * sizeof *path_real); // /dev/ is 5, name max 256
                 if (!path_real) {
+                    free(path_copy);
                     return NULL;
                 }
                 snprintf(path_real, 6 + len_entry, "/dev/%s", dir_entry->d_name);
                 pr_error("IO find disk: Corresponding disk drive for '%s' is '%s'\n", path, path_real);
                 closedir(dir);
+                free(path_copy);
                 return path_real;
             }
         }
     }
     pr_error("IO find disk: Could not find corresponding disk drive for '%s'\n", path);
     closedir(dir);
+    free(path_copy);
     return NULL;
 }
 

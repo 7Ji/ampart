@@ -98,7 +98,7 @@ dtb_get_multi_header_property_length(
 
 static inline
 void
-dtb_pasre_multi_entries_each(
+dtb_parse_multi_entries_each(
     uint8_t const * const                   dtb,
     struct dtb_multi_entries_helper *const  mhelper,
     uint32_t const                          len_property,
@@ -161,7 +161,7 @@ dtb_parse_multi_entries(
         return 4;
     }
     for (uint32_t i = 0; i<mhelper->entry_count; ++i) {
-        dtb_pasre_multi_entries_each(dtb, mhelper, len_property, i);
+        dtb_parse_multi_entries_each(dtb, mhelper, len_property, i);
     }
     return 0;
 }

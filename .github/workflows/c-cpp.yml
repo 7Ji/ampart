@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - name: Static build for x86_64
       run: make fresh STATIC=1
     - name: Rename for x86_64
@@ -37,7 +37,7 @@ jobs:
     # - name: Rename for aarch64
     #   run: mv ampart ampart-aarch64
     - name: Upload a Build Artifact
-      uses: actions/upload-artifact@v3.1.2
+      uses: actions/upload-artifact@v4.6.1
       with:
         name: static-build
         path: ampart-*

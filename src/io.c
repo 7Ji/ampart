@@ -7,11 +7,13 @@
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <libgen.h>
 #include <limits.h>
 #include <string.h>
 #include <unistd.h>
 
 #include <linux/fs.h>
+#include <linux/limits.h>
 
 #include <sys/ioctl.h>
 #include <sys/stat.h>
@@ -20,6 +22,7 @@
 /* Local */
 
 #include "cli.h"
+#include "common.h"
 #include "gzip.h"
 #include "ept.h"
 
@@ -88,51 +91,128 @@ char *
 io_find_disk(
     char const * const  path
 ){
-    const char* const name = basename(path);
+    char *path_disk = NULL;
+
+    size_t const len_path = strnlen(path, PATH_MAX);
+    if (!len_path || len_path >= PATH_MAX) {
+        pr_error("IO find disk: Path to disk '%s' is too long\n", path);
+        goto result;
+    }
+
+    char *const path_dup = malloc(len_path + 1);
+    if (!path_dup) {
+        pr_error_with_errno("IO find disk: Failed to allocate memory for duplicated path");
+        goto result;
+    }
+    memcpy(path_dup, path, len_path);
+    path_dup[len_path] = '\0';
+
+    char const *const name = basename(path_dup);
+    if (!name || name[0] == '\0') {
+        pr_error("IO find disk: Could not figure out base name of disk path '%s'\n", path);
+        goto free_path;
+    }
     pr_error("IO find disk: Trying to find corresponding full disk drive of '%s' (name %s) so more advanced operations (partition migration, actual table manipulation, partprobe, etc) can be performed\n", path, name);
-    const size_t len_name = strlen(name);
+
+    size_t const len_name = strnlen(name, len_path);
+    if (!len_name || len_name > NAME_MAX) {
+        pr_error("IO find disk: Could not figure out length of disk name '%s'\n", name);
+        goto free_path;
+    }
+
     struct stat st;
     if (stat(path, &st)) {
-        pr_error("IO find disk: Failed to get stat of '%s', errno: %d, error: %s\n", path, errno, strerror(errno));
-        return NULL;
+        pr_error_with_errno("IO find disk: Failed to get stat of '%s'", path);
+        goto free_path;
     }
     char major_minor[23];
-    snprintf(major_minor, 23, "%u:%u\n", major(st.st_rdev), minor(st.st_rdev));
-    DIR *dir = opendir("/sys/block");
-    if (!dir) {
-        return NULL;
+    int len_devnode = snprintf(major_minor, 23, "%u:%u\n", major(st.st_rdev), minor(st.st_rdev));
+    if (len_devnode < 0) {
+        pr_error_with_errno("IO find disk: Failed to snprintf to get major:minor dev name");
+        goto free_path;
+    } else if (len_devnode >= 23) {
+        pr_error("IO find disk: name of devnode is impossibly long\n");
+        goto free_path;
     }
-    char dev_file[17 + 2*NAME_MAX] = "/sys/block/"; // 11 for /sys/block/, 256 for disk+/, 256 for name+/, 4 for dev\0 
+
+    int dir_fd = open("/sys/block", O_RDONLY | O_DIRECTORY);
+    if (dir_fd < 0) {
+        pr_error_with_errno("IO find disk: Failed to open /sys/block vdir");
+        goto free_path;
+    }
+
+    int dup_dir_fd = dup(dir_fd);
+    if (dup_dir_fd < 0) {
+        pr_error_with_errno("IO find disk: Failed to duplicate dir fd");
+        goto free_path;
+    }
+
+    DIR *dir = fdopendir(dup_dir_fd);
+    if (!dir) {
+        pr_error_with_errno("IO find disk: Failed to fdopendir /sys/block vdir");
+        close(dup_dir_fd);
+        goto close_fd;
+    }
+
+    char dev_file[6 + 2*NAME_MAX]; // 256 for disk+/, 256 for name+/, 4 for dev\0 
     char dev_content[23];
     struct dirent * dir_entry;
     int fd;
-    size_t len_entry;
     while ((dir_entry = readdir(dir))) {
-        if (dir_entry->d_name[0] && dir_entry->d_name[0] != '.') {
-            len_entry = strlen(dir_entry->d_name);
-            snprintf(dev_file + 11, 6 + len_name + len_entry, "%s/%s/dev", dir_entry->d_name, name);
-            fd = open(dev_file, O_RDONLY);
-            if (fd < 0) {
-                continue;
-            }
-            memset(dev_content, 0, 23);
-            read(fd, dev_content, 23);
-            close(fd);
-            if (!strcmp(major_minor, dev_content)) {
-                char *path_real = malloc((6 + len_entry) * sizeof *path_real); // /dev/ is 5, name max 256
-                if (!path_real) {
-                    return NULL;
-                }
-                snprintf(path_real, 6 + len_entry, "/dev/%s", dir_entry->d_name);
-                pr_error("IO find disk: Corresponding disk drive for '%s' is '%s'\n", path, path_real);
-                closedir(dir);
-                return path_real;
-            }
+        switch (dir_entry->d_name[0]) {
+        case '\0':
+        case '.':
+            continue;
+        default:
+            break;
         }
+        size_t len_entry = strnlen(dir_entry->d_name, NAME_MAX);
+        if (!len_entry || len_entry > NAME_MAX) {
+            pr_error_with_errno("IO find disk: entry name is too long or empty");
+            goto close_dir;
+        }
+        memcpy(dev_file, dir_entry->d_name, len_entry);
+        dev_file[len_entry] = '/';
+        memcpy(dev_file + len_entry + 1, name, len_name);
+        memcpy(dev_file + len_entry + 1 + len_name, "/dev", 5);
+        fd = openat(dir_fd, dev_file, O_RDONLY);
+        if (fd < 0) {
+            pr_error_with_errno("IO find disk: Failed to open dev file '%s' as read-only", dev_file);
+            goto close_dir;
+        }
+        memset(dev_content, 0, 23);
+        read(fd, dev_content, 23);
+        close(fd);
+        if (strncmp(major_minor, dev_content, 23)) {
+            continue;
+        }
+        path_disk = malloc(6 + len_entry); // /dev/ is 5, name max 256
+        if (!path_disk) {
+            pr_error_with_errno("IO find disk: Failed to allocate memory for result path");
+            goto close_dir;
+        }
+        memcpy(path_disk, "/dev/", 5);
+        memcpy(path_disk + 5, dir_entry->d_name, len_entry);
+        path_disk[5 + len_entry] = '\0';
+        break;
     }
-    pr_error("IO find disk: Could not find corresponding disk drive for '%s'\n", path);
-    closedir(dir);
-    return NULL;
+    if (path_disk) {
+        pr_error("IO find disk: Corresponding disk drive for '%s' is '%s'\n", path, path_disk);
+    } else {
+        pr_error("IO find disk: Could not find corresponding disk drive for '%s'\n", path);
+    }
+close_dir:
+    if (closedir(dir)) {
+        pr_error_with_errno("IO find disk: Failed to close dir");
+    }
+close_fd:
+    if (close(dir_fd)) {
+        pr_error_with_errno("IO Find disk: Failed to close dir fd");
+    }
+free_path:
+    free(path_dup);
+result:
+    return (char *)path_disk;
 }
 
 void 

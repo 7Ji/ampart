@@ -184,7 +184,7 @@ dts_skip_node(
                 return 0;
         }
     }
-    prln_error("skip node");
+    prln_error("node not properly ended");
     return 0;
 }
 
@@ -252,10 +252,10 @@ dts_get_property_actual(
         current = start + i;
         switch (*current) {
             case DTS_BEGIN_NODE_ACTUAL:
-                prln_error("DTS get property actual: child node starts, property not found, give up");
+                prln_error("child node starts, property not found, give up");
                 return 1;
             case DTS_END_NODE_ACTUAL:
-                prln_error("DTS get property actual: node ends, give up");
+                prln_error("node ends, give up");
                 return 1;
             case DTS_PROP_ACTUAL:
                 len_prop = bswap_32(*(current+1));
@@ -270,7 +270,7 @@ dts_get_property_actual(
             case DTS_NOP_ACTUAL:
                 break;
             default:
-                prln_error("DTS get property: Invalid token %"PRIu32"", bswap_32(*current));
+                prln_error("invalid token %"PRIu32"", bswap_32(*current));
                 return 1;
         }
     }
@@ -1439,7 +1439,7 @@ dts_dedit_parse(
         prln_error("no editor");
         return 2;
     }
-    prln_error("table before editting:");
+    prln_info("table before editting:");
     dts_report_partitions_simple(dparts);
     for (unsigned i = 0; i < ehelper.count; ++i) {
         if (dts_dedit_each(dparts, ehelper.editors + i)) {
@@ -1449,7 +1449,7 @@ dts_dedit_parse(
         }
     }
     free(ehelper.editors);
-    prln_error("table after editting:");
+    prln_info("table after editting:");
     dts_report_partitions_simple(dparts);
     return 0;
 }

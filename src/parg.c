@@ -393,7 +393,7 @@ parg_parse_modifier_get_cloner(
 ){
     size_t len_new_name = strlen(cloner);
     if (len_new_name > MAX_PARTITION_NAME_LENGTH - 1) {
-        prln_error("New name to clone to is too long: %s", cloner);
+        prln_error("new name to clone to is too long: %s", cloner);
         return 1;
     }
     strncpy(modifier->name, cloner, len_new_name);

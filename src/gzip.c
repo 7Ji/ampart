@@ -9,6 +9,7 @@
 
 /* Local */
 
+#include "common.h"
 #include "util.h"
 
 /* Definition */
@@ -32,10 +33,10 @@ gzip_unzip_no_header(
     uint8_t * * const   out
 ){
     size_t allocated_size = util_nearest_upper_bound_with_multiply_ulong(in_size, 64, 4); // 4 times the size, nearest multiply of 64
-    prln_error("Decompressing raw deflated data, in size %ld, allocated %ld", in_size, allocated_size);
+    prln_info("decompressing raw deflated data, in size %ld, allocated %ld", in_size, allocated_size);
     *out = malloc(allocated_size);
     if (!*out) {
-        prln_error("Failed to allocate memory for decompression");
+        prln_error_with_errno("failed to allocate memory for decompression");
         return 0;
     }
     z_stream s;
@@ -45,7 +46,7 @@ gzip_unzip_no_header(
     if (inflateInit2(&s, -MAX_WBITS) != Z_OK) {
         free(*out);
         *out = NULL;
-        prln_error("Failed to initialize Z stream for decompression");
+        prln_error("failed to initialize Z stream for decompression");
         return 0;
     }
     s.next_in = in;
@@ -67,12 +68,12 @@ gzip_unzip_no_header(
                 if (temp_buffer) {
                     s.next_out = temp_buffer + (s.next_out - *out);
                     *out = temp_buffer;
-                    prln_error("Re-allocated memory, now %lu", allocated_size);
+                    prln_warn("re-allocated memory, now %lu", allocated_size);
                 } else {
                     free(*out);
                     *out = NULL;
                     inflateEnd(&s);
-                    prln_error("Failed to reallocate memory for decompression");
+                    prln_error_with_errno("failed to reallocate memory for decompression");
                     return 0;
                 }
                 break;
@@ -80,7 +81,7 @@ gzip_unzip_no_header(
                 free(*out);
                 *out = NULL;
                 inflateEnd(&s);
-                prln_error("Unknown error when decompressing, errno: %d", r);
+                prln_error("unknown error when decompressing, errno: %d", r);
                 return 0;
         }
     }
@@ -151,7 +152,7 @@ gzip_zip(
         return 0;
     }
     size_t allocated_size = deflateBound(&s, in_size);
-    prln_error("Compressing data to gzip, size %ld, allocated %ld", in_size, allocated_size);
+    prln_error("compressing data to gzip, size %ld, allocated %ld", in_size, allocated_size);
     *out = malloc(allocated_size);
     if (!*out) {
         free(*out);

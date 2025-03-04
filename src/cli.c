@@ -559,7 +559,7 @@ cli_write_ept(
         close(fd);
         return 5;
     }
-    prln_error("write successful");
+    prln_info("write successful");
     if (cli_options.rereadpart) {
         prln_error("trying to tell kernel to re-read partitions");
         /* Just don't care about return value */
@@ -612,7 +612,7 @@ cli_mode_dtoe(
     ept_report(&table_new);
 #ifdef CLI_LAZY_WRITE
     if (table && !ept_compare_table(table, &table_new)) {
-        prln_error("new table is the same as the old table, no need to update");
+        prln_info("new table is the same as the old table, no need to update");
         return 0;
     }
 #endif
@@ -628,7 +628,7 @@ int
 cli_mode_epedantic(
     struct ept_table const * const  table
 ){
-    prln_error("check if EPT is pedantic");
+    prln_info("check if EPT is pedantic");
     if (!table || !table->partitions_count || ept_valid_table(table)) {
         prln_error("EPT does not exist or is invalid, refuse to work");
         return -1;
@@ -725,7 +725,7 @@ cli_write_ept_from_dtb(
     }
 #ifdef CLI_LAZY_WRITE
     if (table && !ept_compare_table(table, &table_new)) {
-        prln_error("corresponding table same, no need to write it");
+        prln_info("corresponding table same, no need to write it");
     } else {
 #endif
         if (cli_write_ept(table, &table_new)) {
@@ -857,7 +857,7 @@ cli_mode_eedit(
         }
 #ifdef CLI_LAZY_WRITE
     } else {
-        prln_error("old and new table same, no need to write");
+        prln_info("old and new table same, no need to write");
     }
 #endif
     if (bhelper && cli_write_dtb_from_ept(bhelper, &table_new, capacity)) {
@@ -872,7 +872,7 @@ int
 cli_mode_dsnapshot(
     struct dtb_buffer_helper const * const  bhelper
 ){
-    prln_error("take snapshot of partitions node in DTB");
+    prln_info("take snapshot of partitions node in DTB");
     if (!bhelper || !bhelper->dtb_count) {
         prln_error("DTB not correct or invalid");
         return 1;
@@ -892,7 +892,7 @@ int
 cli_mode_esnapshot(
     struct ept_table const * const  table
 ){
-    prln_error("take snapshot of EPT");
+    prln_info("take snapshot of EPT");
     if (!table || !table->partitions_count || ept_valid_table(table)) {
         prln_error("EPT does not exist or is invalid, refuse to work");
         return 1;
@@ -996,7 +996,7 @@ cli_mode_dclone(
     }
 #ifdef CLI_LAZY_WRITE
     if (!dts_compare_partitions_mixed(&bhelper->dtbs->phelper, &dparts)) {
-        prln_error("new partitions same as old, no need to write");
+        prln_info("new partitions same as old, no need to write");
     } else {
 #endif
         if (cli_write_dtb(bhelper, &dparts)) {
@@ -1073,7 +1073,7 @@ cli_mode_ecreate(
         return -1;
     }
     if (!table || !ept_valid_table(table)) {
-        prln_error("warning, old table corrupted or not valid, continue anyway");
+        prln_warn("old table corrupted or not valid, continue anyway");
     }
     size_t const capacity = cli_get_capacity(table);
     if (!capacity) {
@@ -1094,7 +1094,7 @@ cli_mode_ecreate(
         }
 #ifdef CLI_LAZY_WRITE
     } else {
-        prln_error("old and new table same, no need to write");
+        prln_info("old and new table same, no need to write");
     }
 #endif
     if (bhelper && cli_write_dtb_from_ept(bhelper, &table_new, capacity)) {

@@ -985,7 +985,7 @@ dtb_buffer_helper_remove_partitions(
     }
     new->dtb_count = old->dtb_count;
     if (!(new->dtbs = malloc(new->dtb_count * sizeof *new->dtbs))) {
-        prln_error("failed to allocate memory for entries");
+        prln_error_with_errno("failed to allocate memory for entries");
         new->dtb_count = 0;
         return 1;
     }
@@ -1146,7 +1146,7 @@ dtb_compose(
         prln_error("DTB size too large (0x%lx), trying to gzip it", *size);
         uint8_t *buffer;
         if (!(*size = gzip_zip(*dtb, *size, &buffer))) {
-            prln_error("failed to compose Gzipped multi-DTB");
+            prln_error("failed to compose gzipped multi-DTB");
             free(*dtb);
             dtb_free_buffer_helper(&bhelper_new);
             return 6;

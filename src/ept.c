@@ -215,7 +215,7 @@ ept_valid_partition_name(
         term = false;
     }
     if (ret) {
-        prln_error("%u illegal characters found in partition name '%s'%s", ret, name, term ? "" : ", and the previously mentioit does not end properly");
+        prln_error("%u illegal characters found in partition name '%s'%s", ret, name, term ? "" : ", and the partition name does not end properly");
     }
     return ret;
 }
@@ -457,19 +457,19 @@ ept_compare_partition(
         return -1;
     }
     if (strncmp(part_a->name, part_b->name, MAX_PARTITION_NAME_LENGTH)) {
-        prln_error("names different");
+        prln_warn("names different");
         return 1;
     }
     if (part_a->offset != part_b->offset) {
-        prln_error("offset different");
+        prln_warn("offset different");
         return 2;
     }
     if (part_a->size != part_b->size) {
-        prln_error("size different");
+        prln_warn("size different");
         return 4;
     }
     if (part_a->mask_flags != part_b->mask_flags) {
-        prln_error("masks different");
+        prln_warn("masks different");
         return 8;
     }
     return 0;
@@ -684,7 +684,7 @@ void
 ept_snapshot_hex(
     struct ept_table const * const  table
 ){
-    prln_error("EPT snapshot hex:");
+    prln_info("EPT snapshot hex:");
     struct ept_partition const *const part_start = table->partitions;
     struct ept_partition const *part_current;
     uint32_t const pcount = util_safe_partitions_count(table->partitions_count);
@@ -704,7 +704,7 @@ void
 ept_snapshot_human(
     struct ept_table const * const  table
 ){
-    prln_error("EPT snapshot human:");
+    prln_info("EPT snapshot human:");
     struct ept_partition const *const part_start = table->partitions;
     struct ept_partition const *part_current;
     size_t offset;
@@ -855,7 +855,7 @@ ept_get_minimum_block(
         }
 #ifdef EPT_GET_MINUMUM_BLOCK_AVOID_LAST_SIZE
         if (part_last->offset % block) {
-            prln_error("shift down block size from 0x%x due to part %u (%s)'s offset 0x%lx", block, table->partitions_count, part_last->name, part_last->offset);
+            prln_warn("shift down block size from 0x%x due to part %u (%s)'s offset 0x%lx", block, table->partitions_count, part_last->name, part_last->offset);
             block >>= 1;
             change = true;
         }

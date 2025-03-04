@@ -269,11 +269,11 @@ io_identify_target_type_get_basic_stat(
             return 2;
         }
     } else if (S_ISREG(st.st_mode)) {
-        prln_error("'%s' is a regular file, getting its size via stat", path);
+        prln_info("'%s' is a regular file, getting its size via stat", path);
         type->file = IO_TARGET_TYPE_FILE_REGULAR;
         type->size = st.st_size;
     } else {
-        prln_error("'%s' is neither a regular file nor a block device, assuming its size as 0", path);
+        prln_info("'%s' is neither a regular file nor a block device, assuming its size as 0", path);
         type->file = IO_TARGET_TYPE_FILE_UNSUPPORTED;
         type->size = 0;
     }
@@ -463,7 +463,7 @@ io_seek_and_read(
         return 1;
     }
     if (r_seek != offset) {
-        prln_error("seeked offset different from expected: Result 0x%lx, expected 0x%lx", r_seek, offset);
+        prln_error("seeked offset different from expected: result 0x%lx, expected 0x%lx", r_seek, offset);
         return 2;
     }
     if (io_read_till_finish(fd, buffer, size)) {
@@ -583,7 +583,7 @@ io_rereadpart(
         return -1;
     }
     if (ioctl(fd, BLKRRPART) == -1) {
-        prln_error_with_errno("Failed to send ioctl BLKRRPART to kernel");
+        prln_error_with_errno("failed to send ioctl BLKRRPART to kernel");
         return 1;
     }
     prln_info("reread partitions success");

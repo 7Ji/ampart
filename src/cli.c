@@ -12,6 +12,7 @@
 
 /* Local */
 
+#include "common.h"
 #include "ept.h"
 #include "gzip.h"
 #include "io.h"
@@ -82,32 +83,32 @@ struct cli_options cli_options = {
 
 /* Function */
 
-void 
+void
 cli_version(){
-    pr_error("ampart-ng (Amlogic eMMC partition tool) by 7Ji, version %s\n", version);
+    prln_info("ampart-ng (Amlogic eMMC partition tool) by 7Ji, version %s", version);
 }
 
 size_t
 cli_human_readable_to_size_and_report(
-    char const * const  literal, 
+    char const * const  literal,
     char const * const  name
 ){
     const size_t size = util_human_readable_to_size(literal);
     char suffix;
     const double size_d = util_size_to_human_readable(size, &suffix);
-    pr_error("CLI interface: Setting %s to %zu / 0x%lx (%lf%c)\n", name, size, size, size_d, suffix);
+    prln_info("setting %s to %zu / 0x%lx (%lf%c)", name, size, size, size_d, suffix);
     return size;
 }
 
-static inline 
-void 
+static inline
+void
 cli_describe_options() {
     char suffix_gap_reserved, suffix_gap_partition, suffix_offset_reserved, suffix_offset_dtb;
     double gap_reserved = util_size_to_human_readable(cli_options.gap_reserved, &suffix_gap_reserved);
     double gap_partition = util_size_to_human_readable(cli_options.gap_partition, &suffix_gap_partition);
     double offset_reserved = util_size_to_human_readable(cli_options.offset_reserved, &suffix_offset_reserved);
     double offset_dtb = util_size_to_human_readable(cli_options.offset_dtb, &suffix_offset_dtb);
-    pr_error("CLI describe options: mode %s, operating on %s, content type %s, migration strategy: %s, dry run: %s, reserved gap: %lu (%lf%c), generic gap: %lu (%lf%c), reserved offset: %lu (%lf%c), dtb offset: %lu (%lf%c)\n", cli_mode_strings[cli_options.mode], cli_options.target, cli_content_type_strings[cli_options.content], cli_migrate_strings[cli_options.migrate], cli_options.dry_run ? "yes" : "no", cli_options.gap_reserved, gap_reserved, suffix_gap_reserved, cli_options.gap_partition, gap_partition, suffix_gap_partition, cli_options.offset_reserved, offset_reserved, suffix_offset_reserved, cli_options.offset_dtb, offset_dtb, suffix_offset_dtb);
+    prln_info("mode %s, operating on %s, content type %s, migration strategy: %s, dry run: %s, reserved gap: %lu (%lf%c), generic gap: %lu (%lf%c), reserved offset: %lu (%lf%c), dtb offset: %lu (%lf%c)", cli_mode_strings[cli_options.mode], cli_options.target, cli_content_type_strings[cli_options.content], cli_migrate_strings[cli_options.migrate], cli_options.dry_run ? "yes" : "no", cli_options.gap_reserved, gap_reserved, suffix_gap_reserved, cli_options.gap_partition, gap_partition, suffix_gap_partition, cli_options.offset_reserved, offset_reserved, suffix_offset_reserved, cli_options.offset_dtb, offset_dtb, suffix_offset_dtb);
 }
 
 static inline
@@ -118,7 +119,7 @@ cli_read(
 ){
     int fd = open(cli_options.target, O_RDONLY);
     if (fd < 0) {
-        fputs("CLI read: Failed to open target\n", stderr);
+        prln_error_with_errno("failed to open target");
         return 1;
     }
     off_t const offset_dtb = io_seek_dtb(fd);
@@ -144,12 +145,12 @@ int
 cli_parse_mode(){
     for (enum cli_modes mode = CLI_MODE_INVALID; mode <= CLI_MODE_ECREATE; ++mode) {
         if (!strcmp(cli_mode_strings[mode], optarg)) {
-            pr_error("CLI interface: Mode is set to %s\n", optarg);
+            prln_info("mode is set to %s", optarg);
             cli_options.mode = mode;
             return 0;
         }
     }
-    pr_error("CLI interface: Invalid mode %s\n", optarg);
+    prln_fatal("invalid mode %s", optarg);
     return 1;
 }
 
@@ -158,12 +159,12 @@ int
 cli_parse_content(){
     for (enum cli_content_types content = CLI_CONTENT_TYPE_AUTO; content <= CLI_CONTENT_TYPE_DISK; ++content) {
         if (!strcmp(cli_content_type_strings[content], optarg)) {
-            pr_error("CLI interface: Content type is set to %s\n", optarg);
+            prln_info("content type is set to %s", optarg);
             cli_options.content = content;
             return 0;
         }
     }
-    pr_error("CLI interface: Invalid type %s\n", optarg);
+    prln_fatal("invalid type %s", optarg);
     return 1;
 }
 
@@ -172,12 +173,12 @@ int
 cli_parse_migrate(){
     for (enum cli_migrate migrate = CLI_MIGRATE_ESSENTIAL; migrate <= CLI_MIGRATE_ALL; ++migrate) {
         if (!strcmp(cli_migrate_strings[migrate], optarg)) {
-            pr_error("CLI interface: Migration strategy is set to %s\n", optarg);
+            prln_info("migration strategy is set to %s", optarg);
             cli_options.migrate = migrate;
             return 0;
         }
     }
-    pr_error("CLI interface: Invalid migration strategy %s\n", optarg);
+    prln_fatal("invalid migration strategy %s", optarg);
     return 1;
 }
 
@@ -275,11 +276,11 @@ cli_parse_options(
                 }
                 break;
             case 's':   // strict-device
-                fputs("CLI interface: Enabled strict-device, ampart won't try to find the corresponding disk when target is a block device and is not a full eMMC drive\n", stderr);
+                prln_warn("enabled strict-device, ampart won't try to find the corresponding disk when target is a block device and is not a full eMMC drive");
                 cli_options.strict_device = true;
                 break;
             case 'd':   // dry-run
-                fputs("CLI interface: Enabled dry-run, no write will be made to the underlying files/devices\n", stderr);
+                prln_warn("enabled dry-run, no write will be made to the underlying files/devices");
                 cli_options.dry_run = true;
                 break;
             case 'R':   // offset-reserved:
@@ -295,7 +296,7 @@ cli_parse_options(
                 cli_options.gap_reserved = cli_human_readable_to_size_and_report(optarg, "gap between bootloader and reserved partitions");
                 break;
             default:
-                pr_error("CLI interface: Unrecognizable option %s\n", argv[optind-1]);
+                prln_fatal("unrecognizable option %s", argv[optind-1]);
                 return 3;
         }
     }
@@ -318,10 +319,10 @@ int
 cli_find_disk(){
     char *path_disk = io_find_disk(cli_options.target);
     if (!path_disk) {
-        pr_error("CLI interface: Failed to get the corresponding disk of %s, try to force the target type or enable strict-device mode to disable auto-identification\n", cli_options.target);
+        prln_error("failed to get the corresponding disk of %s, try to force the target type or enable strict-device mode to disable auto-identification", cli_options.target);
         return 1;
     }
-    pr_error("CLI interface: Operating on '%s' instead, content type is now disk\n", path_disk);
+    prln_warn("operating on '%s' instead, content type is now disk", path_disk);
     cli_option_replace_target(path_disk);
     free(path_disk);
     cli_options.content = CLI_CONTENT_TYPE_DISK;
@@ -333,29 +334,29 @@ int
 cli_options_complete_target_info(){
     struct io_target_type target_type;
     if (io_identify_target_type(&target_type, cli_options.target)) {
-        pr_error("CLI interface: failed to identify the type of target '%s'\n", cli_options.target);
+        prln_error("failed to identify the type of target '%s'", cli_options.target);
         return 1;
     }
     cli_options.size = target_type.size;
     io_describe_target_type(&target_type, NULL);
     bool find_disk = false;
     if (cli_options.content == CLI_CONTENT_TYPE_AUTO) {
-        fputs("CLI interface: Content type set as auto, will use the type identified earlier as type\n", stderr);
+        prln_info("content type set as auto, will use the type identified earlier as type");
         switch (target_type.content) {
             case IO_TARGET_TYPE_CONTENT_DISK:
-                fputs("CLI interface: Content auto identified as whole disk\n", stderr);
+                prln_info("content auto identified as whole disk");
                 cli_options.content = CLI_CONTENT_TYPE_DISK;
                 break;
             case IO_TARGET_TYPE_CONTENT_RESERVED:
-                fputs("CLI interface: Content auto identified as reserved partition\n", stderr);
+                prln_info("content auto identified as reserved partition");
                 cli_options.content = CLI_CONTENT_TYPE_RESERVED;
                 break;
             case IO_TARGET_TYPE_CONTENT_DTB:
-                fputs("CLI interface: Content auto identified as DTB partition\n", stderr);
+                prln_info("content auto identified as DTB partition");
                 cli_options.content = CLI_CONTENT_TYPE_DTB;
                 break;
             case IO_TARGET_TYPE_CONTENT_UNSUPPORTED:
-                pr_error("CLI interface: failed to identify the content type of target '%s', please set its type manually\n", cli_options.target);
+                prln_error("failed to identify the content type of target '%s', please set its type manually", cli_options.target);
                 return 2;
         }
         if (target_type.file == IO_TARGET_TYPE_FILE_BLOCKDEVICE && target_type.content != IO_TARGET_TYPE_CONTENT_DISK) {
@@ -374,9 +375,9 @@ cli_options_complete_target_info(){
             cli_options.rereadpart &&
             target_type.file == IO_TARGET_TYPE_FILE_BLOCKDEVICE &&
             cli_options.content == CLI_CONTENT_TYPE_DISK)) {
-        fputs("CLI interface: Target is block device for a whole drive and we will try to re-read partitions after adjusting EPT\n", stderr);
+        prln_info("target is block device for a whole drive and we will try to re-read partitions after adjusting EPT");
     } else {
-        fputs("CLI interface: Will not attempt to re-read partitions after adjusting EPT\n", stderr);
+        prln_info("will not attempt to re-read partitions after adjusting EPT");
     }
     return 0;
 }
@@ -388,7 +389,7 @@ cli_complete_options(
     char * const * const    argv
 ){
     if (cli_options.mode == CLI_MODE_INVALID) {
-        fputs("CLI interface: Mode not set or invalid, you must specify the mode with --mode [mode] argument\n", stderr);
+        prln_info("mode not set or invalid, you must specify the mode with --mode [mode] argument");
         // return 1;
     }
     if (cli_options.dry_run) {
@@ -396,17 +397,17 @@ cli_complete_options(
     }
     if (optind < argc) {
         cli_option_replace_target(argv[optind++]);
-        pr_error("CLI interface: Operating on target file/block device '%s'\n", cli_options.target);
+        prln_warn("operating on target file/block device '%s'", cli_options.target);
         int const r = cli_options_complete_target_info();
         if (r) {
             return 3;
         }
     } else {
-        fputs("CLI interface: Too few arguments, target file/block device must be set as the first non-positional argument\n", stderr);
+        prln_fatal("too few arguments, target file/block device must be set as the first non-positional argument");
         return 4;
     }
     if (cli_options.content == CLI_CONTENT_TYPE_AUTO) {
-        fputs("CLI interface: Content type not identified, give up, try setting it manually\n", stderr);
+        prln_fatal("content type not identified, give up, try setting it manually");
         return 5;
     }
     return 0;
@@ -419,67 +420,67 @@ cli_write_dtb(
     struct dts_partitions_helper_simple const * const   dparts
 ){
     if (!bhelper || !bhelper->dtb_count || (dparts && !dparts->partitions_count)) {
-        fputs("CLI write DTB: Buffer and Dparts not both valid and contain partitions, refuse to continue\n", stderr);
+        prln_error("buffer and Dparts not both valid and contain partitions, refuse to continue");
         return -1;
     }
     if (cli_options.content == CLI_CONTENT_TYPE_AUTO) {
-        fputs("CLI write DTB: Target content type not recognized, this should not happen, refuse to continue\n", stderr);
+        prln_fatal("target content type not recognized, this should not happen, refuse to continue");
         return -2;
     }
     if (dparts) {
-        fputs("CLI write DTB: Trying to write DTB with the following partitions:\n", stderr);
+        prln_info("trying to write DTB with the following partitions:");
         dts_report_partitions_simple(dparts);
         if (dts_valid_partitions_simple(dparts)) {
-            fputs("CLI write DTB: Partitions illegal, refuse to continue\n", stderr);
+            prln_error("partitions illegal, refuse to continue");
             return 1;
         }
     } else {
-        fputs("CLI write DTB: Trying to write DTB with no partitions\n", stderr);
+        prln_info("trying to write DTB with no partitions");
     }
     uint8_t *dtb_new;
     size_t dtb_new_size;
     if (dtb_compose(&dtb_new, &dtb_new_size, bhelper, dparts)) {
-        fputs("CLI write DTB: Failed to generate new DTBs\n", stderr);
+        prln_error("failed to generate new DTBs");
         return 1;
     }
-    pr_error("CLI write DTB: size of new DTB (as a whole) is 0x%lx\n", dtb_new_size);
+    prln_error("size of new DTB (as a whole) is 0x%lx", dtb_new_size);
     if (cli_options.content != CLI_CONTENT_TYPE_DTB && dtb_as_partition(&dtb_new, &dtb_new_size)) {
-        fputs("CLI write DTB: Failed to package DTB in partition\n", stderr);
+        prln_error("failed to package DTB in partition");
         return 2;
     }
     if (cli_options.dry_run) {
-        fputs("CLI write DTB: In dry-run mode, assuming success\n", stderr);
+        prln_info("in dry-run mode, assuming success");
         free(dtb_new);
         return 0;
     }
     int fd = open(cli_options.target, cli_options.content == CLI_CONTENT_TYPE_DTB ? O_WRONLY | O_TRUNC : O_WRONLY);
     if (fd < 0) {
-        fputs("CLI write DTB: Failed to open target\n", stderr);
+        prln_error("failed to open target");
         free(dtb_new);
         return 1;
     }
     off_t const dtb_offset = io_seek_dtb(fd);
     if (dtb_offset < 0) {
-        fputs("CLI write DTB: Failed to seek\n", stderr);
+        prln_error("failed to seek");
         close(fd);
         free(dtb_new);
         return 2;
     }
     if (io_write_till_finish(fd, dtb_new, dtb_new_size)) {
-        fputs("CLI write DTB: Failed to write\n", stderr);
+        prln_error("failed to write");
         close(fd);
         free(dtb_new);
         return 3;
     }
     if (fsync(fd)) {
-        fputs("CLI write DTB: Failed to sync\n", stderr);
+        prln_error("failed to sync");
         close(fd);
         free(dtb_new);
         return 4;
     }
     close(fd);
     free(dtb_new);
-    fputs("CLI write DTB: Write successful\n", stderr);
+    prln_info("write successful");
     return 0;
 }
 
@@ -490,22 +491,22 @@ cli_write_ept(
     struct ept_table const * const  new
 ) {
     if (!new) {
-        fputs("CLI write EPT: Table invalid, refuse to continue\n", stderr);
+        prln_error("table invalid, refuse to continue");
         return 1;
     }
-    fputs("CLI write EPT: Trying to write the following EPT:\n", stderr);
+    prln_info("trying to write the following EPT:");
     ept_report(new);
     struct io_migrate_helper mhelper;
     bool const can_migrate = old && cli_options.migrate != CLI_MIGRATE_NONE && !ept_migrate_plan(&mhelper, old, new, cli_options.migrate == CLI_MIGRATE_ALL ? true : false) && cli_options.content == CLI_CONTENT_TYPE_DISK;
     switch (cli_options.content) {
         case CLI_CONTENT_TYPE_DTB:
-            fputs("CLI write EPT: Target is DTB, no need to write\n", stderr);
+            prln_info("target is DTB, no need to write");
             if (can_migrate) {
                 free(mhelper.entries);
             }
             return 0;
         case CLI_CONTENT_TYPE_AUTO:
-            fputs("CLI write EPT: Target content type not recognized, this should not happen, refuse to continue\n", stderr);
+            prln_error("target content type not recognized, this should not happen, refuse to continue");
             if (can_migrate) {
                 free(mhelper.entries);
             }
@@ -514,11 +515,11 @@ cli_write_ept(
             break;
     }
     if (ept_valid_table(new)) {
-        fputs("CLI write EPT: Table illegal, refuse to continue\n", stderr);
+        prln_error("table illegal, refuse to continue");
         return 3;
     }
     if (cli_options.dry_run) {
-        fputs("CLI write EPT: In dry-run mode, assuming success\n", stderr);
+        prln_info("in dry-run mode, assuming success");
         if (can_migrate) {
             free(mhelper.entries);
         }
@@ -526,7 +527,7 @@ cli_write_ept(
     }
     int const fd = open(cli_options.target, (can_migrate ? O_RDWR : O_WRONLY) | O_DSYNC);
     if (fd < 0) {
-        fputs("CLI write EPT: Failed to open target\n", stderr);
+        prln_error("failed to open target");
         if (can_migrate) {
             free(mhelper.entries);
         }
@@ -535,7 +536,7 @@ cli_write_ept(
     if (can_migrate) {
         mhelper.fd = fd;
         if (io_migrate(&mhelper)) {
-            fputs("CLI write EPT: Failed to migrate\n", stderr);
+            prln_error("failed to migrate");
             close(fd);
             free(mhelper.entries);
             return 2;
@@ -544,23 +545,23 @@ cli_write_ept(
     }
     off_t const ept_offset = io_seek_ept(fd);
     if (ept_offset < 0) {
-        fputs("CLI write EPT: Failed to seek\n", stderr);
+        prln_error("failed to seek");
         close(fd);
         return 3;
     }
     if (io_write_till_finish(fd, (struct ept_table *)new, sizeof *new)){
-        fputs("CLI write EPT: Failed to write\n", stderr);
+        prln_error("failed to write");
         close(fd);
         return 4;
     }
     if (fsync(fd)) {
-        fputs("CLI write EPT: Failed to sync\n", stderr);
+        prln_error("failed to sync");
         close(fd);
         return 5;
     }
-    fputs("CLI write EPT: Write successful\n", stderr);
+    prln_error("write successful");
     if (cli_options.rereadpart) {
-        fputs("CLI write EPT: Trying to tell kernel to re-read partitions\n", stderr);
+        prln_error("trying to tell kernel to re-read partitions");
         /* Just don't care about return value */
         io_rereadpart(fd);
     }
@@ -574,11 +575,11 @@ cli_get_capacity(
     struct ept_table const * const  table
 ){
     if (cli_options.content == CLI_CONTENT_TYPE_DISK) {
-        pr_error("CLI get capacity: Using target file/block device size %zu as the capacity, since it's full disk\n", cli_options.size);
+        prln_info("using target file/block device size %zu as the capacity, since it's full disk", cli_options.size);
         return cli_options.size;
     } else {
         size_t const capacity = ept_get_capacity(table);
-        pr_error("CLI get capacity: Using max partition end %zu as the capacity, since target is %s and is not full disk\n", capacity, cli_content_type_strings[cli_options.content]);
+        prln_info("using max partition end %zu as the capacity, since target is %s and is not full disk", capacity, cli_content_type_strings[cli_options.content]);
         return capacity;
     }
 }
@@ -589,34 +590,34 @@ cli_mode_dtoe(
     struct dtb_buffer_helper const * const  bhelper,
     struct ept_table const * const          table
 ){
-    fputs("CLI mode dtoe: Create EPT from DTB\n", stderr);
+    prln_info("create EPT from DTB");
     if (!bhelper || !bhelper->dtb_count) {
-        fputs("CLI mode dtoe: DTB not correct or invalid\n", stderr);
+        prln_error("DTB not correct or invalid");
         return 1;
     }
     if (dtb_check_buffers_partitions(bhelper)) {
-        fputs("CLI mode dtoe: Not all DTB entries have partitions node and identical, refuse to work\n", stderr);
+        prln_error("not all DTB entries have partitions node and identical, refuse to work");
         return 2;
     }
     uint64_t const capacity = cli_get_capacity(table);
     if (!capacity) {
-        fputs("CLI mode dtoe: Cannot get valid capacity, give up\n", stderr);
+        prln_error("cannot get valid capacity, give up");
         return 3;
     }
     struct ept_table table_new;
     if (ept_table_from_dts_partitions_helper(&table_new, &bhelper->dtbs->phelper, capacity)) {
-        fputs("CLI mode dtoe: Failed to create new partition table\n", stderr);
+        prln_error("failed to create new partition table");
         return 4;
     }
     ept_report(&table_new);
 #ifdef CLI_LAZY_WRITE
     if (table && !ept_compare_table(table, &table_new)) {
-        fputs("CLI mode dtoe: New table is the same as the old table, no need to update\n", stderr);
+        prln_error("new table is the same as the old table, no need to update");
         return 0;
     }
 #endif
     if (cli_write_ept(table, &table_new)) {
-        fputs("CLI mode dtoe: Failed to write new EPT\n", stderr);
+        prln_error("failed to write new EPT");
         return 5;
     }
     return 0;
@@ -627,16 +628,16 @@ int
 cli_mode_epedantic(
     struct ept_table const * const  table
 ){
-    fputs("CLI mode epedantic: Check if EPT is pedantic\n", stderr);
+    prln_error("check if EPT is pedantic");
     if (!table || !table->partitions_count || ept_valid_table(table)) {
-        fputs("CLI mode epedantic: EPT does not exist or is invalid, refuse to work\n", stderr);
+        prln_error("EPT does not exist or is invalid, refuse to work");
         return -1;
     }
     if (EPT_IS_PEDANTIC(table)) {
-        fputs("CLI mode epedantic: EPT is pedantic\n", stderr);
+        prln_info("EPT is pedantic");
         return 0;
     } else {
-        fputs("CLI mode epedantic: EPT is not pedantic\n", stderr);
+        prln_info("EPT is not pedantic");
         return 1;
     }
 }
@@ -647,38 +648,38 @@ cli_mode_etod(
     struct dtb_buffer_helper const * const  bhelper,
     struct ept_table const * const          table
 ){
-    fputs("CLI mode etod: Recreate partitions node in DTB from EPT\n", stderr);
+    prln_info("recreate partitions node in DTB from EPT");
     if (!bhelper) {
-        fputs("CLI mode etod: DTB does not exist, refuse to continue\n", stderr);
+        prln_error("DTB does not exist, refuse to continue");
         return -1;
     }
     if (!table || !table->partitions_count || ept_valid_table(table)) {
-        fputs("CLI mode etod: EPT does not exist or is invalid, refuse to work\n", stderr);
+        prln_error("EPT does not exist or is invalid, refuse to work");
         return -2;
     }
     if (ept_is_not_pedantic(table)) {
-        fputs("CLI mode etod: Refuse to convert a non-pedantic EPT to DTB\n", stderr);
+        prln_error("refuse to convert a non-pedantic EPT to DTB");
         return 1;
     }
     size_t const capacity = cli_get_capacity(table);
     if (!capacity) {
-        fputs("CLI mode etod: Failed to get valid capacity\n", stderr);
+        prln_error("failed to get valid capacity");
         return 2;
     }
     struct dts_partitions_helper_simple dparts;
     if (ept_table_to_dts_partitions_helper(table, &dparts, capacity)) {
-        fputs("CLI mode etod: Failed to convert to DTB partitions\n", stderr);
+        prln_error("failed to convert to DTB partitions");
         return 3;
     }
     dts_report_partitions_simple(&dparts);
 #ifdef CLI_LAZY_WRITE
     if (bhelper && !dts_compare_partitions_mixed(&bhelper->dtbs->phelper, &dparts)) {
-        fputs("CLI mode etod: Result partitions are the same as old DTB, no need to write\n", stderr);
+        prln_info("result partitions are the same as old DTB, no need to write");
         return 0;
     }
 #endif
     if (cli_write_dtb(bhelper, &dparts)) {
-        fputs("CLI mode dtoe: Failed to write DTB\n", stderr);
+        prln_error("failed to write DTB");
         return 4;
     }
     return 0;
@@ -691,11 +692,11 @@ cli_check_parg_count(
     int const   max
 ){
     if (argc <= 0) {
-        fputs("CLI check PARG count: No PARG, early quit\n", stderr);
+        prln_warn("no PARG, early quit");
         return -1;
     }
     if (max > 0 && argc > max) {
-        pr_error("CLI check PARG count: Too many PARGS, only %d is allowed yet you've defined %d\n", max, argc);
+        prln_error("too many PARGS, only %d is allowed yet you've defined %d", max, argc);
         return 1;
     }
     return 0;
@@ -708,27 +709,27 @@ cli_write_ept_from_dtb(
     struct dts_partitions_helper_simple const * const dparts
 ){
     if (!table || !dparts) {
-        fputs("CLI write EPT from DTB: Illegal arguments\n", stderr);
+        prln_error("illegal arguments");
         return -1;
     }
-    fputs("CLI write EPT from DTB: Checking if EPT also needs update\n", stderr);
+    prln_info("checking if EPT also needs update");
     size_t const capacity = cli_get_capacity(table);
     if (!capacity) {
-        fputs("CLI write EPT from DTB: Failed to check capacity\n", stderr);
+        prln_error("failed to check capacity");
         return 1;
     }
     struct ept_table table_new;
     if (ept_table_from_dts_partitions_helper_simple(&table_new, dparts, capacity)) {
-        fputs("CLI write EPT from DTB: Failed create EPT from DTB\n", stderr);
+        prln_error("failed create EPT from DTB");
         return 2;
     }
 #ifdef CLI_LAZY_WRITE
     if (table && !ept_compare_table(table, &table_new)) {
-        fputs("CLI write EPT from DTB: Corresponding table same, no need to write it\n", stderr);
+        prln_error("corresponding table same, no need to write it");
     } else {
 #endif
         if (cli_write_ept(table, &table_new)) {
-            fputs("CLI write EPT from DTB: Failed to write EPT\n", stderr);
+            prln_error("failed to write EPT");
             return 3;
         }
 #ifdef CLI_LAZY_WRITE
@@ -745,34 +746,34 @@ cli_mode_dedit(
     int const                               argc,
     char const * const * const              argv
 ){
-    fputs("CLI mode dedit: Edit partitions node in DTB, and potentially create EPT from it\n", stderr);
+    prln_info("edit partitions node in DTB, and potentially create EPT from it");
     if (cli_check_parg_count(argc, 0) || !bhelper) {
-        fputs("CLI mode dedit: Illegal arguments\n", stderr);
+        prln_error("illegal arguments");
         return -1;
     }
     struct dts_partitions_helper_simple dparts;
     if (dts_partitions_helper_to_simple(&dparts, &bhelper->dtbs->phelper)) {
-        fputs("CLI mode dedit: Failed to convert to simple helper\n", stderr);
+        prln_error("failed to convert to simple helper");
         return 2;
     }
     if (dts_dedit_parse(&dparts, argc, argv)) {
-        fputs("CLI mode dedit: Failed to parse arguments\n", stderr);
+        prln_error("failed to parse arguments");
         return 3;
     }
 #ifdef CLI_LAZY_WRITE
     if (bhelper && !dts_compare_partitions_mixed(&bhelper->dtbs->phelper, &dparts)) {
-        fputs("CLI mode dedit: Result DTB same as old, no need to write\n", stderr);
+        prln_error("result DTB same as old, no need to write");
     } else {
 #endif
         if (cli_write_dtb(bhelper, &dparts)) {
-            fputs("CLI mode dedit: Failed to write DTB\n", stderr);
+            prln_error("failed to write DTB");
             return 4;
         }
 #ifdef CLI_LAZY_WRITE
     }
 #endif
     if (table && cli_options.content != CLI_CONTENT_TYPE_DTB && cli_write_ept_from_dtb(table, &dparts)) {
-        fputs("CLI mode dedit: Failed to also write EPT\n", stderr);
+        prln_error("failed to also write EPT");
         return 5;
     }
     return 0;
@@ -786,37 +787,37 @@ cli_write_dtb_from_ept(
     size_t const                            capacity
 ){
     if (!bhelper || !table || !capacity) {
-        fputs("CLI write DTB from EPT: Illegal arguments\n", stderr);
+        prln_error("illegal arguments");
         return -1;
     }
     if (EPT_IS_PEDANTIC(table)) {
-        fputs("CLI write DTB from EPT: Result EPT is pedantic, also updating DTB\n", stderr);
+        prln_warn("result EPT is pedantic, also updating DTB");
         struct dts_partitions_helper_simple dparts;
         if (ept_table_to_dts_partitions_helper(table, &dparts, capacity)) {
-            fputs("CLI write DTB from EPT: Failed to create corresponding DTB partitions list\n", stderr);
+            prln_error("failed to create corresponding DTB partitions list");
             return 4;
         }
 #ifdef CLI_LAZY_WRITE
         if (bhelper && bhelper->dtb_count && !dts_compare_partitions_mixed(&bhelper->dtbs->phelper, &dparts)) {
-            fputs("CLI write DTB from EPT: Corresponding DTB partitions not updated, no need to write\n", stderr);
+            prln_info("corresponding DTB partitions not updated, no need to write");
         } else {
 #endif
             if (cli_write_dtb(bhelper, &dparts)) {
-                fputs("CLI write DTB from EPT: Failed to write corresponding DTB partitions list\n", stderr);
+                prln_error("failed to write corresponding DTB partitions list");
                 return 5;
             }
 #ifdef CLI_LAZY_WRITE
         }
 #endif
     } else {
-        fputs("CLI write DTB from EPT: Result EPT is not pedantic, removing partitions node in DTB\n", stderr);
+        prln_warn("result EPT is not pedantic, removing partitions node in DTB");
 #ifdef CLI_LAZY_WRITE
         if (bhelper && bhelper->dtb_count && !bhelper->dtbs->has_partitions) {
-            fputs("CLI write DTB from EPT: DTB does not have partitions node, no need to remove it\n", stderr);
+            prln_info("DTB does not have partitions node, no need to remove it");
         } else {
 #endif
             if (cli_write_dtb(bhelper, NULL)) {
-                fputs("CLI write DTB from EPT: Failed to remove partitions node in DTB\n", stderr);
+                prln_error("failed to remove partitions node in DTB");
                 return 3;
             }
 #ifdef CLI_LAZY_WRITE
@@ -834,9 +835,9 @@ cli_mode_eedit(
     int const                               argc,
     char const * const * const              argv
 ){
-    fputs("CLI mode eedit: Edit EPT\n", stderr);
+    prln_info("edit EPT");
     if (!bhelper || !table || cli_check_parg_count(argc, 0)) {
-        fputs("CLI mode eedit: Illegal arguments\n", stderr);
+        prln_error("illegal arguments");
         return -1;
     }
     size_t const capacity = cli_get_capacity(table);
@@ -851,16 +852,16 @@ cli_mode_eedit(
     if (ept_compare_table(table, &table_new)) {
 #endif
         if (cli_write_ept(table, &table_new)) {
-            fputs("CLI mode eedit: Failed to write new EPT\n", stderr);
+            prln_error("failed to write new EPT");
             return 3;
         }
 #ifdef CLI_LAZY_WRITE
     } else {
-        fputs("CLI mode eedit: Old and new table same, no need to write\n", stderr);
+        prln_error("old and new table same, no need to write");
     }
 #endif
     if (bhelper && cli_write_dtb_from_ept(bhelper, &table_new, capacity)) {
-        fputs("CLI mode eedit: Failed to update DTB\n", stderr);
+        prln_error("failed to update DTB");
         return 4;
     }
     return 0;
@@ -871,13 +872,13 @@ int
 cli_mode_dsnapshot(
     struct dtb_buffer_helper const * const  bhelper
 ){
-    fputs("CLI mode dsnapshot: Take snapshot of partitions node in DTB\n", stderr);
+    prln_error("take snapshot of partitions node in DTB");
     if (!bhelper || !bhelper->dtb_count) {
-        fputs("CLI mode dsnapshot: DTB not correct or invalid\n", stderr);
+        prln_error("DTB not correct or invalid");
         return 1;
     }
     if (dtb_check_buffers_partitions(bhelper)) {
-        fputs("CLI mode dtoe: Not all DTB entries have partitions node and identical, refuse to work\n", stderr);
+        prln_error("not all DTB entries have partitions node and identical, refuse to work");
         return 2;
     }
     if (dtb_snapshot(bhelper)) {
@@ -891,9 +892,9 @@ int
 cli_mode_esnapshot(
     struct ept_table const * const  table
 ){
-    fputs("CLI mode esnapshot: Take snapshot of EPT\n", stderr);
+    prln_error("take snapshot of EPT");
     if (!table || !table->partitions_count || ept_valid_table(table)) {
-        fputs("CLI mode esnapshot: EPT does not exist or is invalid, refuse to work\n", stderr);
+        prln_error("EPT does not exist or is invalid, refuse to work");
         return 1;
     }
     if (ept_snapshot(table)) {
@@ -919,34 +920,34 @@ cli_mode_webreport(
     unsigned len_current;
     bool has_esnapshot;
 
-    fputs("CLI mode webreport: Print a URL that can be opened in browser to get well-formatted partitio info\n", stderr);
+    prln_info("print a URL that can be opened in browser to get well-formatted partitio info");
     if (!bhelper || !bhelper->dtb_count) {
-        fputs("CLI mode webreport: DTB not correct or invalid\n", stderr);
+        prln_error("DTB not correct or invalid");
         return 1;
     }
     if (table && table->partitions_count && !ept_valid_table(table)) {
         has_esnapshot = true;
     } else {
-        fputs("CLI mode webreport: EPT does not exist or is invalid, web report would not contain EPT\n", stderr);
+        prln_error("EPT does not exist or is invalid, web report would not contain EPT");
         has_esnapshot = false;
     }
 
     len_dsnapshot = 0;
     int r = dtb_webreport(bhelper, arg_dsnapshot, &len_dsnapshot);
     if (r) {
-        fputs("CLI mode webreport: Failed to prepare dsnapshot argument\n", stderr);
+        prln_error("failed to prepare dsnapshot argument");
         return 2 + r;
     }
     len_esnapshot = 0;
     if (has_esnapshot) {
         r = ept_webreport(table, arg_esnapshot, &len_esnapshot);
         if (r) {
-            fputs("CLI mode webreport: Failed to prepare esnapshot argument\n", stderr);
+            prln_error("failed to prepare esnapshot argument");
             return 6 + r;
         }
     }
     if ((sizeof CLI_WEBREPORT_URL_PARENT) - 1 + (has_esnapshot ? ((sizeof CLI_WEBREPORT_ARG_ESNAPSHOT) - 1 + len_esnapshot + 1): 0) + (sizeof CLI_WEBREPORT_ARG_DSNAPSHOT) + - 1 + len_dsnapshot + 1 > CLI_WEBREPORT_URL_MAXLEN) {
-        fputs("CLI mode webreport: result URL length would be too long, aborting\n", stderr);
+        prln_error("result URL length would be too long, aborting");
         return 9;
     }
     len_current = (sizeof CLI_WEBREPORT_URL_PARENT) - 1;
@@ -966,7 +967,7 @@ cli_mode_webreport(
     memcpy(url + len_used, arg_dsnapshot, len_dsnapshot);
     len_used += len_dsnapshot;
     url[len_used] = '\0';
-    fputs("CLI mode webreport: Please copy the following URL to your browser to check the well-formatted partition info:\n", stderr);
+    prln_info("please copy the following URL to your browser to check the well-formatted partition info:");
     puts(url);
     return 0;
 }
@@ -979,34 +980,34 @@ cli_mode_dclone(
     int const                               argc,
     char const * const * const              argv
 ){
-    fputs("CLI mode dclone: Apply a snapshot taken in dsnapshot mode\n", stderr);
+    prln_info("apply a snapshot taken in dsnapshot mode");
     int const r = cli_check_parg_count(argc, MAX_PARTITIONS_COUNT);
     if (r) {
         if (r < 0) return 0; else return 1;
     }
     if (!bhelper || !bhelper->dtb_count || !bhelper->dtbs->buffer) {
-        fputs("CLI mode dclone: No valid DTB, refuse to work\n", stderr);
+        prln_error("no valid DTB, refuse to work");
         return 2;
     }
     struct dts_partitions_helper_simple dparts;
     if (dts_dclone_parse(&dparts, argc, argv)) {
-        fputs("CLI mode dclone: Failed to parse PARGs\n", stderr);
+        prln_error("failed to parse PARGs");
         return 3;
     }
 #ifdef CLI_LAZY_WRITE
     if (!dts_compare_partitions_mixed(&bhelper->dtbs->phelper, &dparts)) {
-        fputs("CLI mode dclone: New partitions same as old, no need to write\n", stderr);
+        prln_error("new partitions same as old, no need to write");
     } else {
 #endif
         if (cli_write_dtb(bhelper, &dparts)) {
-            fputs("CLI mode dclone: Failed to write\n", stderr);
+            prln_error("failed to write");
             return 4;
         }
 #ifdef CLI_LAZY_WRITE
     }
 #endif
     if (table && cli_options.content != CLI_CONTENT_TYPE_DTB && cli_write_ept_from_dtb(table, &dparts)) {
-        fputs("CLI mode dclone: Failed to also write EPT\n", stderr);
+        prln_error("failed to also write EPT");
         return 5;
     }
     return 0;
@@ -1020,39 +1021,39 @@ cli_mode_eclone(
     int const                               argc,
     char const * const * const              argv
 ){
-    fputs("CLI mode eclone: Apply a snapshot taken in esnapshot mode\n", stderr);
+    prln_info("apply a snapshot taken in esnapshot mode");
     int const r = cli_check_parg_count(argc, MAX_PARTITIONS_COUNT);
     if (r) {
         if (r < 0) return 0; else return 1;
     }
     if (!table || !ept_valid_table(table)) {
-        fputs("CLI mode eclone: Warning, old table corrupted or not valid, continue anyway\n", stderr);
+        prln_warn("old table corrupted or not valid, continue anyway");
     }
     size_t const capacity = cli_get_capacity(table);
     if (!capacity) {
-        fputs("CLI mode eclone: Cannot get valid capacity, give up\n", stderr);
+        prln_error("cannot get valid capacity, give up");
         return 2;
     }
     struct ept_table table_new;
     if (ept_eclone_parse(&table_new, argc, argv, capacity)) {
-        fputs("CLI mode eclone: Failed to get new EPT\n", stderr);
+        prln_error("failed to get new EPT");
         return 3;
     }
 #ifdef CLI_LAZY_WRITE
     if (ept_compare_table(table, &table_new)) {
-        fputs("CLI mode eclone: New table is different, need to write\n", stderr);
+        prln_warn("new table is different, need to write");
 #endif
         if (cli_write_ept(table, &table_new)) {
-            fputs("CLI mode eclone: Failed to write EPT\n", stderr);
+            prln_error("failed to write EPT");
             return 4;
         }
 #ifdef CLI_LAZY_WRITE
     } else {
-        fputs("CLI mode eclone: New table is the same as old table, no need to write\n", stderr);
+        prln_warn("new table is the same as old table, no need to write");
     }
 #endif
     if (cli_write_dtb_from_ept(bhelper, &table_new, capacity)) {
-        fputs("CLI mode eclone: Failed to also update DTB\n", stderr);
+        prln_error("failed to also update DTB");
         return 5;
     }
     return 0;
@@ -1066,38 +1067,38 @@ cli_mode_ecreate(
     int const                               argc,
     char const * const * const              argv
 ){
-    fputs("CLI mode ecreate: Create EPT in a YOLO way\n", stderr);
+    prln_info("create EPT in a YOLO way");
     if (argc > MAX_PARTITIONS_COUNT) { // 0 is allowed, where a default empty table will be created
-        fputs("CLI mode ecreate: You've defined too many partitions\n", stderr);
+        prln_error("you've defined too many partitions");
         return -1;
     }
     if (!table || !ept_valid_table(table)) {
-        fputs("CLI mode ecreate: Warning, old table corrupted or not valid, continue anyway\n", stderr);
+        prln_error("warning, old table corrupted or not valid, continue anyway");
     }
     size_t const capacity = cli_get_capacity(table);
     if (!capacity) {
-        fputs("CLI mode ecreate: Cannot get valid capacity, give up\n", stderr);
+        prln_error("cannot get valid capacity, give up");
         return 2;
     }
     struct ept_table table_new;
     if (ept_ecreate_parse(&table_new, table, capacity, argc, argv)) {
-        fputs("CLI mode ecreate: Failed to get new EPT\n", stderr);
+        prln_error("failed to get new EPT");
         return 3;
     }
 #ifdef CLI_LAZY_WRITE
     if (ept_compare_table(table, &table_new)) {
 #endif
         if (cli_write_ept(table, &table_new)) {
-            fputs("CLI mode ecreate: Failed to write new EPT\n", stderr);
+            prln_error("failed to write new EPT");
             return 4;
         }
 #ifdef CLI_LAZY_WRITE
     } else {
-        fputs("CLI mode ecreate: Old and new table same, no need to write\n", stderr);
+        prln_error("old and new table same, no need to write");
     }
 #endif
     if (bhelper && cli_write_dtb_from_ept(bhelper, &table_new, capacity)) {
-        fputs("CLI mode ecreate: Failed to update DTB\n", stderr);
+        prln_error("failed to update DTB");
         return 5;
     }
     return 0;
@@ -1112,10 +1113,10 @@ cli_dispatcher(
     char const * const * const              argv
 ){
     if (cli_options.mode == CLI_MODE_INVALID) {
-        fputs("CLI dispatcher: invalid mode\n", stderr);
+        prln_fatal("invalid mode");
         return -1;
     } else {
-        pr_error("CLI dispatcher: Dispatch to mode %s\n", cli_mode_strings[cli_options.mode]);
+        prln_info("dispatch to mode %s", cli_mode_strings[cli_options.mode]);
     }
     switch (cli_options.mode) {
         case CLI_MODE_INVALID:
@@ -1146,7 +1147,7 @@ cli_dispatcher(
     return 0;
 }
 
-int 
+int
 cli_interface(
     int const               argc,
     char * const * const    argv

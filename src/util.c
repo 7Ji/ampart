@@ -165,15 +165,6 @@ util_string_is_empty(
     }
 }
 
-inline
-void
-util_log_title(
-    const char * const  title
-){
-    fputs(title, stderr);
-    fputs(": ", stderr);
-}
-
 uint32_t
 util_safe_partitions_count(
     uint32_t const  count

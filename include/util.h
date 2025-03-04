@@ -15,11 +15,6 @@ size_t
         char const *    literal
     );
 
-void
-    util_log_title(
-        const char *    title
-    );
-
 long 
     util_nearest_upper_bound_long(
         long    value,

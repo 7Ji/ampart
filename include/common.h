@@ -7,6 +7,7 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <stdbool.h>
+#include <errno.h>
 #include <inttypes.h>
 
 /* Defitition */
@@ -16,20 +17,29 @@
 
 /* Macro */
 
-#define pr_error(format, arg...) \
-    fprintf(stderr, format, ##arg)
+#define prln_with_level(level, format, arg...) \
+    fprintf(stderr, "[%s@"__FILE__":%u] " #level ": " format "\n", __func__, __LINE__, ##arg)
 
-#define pr_error_with_errno(format, arg...) \
-    pr_error(format", errno: %d, error: %s\n", ##arg, errno, strerror(errno))
+#define prln_fatal(format, arg...) \
+    prln_with_level(fatal, format, ##arg)
 
-#define pr_warn(format, arg...) \
-    printf("%s:%d: "format, __FUNCTION__, __LINE__, ##arg)
+#define prln_error(format, arg...) \
+    prln_with_level(error, format, ##arg)
+
+#define prln_warn(format, arg...) \
+    prln_with_level(warning, format, ##arg)
+
+#define prln_info(format, arg...) \
+    prln_with_level(info, format, ##arg)
 
 #ifdef DEBUGGING
-#define pr_debug(format, arg...) \
-    printf("%s:%d(debug): "format, __FUNCTION__, __LINE__, ##arg)
+#define prln_debug(format, arg...) \
+    prln_with_level(debug, format, ##arg)
 #else
-#define pr_debug(format, arg...)
+#define prln_debug(format, arg...)
 #endif
+
+#define prln_error_with_errno(format, arg...) \
+    prln_error(format", errno: %d, error: %s", ##arg, errno, strerror(errno))
 
 #endif

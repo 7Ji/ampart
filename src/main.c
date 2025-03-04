@@ -4,9 +4,9 @@
 
 /* Function */
 
-int 
+int
 main(
-    int const               argc, 
+    int const               argc,
     char * const * const    argv
 ){
     return cli_interface(argc, argv);

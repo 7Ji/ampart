@@ -8,6 +8,7 @@
 
 /* Local */
 
+#include "common.h"
 #include "ept.h"
 #include "util.h"
 
@@ -15,11 +16,11 @@
 
 #define PARG_PARSE_RAW_ALLOWANCE_CHECK(name) \
     if (have_##name && require_##name & PARG_DISALLOW) { \
-        pr_error("PARG parse: Argument contains "#name" but it's not allowed: %s\n", arg); \
+        prln_error("argument contains "#name" but it's not allowed: %s", arg); \
         return -2; \
     } \
     if (!have_##name && require_##name & PARG_REQUIRED) { \
-        pr_error("PARG parse: Argument does not contain "#name" but it must be set: %s\n", arg); \
+        prln_error("argument does not contain "#name" but it must be set: %s", arg); \
         return -2; \
     }
 
@@ -69,26 +70,26 @@ parg_parse_u64_definer(
             *relative = true;
             ++start;
         } else {
-            fputs("PARG parse u64 definer: Relative value set when not allowed\n", stderr);
+            prln_error("relative value set when not allowed");
             return 1;
         }
     } else {
         if (requirement & PARG_ALLOW_ABSOLUTE) {
             *relative = false;
         } else {
-            fputs("PARG parse u64 definer: Absolute value set when not allowed\n", stderr);
+            prln_error("absolute value set when not allowed");
             return 2;
         }
     }
     if (end < start) {
-        fputs("PARG parse u64 definer: End before start\n", stderr);
+        prln_error("end before start");
         return 3;
     }
     const size_t len = end - start;
     if (len) {
         char *const str = malloc((len + 1) * sizeof *str);
         if (!str) {
-            fputs("PARG parse u64 definer: Failed to create temp buffer to parse number\n", stderr);
+            prln_error("failed to create temp buffer to parse number");
             return 4;
         }
         strncpy(str, start, len);
@@ -97,7 +98,7 @@ parg_parse_u64_definer(
         free(str);
     } else {
         if (requirement & PARG_REQUIRED) {
-            fputs("PARG parse u64 definer: Required field not set\n", stderr);
+            prln_error("required field not set");
             return 5;
         } else {
             *value = 0;
@@ -128,14 +129,14 @@ parg_parse_u64_adjustor(
             break;
     }
     if (end < start) {
-        fputs("PARG parse u64 adjustor: End before start\n", stderr);
+        prln_error("end before start");
         return 1;
     }
     const size_t len = end - start;
     if (len) {
         char *str = malloc((len + 1) * sizeof *str);
         if (!str) {
-            fputs("PARG parse u64 adjustor: Failed to create temp buffer to parse number\n", stderr);
+            prln_error("failed to create temp buffer to parse number");
             return 2;
         }
         strncpy(str, start, len);
@@ -143,7 +144,7 @@ parg_parse_u64_adjustor(
         *value = util_human_readable_to_size(str);
         free(str);
     } else {
-        fputs("PARG parse u64 adjustor: Offset/Size modifier must be set for relative mode\n", stderr);
+        prln_error("offset/size modifier must be set for relative mode");
         return 3;
     }
     return 0;
@@ -180,12 +181,12 @@ parg_parse_definer(
     uint8_t                     require_masks
 ){
     if (!definer || util_string_is_empty(arg)) {
-        fputs("PARG parse definer: Illegal arguments\n", stderr);
+        prln_error("illegal arguments");
         return -1;
     }
     const char *seperators[3];
     if (parg_parse_get_seperators(seperators, arg)) {
-        pr_error("PARG parse definer: Argument too short: %s\n", arg);
+        prln_error("argument too short: %s", arg);
         return 1;
     }
     bool have_name = seperators[0] != arg;
@@ -200,12 +201,12 @@ parg_parse_definer(
     if (have_name) {
         size_t len_name = seperators[0] - arg;
         if (len_name > MAX_PARTITION_NAME_LENGTH - 1) {
-            pr_error("PARG parse definer: Partition name too long in arg: %s\n", arg);
+            prln_error("partition name too long in arg: %s", arg);
             return 2;
         }
         strncpy(definer->name, arg, len_name);
         if (ept_valid_partition_name(definer->name)) {
-            pr_error("PARG parse definer: Partition name %s is illegal\n", definer->name);
+            prln_error("partition name %s is illegal", definer->name);
             memset(definer->name, 0, MAX_PARTITION_NAME_LENGTH);
             return 3;
         }
@@ -213,14 +214,14 @@ parg_parse_definer(
     }
     if (have_offset) {
         if (parg_parse_u64_definer(&definer->offset, &definer->relative_offset, require_offset, seperators[0] + 1, seperators[1])) {
-            pr_error("PARG parse definer: Failed to parse offset in arg: %s\n", arg);
+            prln_error("failed to parse offset in arg: %s", arg);
             return 4;
         }
         definer->set_offset = true;
     }
     if (have_size) {
         if (parg_parse_u64_definer(&definer->size, &definer->relative_size, require_size, seperators[1] + 1, seperators[2])) {
-            pr_error("PARG parse definer: Failed to parse size in arg: %s\n", arg);
+            prln_error("failed to parse size in arg: %s", arg);
             return 5;
         }
         definer->set_size = true;
@@ -265,11 +266,11 @@ parg_parse_modifier_get_select_end (
     for (char *c = (char *)selecor_start; c; ++c) {
         switch(*c) {
             case '\0':
-                fputs("PARG parse modifier: only selector is set, no action available\n", stderr);
+                prln_error("only selector is set, no action available");
                 return NULL;
             case '%':
                 if (!*(c + 1)) {
-                    fputs("PARG parse modifier: no new name after clone operator is set\n", stderr);
+                    prln_error("no new name after clone operator is set");
                     return NULL;
                 }
                 modifier->modify_part = PARG_MODIFY_PART_CLONE;
@@ -279,14 +280,14 @@ parg_parse_modifier_get_select_end (
                 return c;
             case '@': // ^-1@:-7  ^bootloader@+7 ^bootloader@-1
                 if (!*(c + 1)) {
-                    fputs("PARG parse modifier: no placer after selector is set\n", stderr);
+                    prln_error("no placer after selector is set");
                     return NULL;
                 }
                 modifier->modify_part = PARG_MODIFY_PART_PLACE;
                 return c;
             case ':':
                 if (!*(c + 1)) {
-                    fputs("PARG parse modifier: no modifier after selector is set\n", stderr);
+                    prln_error("no modifier after selector is set");
                     return NULL;
                 }
                 modifier->modify_part = PARG_MODIFY_PART_ADJUST; // It's not needed, but anyway
@@ -307,17 +308,17 @@ parg_parse_modifier_get_selector(
 ){
     if (modifier->select == PARG_SELECT_NAME) {
         if (len > MAX_PARTITION_NAME_LENGTH - 1) {
-            fputs("PARG parse modifier: Name selector too long\n", stderr);
+            prln_error("name selector too long");
             return 1;
         }
         strncpy(modifier->select_name, selector, len);
         if (ept_valid_partition_name(modifier->select_name)) {
-            pr_error("PARG parse modifier: Warning, name selector %s is illegal as a partition name, but I'll let you use that to select\n", modifier->select_name);
+            prln_warn("name selector %s is illegal as a partition name, but I'll let you use that to select", modifier->select_name);
         }
     } else {
         char *str_buffer = malloc((len + 1) * sizeof *str_buffer);
         if (!str_buffer) {
-            fputs("PARG parse modifier: Failed to allocate memory to parse relative selector\n", stderr);
+            prln_error_with_errno("failed to allocate memory to parse relative selector");
             return 2;
         }
         strncpy(str_buffer, selector, len);
@@ -336,7 +337,7 @@ parg_parse_modifier_get_adjustor(
 ){
     const char *seperators[3];
     if (parg_parse_get_seperators(seperators, adjustor)) {
-        pr_error("PARG parse modifier get adjustor: Adjustor too short: %s\n", adjustor);
+        prln_error("adjustor too short: %s", adjustor);
         return 1;
     }
     if (seperators[0] != adjustor) {
@@ -346,7 +347,7 @@ parg_parse_modifier_get_adjustor(
         }
         strncpy(modifier->name, adjustor, len_name);
         if (ept_valid_partition_name(modifier->name)) {
-            pr_error("PARG parse modifier get adjustor: Adjustor name %s illegal\n", modifier->name);
+            prln_error("adjustor name %s illegal", modifier->name);
             memset(modifier->name, 0, MAX_PARTITION_NAME_LENGTH);
             return 3;
         }
@@ -356,11 +357,11 @@ parg_parse_modifier_get_adjustor(
     }
     if (seperators[1] - seperators[0] > 1) {
         if (!allow_adjustor_offset) {
-            pr_error("PARG parse modifier get adjustor: Offset adjusted when not allowed: %s\n", adjustor);
+            prln_error("offset adjusted when not allowed: %s", adjustor);
             return 3;
         }
         if (parg_parse_u64_adjustor(&modifier->offset, &modifier->modify_offset, seperators[0] + 1, seperators[1])) {
-            pr_error("PARG parse modifier get adjustor: Failed to parse offset modifier in adjustor: %s\n", adjustor);
+            prln_error("failed to parse offset modifier in adjustor: %s", adjustor);
             return 4;
         }
     } else {
@@ -368,7 +369,7 @@ parg_parse_modifier_get_adjustor(
     }
     if (seperators[2] - seperators[1] > 1) {
         if (parg_parse_u64_adjustor(&modifier->size, &modifier->modify_size, seperators[1] + 1, seperators[2])) {
-            pr_error("PARG parse partition get adjustor: Failed to parse size modifier in adjustor: %s\n", adjustor);
+            prln_error("failed to parse size modifier in adjustor: %s", adjustor);
             free(modifier);
             return 5;
         }
@@ -392,7 +393,7 @@ parg_parse_modifier_get_cloner(
 ){
     size_t len_new_name = strlen(cloner);
     if (len_new_name > MAX_PARTITION_NAME_LENGTH - 1) {
-        pr_error("PARG parse modifier: New name to clone to is too long: %s\n", cloner);
+        prln_error("New name to clone to is too long: %s", cloner);
         return 1;
     }
     strncpy(modifier->name, cloner, len_new_name);
@@ -438,7 +439,7 @@ parg_parse_modifier_dispatcher(
     switch (modifier->modify_part) {
         case PARG_MODIFY_PART_ADJUST:
             if (parg_parse_modifier_get_adjustor(modifier, arg, allow_adjustor_offset)) {
-                pr_error("PARG parse modifier: adjustor invalid: %s\n", arg);
+                prln_error("adjustor invalid: %s", arg);
                 return 1;
             }
             break;
@@ -446,18 +447,18 @@ parg_parse_modifier_dispatcher(
             break;
         case PARG_MODIFY_PART_CLONE:
             if (parg_parse_modifier_get_cloner(modifier, arg)) {
-                pr_error("PARG parse modifier: cloner invalid: %s\n", arg);
+                prln_error("cloner invalid: %s", arg);
                 return 1;
             }
             break;
         case PARG_MODIFY_PART_PLACE:
             if (parg_parse_modifier_get_placer(modifier, arg)) {
-                pr_error("PARG parse modifier: placer invalid: %s\n", arg);
+                prln_error("placer invalid: %s", arg);
                 return 1;
             }
             break;
         default:
-            fputs("PARG parse modifier: illegal part modification method\n", stderr);
+            prln_error("illegal part modification method");
             return 1;
     }
     return 0;
@@ -471,20 +472,20 @@ parg_parse_modifier(
     bool const                      allow_adjustor_offset
 ) {
     if (!modifier || util_string_is_empty(arg)) {
-        fputs("PARG parse modifier: Illegal arguments\n", stderr);
+        prln_error("illegal arguments");
         return -1;
     }
     if (parg_parse_modifier_get_select_method(modifier, arg[1])) {
-        pr_error("PARG parse modifier: No selector given in arg: %s\n", arg);
+        prln_error("mo selector given in arg: %s", arg);
         return 1;
     }
     char const *const select_end = parg_parse_modifier_get_select_end(modifier, arg + 2);
     if (!select_end) {
-        pr_error("PARG parse modifier: Selector/operator invalid/incomplete: %s\n", arg);
+        prln_error("selector/operator invalid/incomplete: %s", arg);
         return 2;
     }
     if (parg_parse_modifier_get_selector(modifier, arg + 1, select_end - arg - 1)) {
-        pr_error("PARG parse modifier: Selector invalid: %s\n", arg);
+        prln_error("selector invalid: %s", arg);
         return 4;
     }
     if (parg_parse_modifier_dispatcher(modifier, select_end + 1, allow_adjustor_offset)) {
@@ -500,7 +501,7 @@ parg_parse_editor(
     bool const              eedit
 ){
     if (!editor || util_string_is_empty(arg)) {
-        fputs("PARG parse editor: Illegal arguments\n", stderr);
+        prln_error("illegal arguments");
         return -1;
     }
     if (arg[0] == '^') {
@@ -541,11 +542,11 @@ parg_parse_dedit_mode(
     char const * const * const          argv
 ){
     if (!ehelper ||  argc <= 0 || !argv) {
-        fputs("PARG parse dedit mode: Illegal arguments\n", stderr);
+        prln_error("illegal arguments");
         return -1;
     }
     if (!(ehelper->editors = malloc(argc * sizeof *ehelper->editors))) {
-        fputs("PARG parse dedit mode: Failed to allocate memory for editors\n", stderr);
+        prln_error("failed to allocate memory for editors");
         return 1;
     }
     ehelper->count = argc;
@@ -565,11 +566,11 @@ parg_parse_eedit_mode(
     char const * const * const          argv
 ){
     if (!ehelper ||  argc <= 0 || !argv) {
-        fputs("PARG parse eedit mode: Illegal arguments\n", stderr);
+        prln_error("illegal arguments");
         return -1;
     }
     if (!(ehelper->editors = malloc(argc * sizeof *ehelper->editors))) {
-        fputs("PARG parse eedit mode: Failed to allocate memory for editors\n", stderr);
+        prln_error("failed to allocate memory for editors");
         return 1;
     }
     ehelper->count = argc;
@@ -589,13 +590,13 @@ parg_parse_dclone_mode(
     char const * const * const                  argv
 ){
     if (!dhelper || argc <= 0 || argc > MAX_PARTITIONS_COUNT || !argv) {
-        fputs("PARG parse dclone mode: Illegal argument counts\n", stderr);
+        prln_error("illegal argument counts");
         return -1;
     }
     dhelper->count = argc;
     for (int i = 0; i < argc; ++i) {
         if (PARG_PARSE_DEFINER_DCLONE_MODE(dhelper->definers + i, argv[i])) {
-            pr_error("PARG parse dclone mode: Failed to parse argument: %s\n", argv[i]);
+            prln_error("failed to parse argument: %s", argv[i]);
             return 1;
         }
     }
@@ -609,13 +610,13 @@ parg_parse_eclone_mode(
     char const * const * const                  argv
 ){
     if (!dhelper || argc <= 0 || argc > MAX_PARTITIONS_COUNT || !argv) {
-        fputs("PARG parse eclone mode: Illegal argument counts\n", stderr);
+        prln_error("illegal argument counts");
         return -1;
     }
     dhelper->count = argc;
     for (int i = 0; i < argc; ++i) {
         if (PARG_PARSE_DEFINER_ECLONE_MODE(dhelper->definers + i, argv[i])) {
-            pr_error("PARG parse eclone mode: Failed to parse argument: %s\n", argv[i]);
+            prln_error("failed to parse argument: %s", argv[i]);
             return 1;
         }
     }
@@ -629,13 +630,13 @@ parg_parse_ecreate_mode(
     char const * const * const                  argv
 ){
     if (!dhelper ||  argc <= 0 || argc > MAX_PARTITIONS_COUNT || !argv) {
-        fputs("PARG parse eedit mode: Illegal arguments\n", stderr);
+        prln_error("illegal arguments");
         return -1;
     }
     dhelper->count = argc;
     for (int i = 0; i < argc; ++i) {
         if (PARG_PARSE_DEFINER_ECREATE_MODE(dhelper->definers + i, argv[i])) {
-            pr_error("PARG parse ecreate mode: Failed to parse argument: %s\n", argv[i]);
+            prln_error("failed to parse argument: %s", argv[i]);
             return 1;
         }
     }
@@ -648,10 +649,10 @@ parg_report_failed_select(
 ){
     switch (modifier->select) {
         case PARG_SELECT_NAME:
-            pr_error("PARG report failed select: No partition selected by Name selector %s\n", modifier->select_name);
+            prln_error("no partition selected by Name selector %s", modifier->select_name);
             break;
         case PARG_SELECT_RELATIVE:
-            pr_error("PARG report failed select: No partition selected by Relative selector %d\n", modifier->select_relative);
+            prln_error("no partition selected by Relative selector %d", modifier->select_relative);
             break;
     }
 }
@@ -668,7 +669,7 @@ parg_adjustor_adjust_u64(
             break;
         case PARG_MODIFY_DETAIL_SUBSTRACT:
             if (*target < value) {
-                pr_error("PARG adjustor adjust u64: Target value 0x%lx smaller than substract source 0x%lx, refuse to continue\n", *target, value);
+                prln_error("target value 0x%lx smaller than substract source 0x%lx, refuse to continue", *target, value);
                 return 1;
             }
             *target -= value;
@@ -698,7 +699,7 @@ parg_get_place_target(
         case PARG_MODIFY_PLACE_RELATIVE:
             return current + modifier->place;
         default:
-            fputs("PARG get place target: Illegal place method, return -1 as failure\n", stderr);
+            prln_error("illegal place method, return -1 as failure");
             return -1;
     }
 }

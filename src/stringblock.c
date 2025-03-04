@@ -12,7 +12,7 @@
 
 /* Function */
 
-off_t 
+off_t
 stringblock_find_string_raw(
     char const * const  sblock,
     off_t const         length,
@@ -62,7 +62,7 @@ stringblock_append_string_force(
         if (buffer) {
             shelper->stringblock = buffer;
         } else {
-            fputs("Stringblock: Failed to re-allocate string buffer\n", stderr);
+            prln_error("failed to re-allocate string buffer");
             return -1;
         }
     }
@@ -72,10 +72,10 @@ stringblock_append_string_force(
     return offset;
 }
 
-off_t 
+off_t
 stringblock_append_string_safely(
     struct stringblock_helper * const   shelper,
-    char const * const                  string, 
+    char const * const                  string,
     size_t const                        slength
 ){
     off_t const offset = stringblock_find_string(shelper, string);

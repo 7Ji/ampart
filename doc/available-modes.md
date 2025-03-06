@@ -3,8 +3,8 @@
 ## Summary
 |mode|usage|dtb|reserved|disk|
 |-|-|-|-|-|
-|d2e|generate pedantic EPT from DTB|X|√|√|
-|e2d|generate DTB partitions node from EPT|X|√|√|
+|dtoe|generate pedantic EPT from DTB|X|√|√|
+|etod|generate DTB partitions node from EPT|X|√|√|
 |epedantic|check if EPT is pedantic|X|√|√|
 |dedit|edit partitions in DTB, update EPT when necessary|√|√|√|
 |eedit|edit EPT, update DTB when necessary|X|√|√|
@@ -19,7 +19,7 @@ _dtb, reserved, disk columns stand for whether the mode accept the content with 
 
 All modes are in listed in a _**mode selector** (full name)_ style
 
-## d2e (DTB to pedantic EPT)
+## dtoe (DTB to pedantic EPT)
 Create pedantic EPT from the partitions node in DTB(s), behaves the same as Amlogic's u-boot
 
 ### Partition arguments
@@ -34,7 +34,7 @@ Create pedantic EPT from the partitions node in DTB(s), behaves the same as Amlo
  - If the partitions node do not exist in the DTB, no pedantic EPT will be constructed. This can be the case if you've used the legacy version of ampart, or ceemmc to modify the EPT, as they would remove partitions node from DTBs to prevent Amlogic u-boot's EPT restoration function from working.
  - If multiple DTBs exist, yet they don't guarantee the same EPT, no construted EPT will be used
 
-## e2d (pedantic EPT to DTB)
+## etod (pedantic EPT to DTB)
 Restore/Recreate partitions node in DTB(s) according to a pedantic EPT
 
 ### Partition arguments:

@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.5)
+cmake_minimum_required(VERSION 3.10)
 
 project(ampart C)
 
@@ -35,7 +35,7 @@ target_link_libraries(ampart
 
 target_include_directories(ampart PRIVATE
     "include")
- 
+
 target_compile_options(ampart PRIVATE
     -Wall
     -Wextra)

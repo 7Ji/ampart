@@ -1,41 +1,23 @@
-cmake_minimum_required(VERSION 3.10)
+cmake_minimum_required (VERSION 3.10)
 
-project(ampart C)
+project (ampart C)
 
-if ("${VERSION}" STREQUAL "")
-    execute_process(
-        COMMAND bash scripts/build-only-version.sh
-        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
-        OUTPUT_VARIABLE VERSION
-        ERROR_QUIET)
-    message("-- Version generated: ${VERSION}")
-else()
-    message("-- Version defined: ${VERSION}")
-endif()
-
-set_source_files_properties(src/version.c
-    PROPERTIES COMPILE_DEFINITIONS VERSION=\"${VERSION}\")
+add_subdirectory (lib)
 
 add_executable(ampart
-    src/cli.c
-    src/dtb.c
-    src/dts.c
-    src/ept.c
-    src/gzip.c
-    src/io.c
-    src/main.c
-    src/parg.c
-    src/size.c
-    src/stringblock.c
-    src/util.c
-    src/version.c)
+    ampart.c
+)
 
 target_link_libraries(ampart
-    z)
+    libampart
+)
 
-target_include_directories(ampart PRIVATE
-    "include")
+# target_include_directories(ampart PRIVATE
+#     "include"
+#     "include/priv"
+# )
 
-target_compile_options(ampart PRIVATE
-    -Wall
-    -Wextra)
+# target_compile_options(ampart PRIVATE
+#     -Wall
+#     -Wextra
+# )

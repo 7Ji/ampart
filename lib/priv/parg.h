@@ -31,60 +31,44 @@ struct parg_position_selector {
 #define PARG_SELECT_BY_NAME     0
 #define PARG_SELECT_BY_POSITION 1
 
-typedef unsigned char parg_select_method_t;
+typedef uint8_t parg_type_t;
 
 struct parg_selector {
-    parg_select_method_t select_method;
+    parg_type_t type;
     union {
         struct parg_name_selector by_name;
         struct parg_position_selector by_position;
     };
 };
 
-struct parg_adjustor {
-
-};
-
-struct parg_deletor {
-
-};
-
 struct parg_cloner {
-
+    table_name_t name;
+    uint8_t len_name;
 };
+
+#define PARG_PLACE_RELATIVE  0b00000001
+#define PARG_PLACE_ABSOLUTE  0b00000010
 
 struct parg_placer {
-
+    int8_t position;
+    parg_flags_t method;
 };
 
+#define PARG_MODIFY_DELETE  0
+#define PARG_MODIFY_CLONE   1
+#define PARG_MODIFY_PLACE   2
+#define PARG_MODIFY_ADJUST  3
+
 struct parg_modifier {
+    parg_type_t type;
     struct parg_selector selector;
     union {
-        struct parg_adjustor adjustor;
-        struct parg_deletor deletor;
         struct parg_cloner cloner;
         struct parg_placer placer;
+        struct parg_definer adjustor;
+        // no need for deletor
     };
 };
-
-struct parg_modifier {
-    enum parg_select_method         select;
-    enum parg_modify_part_method    modify_part;
-    enum parg_modify_place_method   modify_place;
-    enum parg_modify_detail_method  modify_name;
-    enum parg_modify_detail_method  modify_offset;
-    enum parg_modify_detail_method  modify_size;
-    enum parg_modify_detail_method  modify_masks;
-    char                            select_name[16];
-    int                             select_relative;
-    int                             place;
-    char                            name[16];
-    uint64_t                        offset;
-    uint64_t                        size;
-    uint32_t                        masks;
-};
-
-typedef uint8_t parg_type_t;
 
 struct ampart_parg {
     parg_type_t type;

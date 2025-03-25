@@ -1,4 +1,6 @@
-typedef struct ampart_parg {
-    unsigned char ampart_parg_type;
+#pragma once
+#include "ampart.h"
 
-} ampart_parg;
+struct ampart_parg {
+    unsigned char ampart_parg_type;
+};

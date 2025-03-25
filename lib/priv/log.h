@@ -6,13 +6,10 @@
 
 typedef void (*prln_func)(char const *restrict format, ...);
 
-struct ampart_handle {
-    ampart_iop snapshot_out;
-    ampart_iop log_out;
-};
+extern FILE *file_log;
 
 #define flog_with_level(file, level, format, arg...) \
-    if (file) fprintf(file, "[%s@ampart/lib/"__FILE_NAME__":%u] " #level ": " format "\n", __func__, __LINE__, ##arg)
+    if (file_log) fprintf(file_log, "[%s@ampart/lib/"__FILE_NAME__":%u] " #level ": " format "\n", __func__, __LINE__, ##arg)
 
 #define log_with_handle_level(handle, level, format, arg...) \
     flog_with_level(handle->log_out, level, format, ##arg)

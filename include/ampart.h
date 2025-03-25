@@ -24,7 +24,9 @@ typedef unsigned char ampart_status;
 ampart_status ampart_init(FILE *log_out);
 
 /**
- * Free all resources possibly allocaed in `ampart_init`
+ * Free all resources possibly allocaed in `ampart_init`, currently this does
+ * nothing, but you should already check for its return, in case of future
+ * changes
  * @return The freeing status
  */
 ampart_status ampart_free();
@@ -46,7 +48,7 @@ typedef struct ampart_parg *ampart_parg;
  * would calculates it internally
  * @return The parsing status
  */
-ampart_status ampart_parg_from_str(ampart_parg **parg, char const *str, size_t len_str);
+ampart_status ampart_parg_from_str(ampart_parg *parg, char const *str, size_t len_str);
 
 /**
  * Generate the corresponding NULL-terminated string of a parg
@@ -60,7 +62,9 @@ ampart_status ampart_parg_from_str(ampart_parg **parg, char const *str, size_t l
  * stored, optional, if it is `NULL` then no result would be saved.
  * @return The generation status
  */
-ampart_status ampart_parg_to_str(ampart_parg const *parg, char *str, size_t maxlen_str, size_t *len_str);
+ampart_status ampart_parg_to_str(ampart_parg const parg, char *str, size_t maxlen_str, size_t *len_str);
+
+ampart_status ampart_parg_free(ampart_parg parg);
 
 #define AMPART_ACTION_NONE              0b00000000
 

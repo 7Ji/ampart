@@ -208,16 +208,168 @@ ampart_status ampart_parg_from_str(ampart_parg *const restrict parg, char const 
     return AMPART_OK;
 }
 
+static void log_name_too_long(char const *const restrict type, char const *const name) {
+    log_error("%s name '%s' too long and it would be truncated when printing", type, name);
+}
+
 ampart_status ampart_parg_to_str(ampart_parg const restrict parg, char *restrict str, size_t const maxlen_str, size_t *const len_str) {
-    size_t len_used = 0, len_new;
+    char buffer[AMPART_PARG_STR_MAXLEN + 1];
+    size_t len_used = 0;
+    int len_printf;
     switch (parg->type) {
     case PARG_TYPE_DEFINER:
+        if (parg->definer.len_name > TABLE_NAME_MAXLEN) {
+            log_name_too_long("definer", parg->definer.name);
+            return AMPART_BAD;
+        } else if (parg->definer.len_name) {
+            if (len_used + parg->definer.len_name >= AMPART_PARG_STR_MAXLEN) {
+                log_error("definer already too long before even name");
+                return AMPART_BAD;
+            }
+            memcpy(buffer, parg->definer.name, parg->definer.len_name);
+            len_used += parg->definer.len_name;
+        }
+        buffer[len_used++] = ':';
+        if (parg->definer.defined & PARG_DEFINE_OFFSET) {
+            if (len_used + 4 >= AMPART_PARG_STR_MAXLEN) {
+                log_error("definer already too long before even offset");
+                return AMPART_BAD;
+            }
+            if (parg->definer.defined & PARG_DEFINE_OFFSET_RELATIVE) {
+                buffer[len_used++] = '+';
+            }
+            buffer[len_used++] = '0';
+            buffer[len_used++] = 'x';
+            len_printf = snprintf(buffer + len_used, AMPART_PARG_STR_MAXLEN + 1 - len_used, "%"PRI_TABLE_SIZE_X, parg->definer.offset);
+            if (len_printf < 0) {
+                log_error_with_errno("failed to printf definer offset");
+                return AMPART_BAD;
+            }
+            len_used += len_printf;
+        }
+        if (len_used + 1 >= AMPART_PARG_STR_MAXLEN) {
+            log_error("definer already too long till only offset");
+            return AMPART_BAD;
+        }
+        buffer[len_used++] = ':';
+        if (parg->definer.defined & PARG_DEFINE_SIZE) {
+            if (len_used + 3 >= AMPART_PARG_STR_MAXLEN) {
+                log_error("definer already too long before even size");
+                return AMPART_BAD;
+            }
+            buffer[len_used++] = '0';
+            buffer[len_used++] = 'x';
+            len_printf = snprintf(buffer + len_used, AMPART_PARG_STR_MAXLEN + 1 - len_used, "%"PRI_TABLE_SIZE_X, parg->definer.size);
+            if (len_printf < 0) {
+                log_error_with_errno("failed to printf definer size");
+                return AMPART_BAD;
+            }
+            len_used += len_printf;
+        }
+        if (len_used + 1 >= AMPART_PARG_STR_MAXLEN) {
+            log_error("definer already too long till only size");
+            return AMPART_BAD;
+        }
+        buffer[len_used++] = ':';
+        if (parg->definer.defined & PARG_DEFINE_MASKS) {
+            if (len_used + 3 >= AMPART_PARG_STR_MAXLEN) {
+                log_error("definer already too long before even masks");
+                return AMPART_BAD;
+            }
+            buffer[len_used++] = '0';
+            buffer[len_used++] = 'x';
+            len_printf = snprintf(buffer + len_used, AMPART_PARG_STR_MAXLEN + 1 - len_used, "%"PRI_TABLE_MASKS_X, parg->definer.masks);
+            if (len_printf < 0) {
+                log_error_with_errno("failed to printf definer size");
+                return AMPART_BAD;
+            }
+            len_used += len_printf;
+        }
         break;
     case PARG_TYPE_MODIFIER:
-        return parg_show_modifier(&parg->modifier);
+        buffer[len_used++] = '^';
+        switch (parg->modifier.selector.type) {
+        case PARG_SELECT_BY_NAME:
+            if (parg->modifier.selector.by_name.len_name > TABLE_NAME_MAXLEN) {
+                log_name_too_long("selector", parg->modifier.selector.by_name.name);
+                return AMPART_BAD;
+            } else if (parg->modifier.selector.by_name.len_name) {
+                if (len_used + parg->modifier.selector.by_name.len_name >= AMPART_PARG_STR_MAXLEN) {
+                    log_error("modifier already too long before even selector name");
+                    return AMPART_BAD;
+                }
+                memcpy(buffer, parg->modifier.selector.by_name.name, parg->modifier.selector.by_name.len_name);
+                len_used += parg->modifier.selector.by_name.len_name;
+            }
+            break;
+        case PARG_SELECT_BY_POSITION:
+            if (len_used + 2 >= AMPART_PARG_STR_MAXLEN) {
+                log_error("modifier already too long before even selector position");
+                return AMPART_BAD;
+            }
+            len_printf = snprintf(buffer + len_used, AMPART_PARG_STR_MAXLEN + 1 - len_used, "%"PRI_PARG_POSITION, parg->modifier.selector.by_position.position);
+            if (len_printf < 0) {
+                log_error_with_errno("failed to printf position-selector");
+                return AMPART_BAD;
+            }
+            len_used += len_printf;
+            break;
+        default:
+            log_illegal_selector_type(parg->modifier.selector.type);
+            return AMPART_BAD;
+        }
+        if (len_used + 1 >= AMPART_PARG_STR_MAXLEN) {
+            log_error("modifier already too long before even modifier operator");
+            return AMPART_BAD;
+        }
+        switch (parg->modifier.type) {
+        case PARG_MODIFY_DELETE:
+            buffer[len_used++] = '?';
+            break;
+        case PARG_MODIFY_CLONE:
+            buffer[len_used++] = '%';
+            if (parg->modifier.cloner.len_name > TABLE_NAME_MAXLEN) {
+                log_name_too_long("cloner", parg->modifier.cloner.name);
+                return AMPART_BAD;
+            } else if (parg->modifier.cloner.len_name) {
+                if (len_used + parg->modifier.cloner.len_name >= AMPART_PARG_STR_MAXLEN) {
+                    log_error("modifier already too long before even cloner name");
+                    return AMPART_BAD;
+                }
+                memcpy(buffer, parg->modifier.cloner.name, parg->modifier.cloner.len_name);
+                len_used += parg->modifier.cloner.len_name;
+            } else {
+                log_error("cloner has empty name");
+                return AMPART_BAD;
+            }
+            break;
+        case PARG_MODIFY_PLACE:
+            buffer[len_used++] = '@';
+            break;
+        case PARG_MODIFY_ADJUST:
+            buffer[len_used++] = ':';
+            break;
+        default:
+            log_illegal_modifier_type(parg->modifier.type);
+            return AMPART_BAD;
+        }
+        break;
     default:
         log_illegal_parg_type(parg->type);
         return AMPART_BAD;
     }
+    if (len_used > AMPART_PARG_STR_MAXLEN) {
+        log_error("parg cannot be terminated with NULL due to size limit");
+        return AMPART_BAD;
+    }
+    buffer[len_used] = '\0';
+    if (len_used > maxlen_str) {
+        *len_str = maxlen_str;
+    } else {
+        *len_str = len_used;
+    }
+    memcpy(str, buffer, *len_str);
+    buffer[*len_str] = '\0';
+    log_info("converted parg '%s' to string '%s' (needed len %zu, max len %zu, actual len %zu)", buffer, str, len_used, maxlen_str, *len_str);
     return AMPART_OK;
 }

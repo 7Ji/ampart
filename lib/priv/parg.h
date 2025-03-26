@@ -8,17 +8,17 @@
 #define PARG_DEFINE_SIZE            0b00001000
 #define PARG_DEFINE_MASKS           0b00010000
 
-typedef uint8_t parg_flags_t;
+
+typedef uint8_t parg_flags_t, parg_len_t;
+#define PRI_PARG_LEN PRIu8
 
 struct parg_definer {
     table_name_t name;
     table_size_t offset, size;
     table_masks_t masks;
+    parg_len_t len_name;
     parg_flags_t defined;
 };
-
-typedef uint8_t parg_len_t;
-#define PRI_PARG_LEN PRIu8
 
 struct parg_name_selector {
     table_name_t name;

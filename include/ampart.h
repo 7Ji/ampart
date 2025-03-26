@@ -31,6 +31,8 @@ ampart_status ampart_init(FILE *log_out);
  */
 ampart_status ampart_free();
 
+#define AMPART_PARG_STR_MAXLEN  127 // excluding the trailing NULL
+
 /**
  * Partition argument mini-language opaque type, initialized and parsed from
  * string via `ampart_parg_from_str()`, users are expected to free them later

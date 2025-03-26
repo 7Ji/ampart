@@ -48,7 +48,7 @@ typedef struct ampart_parg *ampart_parg;
  * would calculates it internally
  * @return The parsing status
  */
-ampart_status ampart_parg_from_str(ampart_parg *parg, char const *str, size_t len_str);
+ampart_status ampart_parg_from_str(ampart_parg *restrict parg, char const *restrict str, size_t len_str);
 
 /**
  * Generate the corresponding NULL-terminated string of a parg
@@ -62,8 +62,9 @@ ampart_status ampart_parg_from_str(ampart_parg *parg, char const *str, size_t le
  * stored, optional, if it is `NULL` then no result would be saved.
  * @return The generation status
  */
-ampart_status ampart_parg_to_str(ampart_parg const parg, char *str, size_t maxlen_str, size_t *len_str);
+ampart_status ampart_parg_to_str(ampart_parg restrict parg, char *restrict str, size_t maxlen_str, size_t *restrict len_str);
 
+ampart_status ampart_parg_show(ampart_parg parg);
 ampart_status ampart_parg_free(ampart_parg parg);
 
 #define AMPART_ACTION_NONE              0b00000000
@@ -149,7 +150,7 @@ typedef struct ampart_plan *ampart_plan;
  * @param len_pargs Count of pargs
  * @return The creation status
  */
-ampart_status ampart_plan_create(ampart_plan *plan, ampart_actions actions, ampart_parg const *const *pargs, size_t len_pargs);
+ampart_status ampart_plan_create(ampart_plan *restrict plan, ampart_actions actions, ampart_parg const *const *restrict pargs, size_t len_pargs);
 
 /**
  * Create an ampart plan with certain actions and string pargs that could be
@@ -162,7 +163,7 @@ ampart_status ampart_plan_create(ampart_plan *plan, ampart_actions actions, ampa
  * @param len_pargs Count of pargs
  * @return The creation status
  */
-ampart_status ampart_plan_create_raw(ampart_plan *plan, ampart_actions actions, char const *const *pargs, size_t len_pargs);
+ampart_status ampart_plan_create_raw(ampart_plan *restrict plan, ampart_actions actions, char const *const *restrict pargs, size_t len_pargs);
 
 /**
  * Free an opaque `ampart_plan`
@@ -190,7 +191,7 @@ typedef struct ampart_target *ampart_target;
  * @param gap_partition The gap between partitions, in bytes
  * @return The creation status
  */
-ampart_status ampart_target_create(char const *path, size_t len_path, FILE *snapshot_out, size_t offset_reserved, size_t offset_dtb, size_t gap_partition);
+ampart_status ampart_target_create(char const *restrict path, size_t len_path, FILE *restrict snapshot_out, size_t offset_reserved, size_t offset_dtb, size_t gap_partition);
 
 #define AMPART_COMMON_OFFSET_RESERVED   0x2400000U // 36M
 #define AMPART_COMMON_OFFSET_DTB        0x400000U  // 4M
@@ -212,7 +213,7 @@ ampart_status ampart_target_free(ampart_target target);
  * @param target The target to work on
  * @return The work status
  */
-ampart_status ampart_work(ampart_plan plan, ampart_target target);
+ampart_status ampart_work(ampart_plan restrict plan, ampart_target restrict target);
 
 /**
  * A shortcut to call `ampart_init`, create an `ampart_plan`, an `ampart_target`
@@ -220,7 +221,7 @@ ampart_status ampart_work(ampart_plan plan, ampart_target target);
  * `plan` and `target`; If target is a common, non-Xiaomi target, then users
  * can call `ampat_oneshot_common` instead
  */
-ampart_status ampart_oneshot(FILE *log_out, ampart_actions actions, char const *restrict *parg, size_t len_pargs, char const *path, size_t len_path, FILE *snapshot_out, size_t offset_reserved, size_t offset_dtb, size_t gap_partition);
+ampart_status ampart_oneshot(FILE *restrict log_out, ampart_actions actions, char const *restrict *parg, size_t len_pargs, char const *restrict path, size_t len_path, FILE *restrict snapshot_out, size_t offset_reserved, size_t offset_dtb, size_t gap_partition);
 
 #define ampart_oneshot_common(log_out, actions, parg, len_pargs, path, len_path, snapshot_out) \
     ampart_oneshot(log_out, actions, parg, len_pargs, path, len_path, snapshot_out, AMPART_COMMON_OFFSET_RESERVED, AMPART_COMMON_OFFSET_DTB, AMPART_COMMON_GAP_PARTITION)

@@ -59,6 +59,26 @@ struct parg_placer {
     parg_flags_t method;
 };
 
+#define PARG_ADJUST_NAME             0b00000001
+#define PARG_ADJUST_OFFSET_ABSOLULTE 0b00000010
+#define PARG_ADJUST_OFFSET_RELATIVE  0b00000100
+#define PARG_ADJUST_OFFSET           0b00000110
+#define PARG_ADJUST_SIZE_ABSOLUTE    0b00001000
+#define PARG_ADJUST_SIZE_RELATIVE    0b00010000
+#define PARG_ADJUST_SIZE             0b00011000
+#define PARG_ADJUST_MASKS            0b00100000
+
+typedef int64_t parg_ssize_t;
+#define PRI_PARG_SSIZE_X  PRIX64
+#define PRI_PARG_SSIZE_I  PRIi64
+
+struct parg_adjustor {
+    table_name_t name;
+    parg_ssize_t offset, size;
+    table_masks_t masks;
+    parg_flags_t adjusted;
+};
+
 #define PARG_MODIFY_DELETE  0
 #define PARG_MODIFY_CLONE   1
 #define PARG_MODIFY_PLACE   2
@@ -70,7 +90,7 @@ struct parg_modifier {
     union {
         struct parg_cloner cloner;
         struct parg_placer placer;
-        struct parg_definer adjustor;
+        struct parg_adjustor adjustor;
         // no need for deletor
     };
 };
@@ -86,4 +106,4 @@ struct ampart_parg {
     };
 };
 
-ampart_status ampart_parg_from_str_inner(ampart_parg const parg, char const *str, size_t const len_str);
+ampart_status parg_from_str_inner(ampart_parg restrict parg, char const *restrict str, size_t len_str);

@@ -19,14 +19,6 @@ static ampart_status parg_definer_from_str(ampart_parg const parg, char const *c
     return AMPART_OK;
 }
 
-// static char const *str_from_condition(uint8_t condition) {
-//     if (condition) {
-//         return "true";
-//     } else {
-//         return "false";
-//     }
-// }
-
 static ampart_status parg_show_definer(struct parg_definer const *const definer) {
     log_info("definer: name: %s (set: %hhu), offset: 0x%"PRI_TABLE_SIZE_X" (set: %hhu, relative: %hhu), size: 0x%"PRI_TABLE_SIZE_X" (set: %hhu), masks: 0x%"PRI_TABLE_MASKS_X" (set: %hhu)",
         definer->name, (definer->defined & PARG_DEFINE_NAME) > 0,
@@ -56,6 +48,10 @@ static ampart_status parg_show_position_selector(struct parg_position_selector c
     return AMPART_OK;
 }
 
+static void log_illegal_selector_type(parg_type_t const type) {
+    log_error("modifier/selector: illegal selector type %"PRI_PARG_TYPE" instead of either %"PRI_PARG_TYPE" (by-name) or %"PRI_PARG_TYPE" (by-position)", type, PARG_SELECT_BY_NAME, PARG_SELECT_BY_POSITION);
+}
+
 static ampart_status parg_show_selector(struct parg_selector const *const selector) {
     switch (selector->type) {
     case PARG_SELECT_BY_NAME:
@@ -63,7 +59,7 @@ static ampart_status parg_show_selector(struct parg_selector const *const select
     case PARG_SELECT_BY_POSITION:
         return parg_show_position_selector(&selector->by_position);
     default:
-        log_error("modifier/selector: illegal selector type %"PRI_PARG_TYPE" instead of either %"PRI_PARG_TYPE" (by-name) or %"PRI_PARG_TYPE" (by-position)", selector->type, PARG_SELECT_BY_NAME, PARG_SELECT_BY_POSITION);
+        log_illegal_selector_type(selector->type);
         return AMPART_BAD;
     }
     return AMPART_OK;
@@ -71,6 +67,10 @@ static ampart_status parg_show_selector(struct parg_selector const *const select
 
 static ampart_status parg_show_cloner(struct parg_cloner const *const cloner) {
     return check_report_name("modifier/cloner", cloner->name, cloner->len_name);
+}
+
+static void log_illegal_placer_method(parg_type_t const method) {
+    log_error("modifier/placer: invalid placing method %"PRI_PARG_TYPE" instead of either %"PRI_PARG_TYPE" (absolute) or %"PRI_PARG_TYPE" (relative)", method, PARG_PLACE_ABSOLUTE, PARG_PLACE_RELATIVE);
 }
 
 static ampart_status parg_show_placer(struct parg_placer const *const restrict placer) {
@@ -83,11 +83,25 @@ static ampart_status parg_show_placer(struct parg_placer const *const restrict p
         method = "relative";
         break;
     default:
-        log_error("modifier/placer: %"PRI_PARG_POSITION" with invalid placing method %"PRI_PARG_TYPE" instead of either %"PRI_PARG_TYPE" (absolute) or %"PRI_PARG_TYPE" (relative)", placer->position, placer->method, PARG_PLACE_ABSOLUTE, PARG_PLACE_RELATIVE);
+        log_illegal_placer_method(placer->method);
         return AMPART_BAD;
     }
     log_info("modifier/placer: %"PRI_PARG_POSITION" (%s)", placer->position, method);
     return AMPART_OK;
+}
+
+static ampart_status parg_show_adjustor(struct parg_adjustor const *const restrict adjustor) {
+    log_info("adjustor: name: %s (set: %hhu), offset: 0x%"PRI_PARG_SSIZE_X" (%"PRI_PARG_SSIZE_I", set: %hhu, relative: %hhu), size: 0x%"PRI_PARG_SSIZE_X" (%"PRI_PARG_SSIZE_I", set: %hhu, relative: %hhu), masks: 0x%"PRI_TABLE_MASKS_X" (set: %hhu)",
+        adjustor->name, (adjustor->adjusted & PARG_ADJUST_NAME) > 0,
+        adjustor->offset, adjustor->offset, (adjustor->adjusted & PARG_ADJUST_OFFSET) > 0, (adjustor->adjusted & PARG_ADJUST_OFFSET_RELATIVE) > 0,
+        adjustor->size, adjustor->size, (adjustor->adjusted & PARG_ADJUST_SIZE) > 0, (adjustor->adjusted & PARG_ADJUST_SIZE_RELATIVE) > 0,
+        adjustor->masks, (adjustor->adjusted & PARG_ADJUST_MASKS) > 0
+    );
+    return AMPART_OK;
+}
+
+static void log_illegal_modifier_type(parg_type_t const type) {
+    log_error("modifier: illegal modifier type %"PRI_PARG_TYPE "instead of either %"PRI_PARG_TYPE" (deletor), %"PRI_PARG_TYPE" (cloner), %"PRI_PARG_TYPE" (placer) or %"PRI_PARG_TYPE" (adjustor)", type, PARG_MODIFY_DELETE, PARG_MODIFY_CLONE, PARG_MODIFY_PLACE, PARG_MODIFY_ADJUST);
 }
 
 static ampart_status parg_show_modifier(struct parg_modifier const *const modifier) {
@@ -103,12 +117,17 @@ static ampart_status parg_show_modifier(struct parg_modifier const *const modifi
         r = parg_show_placer(&modifier->placer);
         break;
     case PARG_MODIFY_ADJUST:
+        r = parg_show_adjustor(&modifier->adjustor);
         break;
     default:
-        log_error("modifier: illegal modifier type %"PRI_PARG_TYPE "instead of either %"PRI_PARG_TYPE" (deletor), %"PRI_PARG_TYPE" (cloner), %"PRI_PARG_TYPE" (placer) or %"PRI_PARG_TYPE" (adjustor)");
+        log_illegal_modifier_type(modifier->type);
         r = AMPART_BAD;
     }
     return r;
+}
+
+static void log_illegal_parg_type(parg_type_t const type) {
+    log_error("illegal parg type %"PRI_PARG_TYPE" instead of either %"PRI_PARG_TYPE" (definer) or %"PRI_PARG_TYPE" (modifier)", type, PARG_TYPE_DEFINER, PARG_TYPE_MODIFIER);
 }
 
 static ampart_status parg_show_inner(struct ampart_parg const *const parg) {
@@ -118,16 +137,16 @@ static ampart_status parg_show_inner(struct ampart_parg const *const parg) {
     case PARG_TYPE_MODIFIER:
         return parg_show_modifier(&parg->modifier);
     default:
-        log_error("illegal parg type %"PRI_PARG_TYPE" instead of either %"PRI_PARG_TYPE" (definer) or %"PRI_PARG_TYPE" (modifier)", parg->type, PARG_TYPE_DEFINER, PARG_TYPE_MODIFIER);
+        log_illegal_parg_type(parg->type);
         return AMPART_BAD;
     }
 }
 
-ampart_status parg_show(ampart_parg const parg)  {
-    parg_show_inner(parg);
+ampart_status ampart_parg_show(ampart_parg const parg) {
+    return parg_show_inner(parg);
 }
 
-ampart_status parg_from_str_inner(ampart_parg const parg, char const *const restrict str, size_t const len_str) {
+ampart_status parg_from_str_inner(ampart_parg const restrict parg, char const *const restrict str, size_t const len_str) {
     switch (str[0]) {
     case '^':
         switch (str[1]) {
@@ -168,7 +187,7 @@ ampart_status ampart_parg_free(ampart_parg parg) {
     }
 }
 
-ampart_status ampart_parg_from_str(ampart_parg *const parg, char const *str, size_t len_str) {
+ampart_status ampart_parg_from_str(ampart_parg *const restrict parg, char const *restrict str, size_t len_str) {
     if (!len_str) {
         len_str = strnlen(str, PARG_MAXLEN);
         if (!len_str) {
@@ -176,7 +195,7 @@ ampart_status ampart_parg_from_str(ampart_parg *const parg, char const *str, siz
             return AMPART_BAD;
         }
     }
-    ampart_parg result;
+    ampart_parg restrict result;
     if (!(result = malloc(sizeof *result))) {
         log_error_with_errno("failed to allocate memory for parg");
         return AMPART_BAD;
@@ -188,6 +207,17 @@ ampart_status ampart_parg_from_str(ampart_parg *const parg, char const *str, siz
     *parg = result;
     return AMPART_OK;
 }
-ampart_status ampart_parg_to_str(ampart_parg const parg, char *str, size_t const maxlen_str, size_t *const len_str) {
+
+ampart_status ampart_parg_to_str(ampart_parg const restrict parg, char *restrict str, size_t const maxlen_str, size_t *const len_str) {
+    size_t len_used = 0, len_new;
+    switch (parg->type) {
+    case PARG_TYPE_DEFINER:
+        break;
+    case PARG_TYPE_MODIFIER:
+        return parg_show_modifier(&parg->modifier);
+    default:
+        log_illegal_parg_type(parg->type);
+        return AMPART_BAD;
+    }
     return AMPART_OK;
 }

@@ -1,5 +1,4 @@
 #pragma once
-#include <stdbool.h>
 #include "ampart.h"
 #include "table.h"
 
@@ -7,8 +6,7 @@
 #define PARG_DEFINE_OFFSET          0b00000010
 #define PARG_DEFINE_OFFSET_RELATIVE 0b00000100
 #define PARG_DEFINE_SIZE            0b00001000
-#define PARG_DEFINE_SIZE_RELATIVE   0b00010000
-#define PARG_DEFINE_MASKS           0b00100000
+#define PARG_DEFINE_MASKS           0b00010000
 
 typedef uint8_t parg_flags_t;
 
@@ -19,19 +17,26 @@ struct parg_definer {
     parg_flags_t defined;
 };
 
+typedef uint8_t parg_len_t;
+#define PRI_PARG_LEN PRIu8
+
 struct parg_name_selector {
     table_name_t name;
-    uint8_t len_name;
+    parg_len_t len_name;
 };
 
+typedef int8_t parg_position_t;
+#define PRI_PARG_POSITION PRIi8
+
 struct parg_position_selector {
-    int8_t position;
+    parg_position_t position;
 };
 
 #define PARG_SELECT_BY_NAME     0
 #define PARG_SELECT_BY_POSITION 1
 
 typedef uint8_t parg_type_t;
+#define PRI_PARG_TYPE PRIu8
 
 struct parg_selector {
     parg_type_t type;
@@ -43,14 +48,14 @@ struct parg_selector {
 
 struct parg_cloner {
     table_name_t name;
-    uint8_t len_name;
+    parg_len_t len_name;
 };
 
 #define PARG_PLACE_RELATIVE  0b00000001
 #define PARG_PLACE_ABSOLUTE  0b00000010
 
 struct parg_placer {
-    int8_t position;
+    parg_position_t position;
     parg_flags_t method;
 };
 
@@ -69,6 +74,9 @@ struct parg_modifier {
         // no need for deletor
     };
 };
+
+#define PARG_TYPE_DEFINER   0
+#define PARG_TYPE_MODIFIER  1
 
 struct ampart_parg {
     parg_type_t type;

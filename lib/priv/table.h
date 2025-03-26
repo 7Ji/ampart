@@ -1,5 +1,6 @@
 #pragma once
 #include <stdint.h>
+#include <inttypes.h>
 #include "ampart.h"
 
 #define TABLE_NAME_MAXLEN   15
@@ -15,8 +16,19 @@ typedef uint32_t
     table_checksum_t,
     table_masks_t;
 
+#define PRI_TABLE_COUNT_U       PRIu32
+#define PRI_TABLE_CHECKSUM_U    PRIu32
+#define PRI_TABLE_MASKS_U       PRIu32
+
+#define PRI_TABLE_COUNT_X       PRIX32
+#define PRI_TABLE_CHECKSUM_X    PRIX32
+#define PRI_TABLE_MASKS_X       PRIX32
+
 typedef uint64_t
     table_size_t;
+
+#define PRI_TABLE_SIZE_U        PRIu64
+#define PRI_TABLE_SIZE_X        PRIX64
 
 struct table_header {
     table_magic_t magic;

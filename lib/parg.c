@@ -345,6 +345,32 @@ ampart_status ampart_parg_to_str(ampart_parg const restrict parg, char *restrict
             break;
         case PARG_MODIFY_PLACE:
             buffer[len_used++] = '@';
+            switch (parg->modifier.placer.method) {
+            case PARG_PLACE_RELATIVE:
+                if (len_used + 2 > AMPART_PARG_STR_MAXLEN) {
+                    log_error("modifier already too long before even relative placer position");
+                    return AMPART_BAD;
+                }
+                len_printf = snprintf(buffer + len_used, AMPART_PARG_STR_MAXLEN + 1 - len_used, "%+"PRI_PARG_POSITION, parg->modifier.placer.position);
+                break;
+            case PARG_PLACE_ABSOLUTE:
+                if (parg->modifier.placer.position < 0) {
+                    buffer[len_used++] = '=';
+                }
+                if (len_used + 1 > AMPART_PARG_STR_MAXLEN) {
+                    log_error("modifier already too long before even absolute placer position");
+                    return AMPART_BAD;
+                }
+                len_printf = snprintf(buffer + len_used, AMPART_PARG_STR_MAXLEN + 1 - len_used, "%"PRI_PARG_POSITION, parg->modifier.placer.position);
+                break;
+            default:
+                log_illegal_placer_method(parg->modifier.placer.method);
+                return AMPART_BAD;
+            }
+            if (len_printf < 0) {
+                log_error_with_errno("failed to printf placer");
+            }
+            len_used += len_printf;
             break;
         case PARG_MODIFY_ADJUST:
             buffer[len_used++] = ':';

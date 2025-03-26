@@ -60,22 +60,21 @@ struct parg_placer {
 };
 
 #define PARG_ADJUST_NAME             0b00000001
-#define PARG_ADJUST_OFFSET_ABSOLULTE 0b00000010
-#define PARG_ADJUST_OFFSET_RELATIVE  0b00000100
-#define PARG_ADJUST_OFFSET           0b00000110
-#define PARG_ADJUST_SIZE_ABSOLUTE    0b00001000
-#define PARG_ADJUST_SIZE_RELATIVE    0b00010000
-#define PARG_ADJUST_SIZE             0b00011000
-#define PARG_ADJUST_MASKS            0b00100000
-
-typedef int64_t parg_ssize_t;
-#define PRI_PARG_SSIZE_X  PRIX64
-#define PRI_PARG_SSIZE_I  PRIi64
+#define PARG_ADJUST_OFFSET_SET       0b00000010
+#define PARG_ADJUST_OFFSET_ADD       0b00000100
+#define PARG_ADJUST_OFFSET_SUBSTRACT 0b00001000
+#define PARG_ADJUST_OFFSET           0b00001110
+#define PARG_ADJUST_SIZE_SET         0b00010000
+#define PARG_ADJUST_SIZE_ADD         0b00100000
+#define PARG_ADJUST_SIZE_SUBSTRACT   0b01000000
+#define PARG_ADJUST_SIZE             0b01110000
+#define PARG_ADJUST_MASKS            0b10000000
 
 struct parg_adjustor {
     table_name_t name;
-    parg_ssize_t offset, size;
+    table_size_t offset, size;
     table_masks_t masks;
+    parg_len_t len_name;
     parg_flags_t adjusted;
 };
 

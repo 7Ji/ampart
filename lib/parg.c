@@ -91,10 +91,10 @@ static ampart_status parg_show_placer(struct parg_placer const *const restrict p
 }
 
 static ampart_status parg_show_adjustor(struct parg_adjustor const *const restrict adjustor) {
-    log_info("adjustor: name: %s (set: %hhu), offset: 0x%"PRI_PARG_SSIZE_X" (%"PRI_PARG_SSIZE_I", set: %hhu, relative: %hhu), size: 0x%"PRI_PARG_SSIZE_X" (%"PRI_PARG_SSIZE_I", set: %hhu, relative: %hhu), masks: 0x%"PRI_TABLE_MASKS_X" (set: %hhu)",
+    log_info("adjustor: name: %s (set: %hhu), offset: 0x%"PRI_TABLE_SIZE_X" (set: %hhu, add: %hhu, substract: %hhu), size: 0x%"PRI_TABLE_SIZE_X" (set: %hhu, add: %hhu, substract: %hhu), masks: 0x%"PRI_TABLE_MASKS_X" (set: %hhu)",
         adjustor->name, (adjustor->adjusted & PARG_ADJUST_NAME) > 0,
-        adjustor->offset, adjustor->offset, (adjustor->adjusted & PARG_ADJUST_OFFSET) > 0, (adjustor->adjusted & PARG_ADJUST_OFFSET_RELATIVE) > 0,
-        adjustor->size, adjustor->size, (adjustor->adjusted & PARG_ADJUST_SIZE) > 0, (adjustor->adjusted & PARG_ADJUST_SIZE_RELATIVE) > 0,
+        adjustor->offset, (adjustor->adjusted & PARG_ADJUST_OFFSET_SET) > 0, (adjustor->adjusted & PARG_ADJUST_OFFSET_ADD) > 0, (adjustor->adjusted & PARG_ADJUST_OFFSET_SUBSTRACT) > 0,
+        adjustor->size, (adjustor->adjusted & PARG_ADJUST_SIZE_SET) > 0, (adjustor->adjusted & PARG_ADJUST_SIZE_ADD) > 0, (adjustor->adjusted & PARG_ADJUST_SIZE_SUBSTRACT) > 0,
         adjustor->masks, (adjustor->adjusted & PARG_ADJUST_MASKS) > 0
     );
     return AMPART_OK;
@@ -216,6 +216,7 @@ ampart_status ampart_parg_to_str(ampart_parg const restrict parg, char *restrict
     char buffer[AMPART_PARG_STR_MAXLEN + 1];
     size_t len_used = 0;
     int len_printf;
+    char const *restrict formatter;
     switch (parg->type) {
     case PARG_TYPE_DEFINER:
         if (parg->definer.len_name > TABLE_NAME_MAXLEN) {
@@ -280,7 +281,7 @@ ampart_status ampart_parg_to_str(ampart_parg const restrict parg, char *restrict
             buffer[len_used++] = 'x';
             len_printf = snprintf(buffer + len_used, AMPART_PARG_STR_MAXLEN + 1 - len_used, "%"PRI_TABLE_MASKS_X, parg->definer.masks);
             if (len_printf < 0) {
-                log_error_with_errno("failed to printf definer size");
+                log_error_with_errno("failed to printf definer masks");
                 return AMPART_BAD;
             }
             len_used += len_printf;
@@ -351,7 +352,7 @@ ampart_status ampart_parg_to_str(ampart_parg const restrict parg, char *restrict
                     log_error("modifier already too long before even relative placer position");
                     return AMPART_BAD;
                 }
-                len_printf = snprintf(buffer + len_used, AMPART_PARG_STR_MAXLEN + 1 - len_used, "%+"PRI_PARG_POSITION, parg->modifier.placer.position);
+                formatter = "%+"PRI_PARG_POSITION;
                 break;
             case PARG_PLACE_ABSOLUTE:
                 if (parg->modifier.placer.position < 0) {
@@ -361,12 +362,13 @@ ampart_status ampart_parg_to_str(ampart_parg const restrict parg, char *restrict
                     log_error("modifier already too long before even absolute placer position");
                     return AMPART_BAD;
                 }
-                len_printf = snprintf(buffer + len_used, AMPART_PARG_STR_MAXLEN + 1 - len_used, "%"PRI_PARG_POSITION, parg->modifier.placer.position);
+                formatter = "%"PRI_PARG_POSITION;
                 break;
             default:
                 log_illegal_placer_method(parg->modifier.placer.method);
                 return AMPART_BAD;
             }
+            len_printf = snprintf(buffer + len_used, AMPART_PARG_STR_MAXLEN + 1 - len_used, formatter, parg->modifier.placer.position);
             if (len_printf < 0) {
                 log_error_with_errno("failed to printf placer");
             }
@@ -374,6 +376,82 @@ ampart_status ampart_parg_to_str(ampart_parg const restrict parg, char *restrict
             break;
         case PARG_MODIFY_ADJUST:
             buffer[len_used++] = ':';
+            if (parg->modifier.adjustor.adjusted & PARG_ADJUST_NAME) {
+                if (parg->modifier.adjustor.len_name > TABLE_NAME_MAXLEN) {
+                    log_name_too_long("adjustor", parg->definer.name);
+                    return AMPART_BAD;
+                } else if (parg->modifier.adjustor.len_name) {
+                    if (len_used + parg->modifier.adjustor.len_name >= AMPART_PARG_STR_MAXLEN) {
+                        log_error("adjustor already too long before even name");
+                        return AMPART_BAD;
+                    }
+                    memcpy(buffer, parg->modifier.adjustor.name, parg->modifier.adjustor.len_name);
+                    len_used += parg->modifier.adjustor.len_name;
+                }
+            }
+            buffer[len_used++] = ':';
+            if (parg->modifier.adjustor.adjusted & PARG_ADJUST_OFFSET) {
+                if (len_used + 4 > AMPART_PARG_STR_MAXLEN) {
+                    log_error("adjustor already too long before even offset");
+                    return AMPART_BAD;
+                }
+                if (parg->modifier.adjustor.adjusted & PARG_ADJUST_OFFSET_ADD) {
+                    buffer[len_used++] = '+';
+                } else if (parg->modifier.adjustor.adjusted & PARG_ADJUST_OFFSET_SUBSTRACT) {
+                    buffer[len_used++] = '-';
+                }
+                buffer[len_used++] = '0';
+                buffer[len_used++] = 'x';
+                len_printf = snprintf(buffer + len_used, AMPART_PARG_STR_MAXLEN + 1 - len_used, "%"PRI_TABLE_SIZE_X, parg->modifier.adjustor.offset);
+                if (len_printf < 0) {
+                    log_error_with_errno("failed to printf adjustor offset");
+                    return AMPART_BAD;
+                }
+                len_used += len_printf;
+            }
+            if (len_used + 1 >= AMPART_PARG_STR_MAXLEN) {
+                log_error("adjustor already too long till only offset");
+                return AMPART_BAD;
+            }
+            buffer[len_used++] = ':';
+            if (parg->modifier.adjustor.adjusted & PARG_ADJUST_SIZE) {
+                if (len_used + 3 >= AMPART_PARG_STR_MAXLEN) {
+                    log_error("adjustor already too long before even size");
+                    return AMPART_BAD;
+                }
+                if (parg->modifier.adjustor.adjusted & PARG_ADJUST_SIZE_ADD) {
+                    buffer[len_used++] = '+';
+                } else if (parg->modifier.adjustor.adjusted & PARG_ADJUST_SIZE_SUBSTRACT) {
+                    buffer[len_used++] = '-';
+                }
+                buffer[len_used++] = '0';
+                buffer[len_used++] = 'x';
+                len_printf = snprintf(buffer + len_used, AMPART_PARG_STR_MAXLEN + 1 - len_used, "%"PRI_TABLE_SIZE_X, parg->modifier.adjustor.size);
+                if (len_printf < 0) {
+                    log_error_with_errno("failed to printf adjustor size");
+                    return AMPART_BAD;
+                }
+                len_used += len_printf;
+            }
+            if (len_used + 1 >= AMPART_PARG_STR_MAXLEN) {
+                log_error("adjustor already too long till only size");
+                return AMPART_BAD;
+            }
+            buffer[len_used++] = ':';
+            if (parg->modifier.adjustor.adjusted & PARG_ADJUST_MASKS) {
+                if (len_used + 3 >= AMPART_PARG_STR_MAXLEN) {
+                    log_error("adjustor already too long before even masks");
+                    return AMPART_BAD;
+                }
+                buffer[len_used++] = '0';
+                buffer[len_used++] = 'x';
+                len_printf = snprintf(buffer + len_used, AMPART_PARG_STR_MAXLEN + 1 - len_used, "%"PRI_TABLE_MASKS_X, parg->modifier.adjustor.masks);
+                if (len_printf < 0) {
+                    log_error_with_errno("failed to printf adjustor masks");
+                    return AMPART_BAD;
+                }
+                len_used += len_printf;
+            }
             break;
         default:
             log_illegal_modifier_type(parg->modifier.type);

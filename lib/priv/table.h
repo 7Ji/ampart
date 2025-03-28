@@ -48,3 +48,7 @@ struct table {
     struct table_header header;
     struct table_part parts[TBALE_PARTS_MAXLEN];
 };
+
+ampart_status table_size_from_human_readable(table_size_t *restrict size, char const * restrict readable);
+
+ampart_status table_masks_from_literal(table_masks_t *restrict masks, char const * restrict literal);

@@ -11,10 +11,111 @@ static ampart_status parg_modifier_from_str(ampart_parg const parg, char const *
     return AMPART_OK;
 }
 
-static ampart_status parg_definer_from_str(ampart_parg const parg, char const *const restrict str, size_t const len_str) {
+static ampart_status parg_definer_from_str(ampart_parg const parg, char const *str, size_t len_str) {
     struct parg_definer *definer = &parg->definer;
-
-
+    char const *seperator;
+    size_t len_current;
+    if (!(seperator = memchr(str, ':', len_str))) {
+        log_error("definer ends with at most name, missing offset, size and masks");
+        return AMPART_BAD;
+    }
+    len_current = seperator - str;
+    if (len_current > TABLE_NAME_MAXLEN) {
+        log_error("definer name too long");
+        return AMPART_BAD;
+    } else if (!len_current) {
+        log_error("definer does not set name");
+        return AMPART_BAD;
+    }
+    memcpy(definer->name, str, len_current);
+    definer->name[len_current] = '\0';
+    definer->len_name = len_current;
+    definer->defined = PARG_DEFINE_NAME;
+    if (len_str < len_current + 3) {
+        log_error("definer ends prematurely before offset");
+        return AMPART_BAD;
+    }
+    str = seperator + 1;
+    len_str -= len_current + 1;
+    if (!(seperator = memchr(str, ':', len_str))) {
+        log_error("definer ends with at most name and offset, missing size and masks");
+        return AMPART_BAD;
+    }
+    len_current = seperator - str;
+    if (len_current) {
+        switch (str[0]) {
+        case '+':
+            definer->defined |= PARG_DEFINE_OFFSET_RELATIVE;
+            switch (str[1]) {
+            case '0'...'9':
+                break;
+            default:
+                log_error("definer relative offset does not have valid number content");
+                return AMPART_BAD;
+            }
+        case '0'...'9':
+            break;
+        default:
+            log_error("definer absolute offset does not have valid number content");
+            return AMPART_BAD;
+        }
+        if (table_size_from_human_readable(&definer->offset, str)) {
+            log_error("failed to parse definer offset from human-readable");
+            return AMPART_BAD;
+        }
+        definer->defined |= PARG_DEFINE_OFFSET;
+    } else {
+        definer->offset = 0;
+    }
+    if (len_str < len_current + 2) {
+        log_error("definer ends prematurely before size");
+        return AMPART_BAD;
+    }
+    str = seperator + 1;
+    len_str -= len_current + 1;
+    if (!(seperator = memchr(str, ':', len_str))) {
+        log_error("definer ends with at most name, offset and size, missing masks");
+        return AMPART_BAD;
+    }
+    len_current = seperator - str;
+    if (len_current) {
+        switch (str[0]) {
+        case '0'...'9':
+            break;
+        default:
+            log_error("definer size does not have valid number content");
+            return AMPART_BAD;
+        }
+        if (table_size_from_human_readable(&definer->size, str)) {
+            log_error("failed to parse definer size from human-readable");
+            return AMPART_BAD;
+        }
+        definer->defined |= PARG_DEFINE_SIZE;
+    } else {
+        definer->size = 0;
+    }
+    if (len_str < len_current + 1) {
+        log_error("definer ends prematurely before masks");
+        return AMPART_BAD;
+    }
+    str = seperator + 1;
+    len_str -= len_current + 1;
+    if (len_str) {
+        switch (str[0]) {
+        case '0'...'9':
+            break;
+        default:
+            log_error("definer masks does not have valid number content");
+            return AMPART_BAD;
+        }
+        if (table_masks_from_literal(&definer->masks, str)) {
+            log_error("failed to parse definer masks");
+            return AMPART_BAD;
+        }
+        definer->defined |= PARG_DEFINE_MASKS;
+    } else {
+        definer->masks = 0;
+    }
     parg->type = PARG_TYPE_DEFINER;
     return AMPART_OK;
 }
@@ -202,6 +303,7 @@ ampart_status ampart_parg_from_str(ampart_parg *const restrict parg, char const 
     }
     if (parg_from_str_inner(result, str, len_str)) {
         ampart_parg_free(result);
+        return AMPART_BAD;
     }
 
     *parg = result;

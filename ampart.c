@@ -85,6 +85,17 @@ void help() {
 }
 
 int main (int argc, char *argv[]) {
+    ampart_init(stdout);
+    ampart_parg parg;
+    for (int i = 1; i < argc; ++i) {
+        if (ampart_parg_from_str(&parg, argv[i], 0) != AMPART_OK) {
+            prln_error("failed to parse '%s' to parg", argv[i]);
+            continue;
+        }
+        ampart_parg_show(parg);
+        ampart_parg_free(parg);
+    }
+    return AMPART_OK;
     int c, option_index = 0;
     struct option const long_options[] = {
         {"version",         no_argument,        NULL,   'v'},
@@ -149,6 +160,5 @@ int main (int argc, char *argv[]) {
                 return 3;
         }
     }
-    return 0;
     return AMPART_OK;
 }

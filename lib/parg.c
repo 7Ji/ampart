@@ -3,10 +3,123 @@
 #include "priv/parg.h"
 #define PARG_MAXLEN 64
 
-static ampart_status parg_modifier_from_str(ampart_parg const parg, char const *const restrict str, size_t const len_str) {
+static void log_illegal_modifier_type(parg_type_t const type) {
+    log_error("modifier: illegal modifier type %"PRI_PARG_TYPE "instead of either %"PRI_PARG_TYPE" (deletor), %"PRI_PARG_TYPE" (cloner), %"PRI_PARG_TYPE" (placer) or %"PRI_PARG_TYPE" (adjustor)", type, PARG_MODIFY_DELETE, PARG_MODIFY_CLONE, PARG_MODIFY_PLACE, PARG_MODIFY_ADJUST);
+}
+
+static void log_illegal_selector_type(parg_type_t const type) {
+    log_error("modifier/selector: illegal selector type %"PRI_PARG_TYPE" instead of either %"PRI_PARG_TYPE" (by-name) or %"PRI_PARG_TYPE" (by-position)", type, PARG_SELECT_BY_NAME, PARG_SELECT_BY_POSITION);
+}
+
+static ampart_status parg_position_from_literal(parg_position_t *restrict const position, char const *restrict const literal) {
+    errno = 0;
+    long parsed = strtol(literal, NULL, 0);
+    if (errno) {
+        log_error_with_errno("failed to parse parg position from literal '%s'", literal);
+        return AMPART_BAD;
+    }
+#if PARG_POSITION_MAX < LONG_MAX || PARG_POSITION_MIN > LONG_MIN
+    if (parsed > PARG_POSITION_MAX || parsed < PARG_POSITION_MIN ) {
+        log_error("parsed position %ld overflow range of parg position (%"PRI_PARG_POSITION" to %"PRI_PARG_POSITION")", parsed, PARG_POSITION_MAX, PARG_POSITION_MIN);
+        return AMPART_BAD;
+    }
+#endif
+    *position = parsed;
+    return AMPART_OK;
+}
+
+static ampart_status parg_modifier_from_str(ampart_parg const parg, char const *str, size_t len_str) {
     struct parg_modifier *modifier = &parg->modifier;
-
-
+    size_t len_selector = 0;
+    modifier->type = PARG_MODIFY_NONE;
+    for (size_t i = 0; i < len_str; ++i) {
+        switch (str[i]) {
+        case '\0':
+            return AMPART_BAD;
+        case '?':
+            modifier->type = PARG_MODIFY_DELETE;
+            goto set_len_selector;
+        case '%':
+            modifier->type = PARG_MODIFY_CLONE;
+            goto set_len_selector;
+        case '@':
+            modifier->type = PARG_MODIFY_PLACE;
+            goto set_len_selector;
+        case ':':
+            modifier->type = PARG_MODIFY_ADJUST;
+            goto set_len_selector;
+        default:
+            break;
+        }
+        continue;
+set_len_selector:
+        len_selector = i;
+        break;
+    }
+    if (!len_selector) {
+        log_error("modifier does not have a valid seperator to distinguish its type, or does not have a seletor");
+        return AMPART_BAD;
+    }
+    modifier->selector.type = PARG_SELECT_BY_NONE;
+    switch (str[0]) {
+    case '-':
+        switch (str[1]) {
+        case '0'...'9':
+            modifier->selector.type = PARG_SELECT_BY_POSITION;
+            break;
+        default:
+            log_error("modifier selector that appears to be a negative position-selector does not have a valid number");
+            return AMPART_BAD;
+        }
+        break;
+    case '0'...'9':
+        modifier->selector.type = PARG_SELECT_BY_POSITION;
+        break;
+    case '_':
+    case 'a'...'z':
+    case 'A'...'Z':
+        modifier->selector.type = PARG_SELECT_BY_NAME;
+        break;
+    default:
+        log_error("modifier selector does not appear to be neither by-name nor by-position");
+        return AMPART_BAD;
+    }
+    switch (modifier->selector.type) {
+    case PARG_SELECT_BY_NAME:
+        if (len_selector > TABLE_NAME_MAXLEN) {
+            log_error("selector name too long");
+            return AMPART_BAD;
+        } else if (!len_selector) {
+            log_error("selector name empty");
+            return AMPART_BAD;
+        }
+        memcpy(modifier->selector.by_name.name, str, len_selector);
+        modifier->selector.by_name.name[len_selector] = '\0';
+        modifier->selector.by_name.len_name = len_selector;
+        break;
+    case PARG_SELECT_BY_POSITION:
+        if (parg_position_from_literal(&modifier->selector.by_position.position, str)) {
+            log_error("failed to parse parg position");
+            return AMPART_BAD;
+        }
+        break;
+    default:
+        log_illegal_selector_type(modifier->selector.type);
+        return AMPART_BAD;
+    }
+    switch (modifier->type) {
+    case PARG_MODIFY_DELETE:
+        break;
+    case PARG_MODIFY_CLONE:
+        break;
+    case PARG_MODIFY_PLACE:
+        break;
+    case PARG_MODIFY_ADJUST:
+        break;
+    default:
+        log_illegal_modifier_type(modifier->type);
+        return AMPART_BAD;
+    }
     parg->type = PARG_TYPE_MODIFIER;
     return AMPART_OK;
 }
@@ -149,10 +262,6 @@ static ampart_status parg_show_position_selector(struct parg_position_selector c
     return AMPART_OK;
 }
 
-static void log_illegal_selector_type(parg_type_t const type) {
-    log_error("modifier/selector: illegal selector type %"PRI_PARG_TYPE" instead of either %"PRI_PARG_TYPE" (by-name) or %"PRI_PARG_TYPE" (by-position)", type, PARG_SELECT_BY_NAME, PARG_SELECT_BY_POSITION);
-}
-
 static ampart_status parg_show_selector(struct parg_selector const *const selector) {
     switch (selector->type) {
     case PARG_SELECT_BY_NAME:
@@ -199,10 +308,6 @@ static ampart_status parg_show_adjustor(struct parg_adjustor const *const restri
         adjustor->masks, (adjustor->adjusted & PARG_ADJUST_MASKS) > 0
     );
     return AMPART_OK;
-}
-
-static void log_illegal_modifier_type(parg_type_t const type) {
-    log_error("modifier: illegal modifier type %"PRI_PARG_TYPE "instead of either %"PRI_PARG_TYPE" (deletor), %"PRI_PARG_TYPE" (cloner), %"PRI_PARG_TYPE" (placer) or %"PRI_PARG_TYPE" (adjustor)", type, PARG_MODIFY_DELETE, PARG_MODIFY_CLONE, PARG_MODIFY_PLACE, PARG_MODIFY_ADJUST);
 }
 
 static ampart_status parg_show_modifier(struct parg_modifier const *const modifier) {

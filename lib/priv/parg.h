@@ -27,13 +27,16 @@ struct parg_name_selector {
 
 typedef int8_t parg_position_t;
 #define PRI_PARG_POSITION PRIi8
+#define PARG_POSITION_MAX   INT8_MAX
+#define PARG_POSITION_MIN   INT8_MIN
 
 struct parg_position_selector {
     parg_position_t position;
 };
 
-#define PARG_SELECT_BY_NAME     0
-#define PARG_SELECT_BY_POSITION 1
+#define PARG_SELECT_BY_NONE     0
+#define PARG_SELECT_BY_NAME     1
+#define PARG_SELECT_BY_POSITION 2
 
 typedef uint8_t parg_type_t;
 #define PRI_PARG_TYPE PRIu8
@@ -78,10 +81,11 @@ struct parg_adjustor {
     parg_flags_t adjusted;
 };
 
-#define PARG_MODIFY_DELETE  0
-#define PARG_MODIFY_CLONE   1
-#define PARG_MODIFY_PLACE   2
-#define PARG_MODIFY_ADJUST  3
+#define PARG_MODIFY_NONE    0
+#define PARG_MODIFY_DELETE  1
+#define PARG_MODIFY_CLONE   2
+#define PARG_MODIFY_PLACE   3
+#define PARG_MODIFY_ADJUST  4
 
 struct parg_modifier {
     parg_type_t type;

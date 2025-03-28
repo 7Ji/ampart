@@ -16,6 +16,8 @@ typedef uint32_t
     table_checksum_t,
     table_masks_t;
 
+#define TABLE_MASKS_MAX         UINT32_MAX
+
 #define PRI_TABLE_COUNT_U       PRIu32
 #define PRI_TABLE_CHECKSUM_U    PRIu32
 #define PRI_TABLE_MASKS_U       PRIu32
@@ -26,6 +28,8 @@ typedef uint32_t
 
 typedef uint64_t
     table_size_t;
+
+#define TABLE_SIZE_MAX          UINT64_MAX
 
 #define PRI_TABLE_SIZE_U        PRIu64
 #define PRI_TABLE_SIZE_X        PRIX64

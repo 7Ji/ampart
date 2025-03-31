@@ -28,6 +28,145 @@ static ampart_status parg_position_from_literal(parg_position_t *restrict const 
     return AMPART_OK;
 }
 
+
+static ampart_status adjustor_from_str(struct parg_adjustor *const adjustor, char const *str, size_t len_str) {
+    char const *seperator;
+    size_t len_current;
+    if (!(seperator = memchr(str, ':', len_str))) {
+        log_error("adjustor ends with at most name, missing offset, size and masks");
+        return AMPART_BAD;
+    }
+    len_current = seperator - str;
+    if (len_current > TABLE_NAME_MAXLEN) {
+        log_error("adjustor name too long");
+        return AMPART_BAD;
+    } else if (len_current) {
+        memcpy(adjustor->name, str, len_current);
+        adjustor->name[len_current] = '\0';
+        adjustor->len_name = len_current;
+        adjustor->adjusted = PARG_ADJUST_NAME;
+    } else {
+        adjustor->adjusted = 0;
+    }
+    if (len_str < len_current + 3) {
+        log_error("adjustor ends prematurely containing at least offset");
+        return AMPART_BAD;
+    }
+    str = seperator + 1;
+    len_str -= len_current + 1;
+    if (!(seperator = memchr(str, ':', len_str))) {
+        log_error("adjustor ends with at most name and offset, missing size and masks");
+        return AMPART_BAD;
+    }
+    len_current = seperator - str;
+    if (len_current) {
+        switch (str[0]) {
+        case '+':
+            adjustor->adjusted |= PARG_ADJUST_OFFSET_ADD;
+            switch (str[1]) {
+            case '0'...'9':
+                break;
+            default:
+                log_error("adjustor offset-add does not have valid number content");
+                return AMPART_BAD;
+            }
+            break;
+        case '-':
+            adjustor->adjusted |= PARG_ADJUST_OFFSET_SUBSTRACT;
+            switch (str[1]) {
+            case '0'...'9':
+                break;
+            default:
+                log_error("adjustor offset-substract does not have valid number content");
+                return AMPART_BAD;
+            }
+            break;
+        case '0'...'9':
+            adjustor->adjusted |= PARG_ADJUST_OFFSET_SET;
+            break;
+        default:
+            log_error("adjustor offset does not have valid content");
+            return AMPART_BAD;
+        }
+        if (table_size_from_human_readable(&adjustor->offset, (adjustor->adjusted & PARG_ADJUST_OFFSET_SUBSTRACT) ? (str + 1) : str)) {
+            log_error("failed to parse adjustor offset from human-readable");
+            return AMPART_BAD;
+        }
+    } else {
+        adjustor->offset = 0;
+    }
+    if (len_str < len_current + 2) {
+        log_error("adjustor ends prematurely containing at least size");
+        return AMPART_BAD;
+    }
+    str = seperator + 1;
+    len_str -= len_current + 1;
+    if (!(seperator = memchr(str, ':', len_str))) {
+        log_error("adjustor ends with at most name, offset and size, missing masks");
+        return AMPART_BAD;
+    }
+    len_current = seperator - str;
+    if (len_current) {
+        switch (str[0]) {
+        case '+':
+            adjustor->adjusted |= PARG_ADJUST_SIZE_ADD;
+            switch (str[1]) {
+            case '0'...'9':
+                break;
+            default:
+                log_error("adjustor size-add does not have valid number content");
+                return AMPART_BAD;
+            }
+            break;
+        case '-':
+            adjustor->adjusted |= PARG_ADJUST_SIZE_SUBSTRACT;
+            switch (str[1]) {
+            case '0'...'9':
+                break;
+            default:
+                log_error("adjustor size-substract does not have valid number content");
+                return AMPART_BAD;
+            }
+            break;
+        case '0'...'9':
+            adjustor->adjusted |= PARG_ADJUST_SIZE_SET;
+            break;
+        default:
+            log_error("adjustor size does not have valid content");
+            return AMPART_BAD;
+        }
+        if (table_size_from_human_readable(&adjustor->size, (adjustor->adjusted & PARG_ADJUST_SIZE_SUBSTRACT) ? (str + 1) : str)) {
+            log_error("failed to parse adjustor size from human-readable");
+            return AMPART_BAD;
+        }
+    } else {
+        adjustor->size = 0;
+    }
+    if (len_str < len_current + 1) {
+        log_error("adjustor ends prematurely containing at least masks");
+        return AMPART_BAD;
+    }
+    str = seperator + 1;
+    len_str -= len_current + 1;
+    if (len_str) {
+        switch (str[0]) {
+        case '0'...'9':
+            break;
+        default:
+            log_error("adjustor masks does not have valid number content, or you have specified too many seperators");
+            return AMPART_BAD;
+        }
+        if (table_masks_from_literal(&adjustor->masks, str)) {
+            log_error("failed to parse adjustor masks");
+            return AMPART_BAD;
+        }
+        adjustor->adjusted |= PARG_ADJUST_MASKS;
+    } else {
+        adjustor->masks = 0;
+    }
+    return AMPART_OK;
+}
+
 static ampart_status parg_modifier_from_str(ampart_parg const parg, char const *str, size_t len_str) {
     struct parg_modifier *modifier = &parg->modifier;
     size_t len_selector = 0;
@@ -175,6 +314,10 @@ set_len_selector:
         }
         break;
     case PARG_MODIFY_ADJUST:
+        if (adjustor_from_str(&modifier->adjustor, str, len_str)) {
+            log_error("failed to parse adjustor");
+            return AMPART_BAD;
+        }
         break;
     default:
         log_illegal_modifier_type(modifier->type);
@@ -205,7 +348,7 @@ static ampart_status parg_definer_from_str(ampart_parg const parg, char const *s
     definer->len_name = len_current;
     definer->defined = PARG_DEFINE_NAME;
     if (len_str < len_current + 3) {
-        log_error("definer ends prematurely before offset");
+        log_error("definer ends prematurely containing at least offset");
         return AMPART_BAD;
     }
     str = seperator + 1;
@@ -226,6 +369,7 @@ static ampart_status parg_definer_from_str(ampart_parg const parg, char const *s
                 log_error("definer relative offset does not have valid number content");
                 return AMPART_BAD;
             }
+            break;
         case '0'...'9':
             break;
         default:
@@ -241,7 +385,7 @@ static ampart_status parg_definer_from_str(ampart_parg const parg, char const *s
         definer->offset = 0;
     }
     if (len_str < len_current + 2) {
-        log_error("definer ends prematurely before size");
+        log_error("definer ends prematurely containing at least size");
         return AMPART_BAD;
     }
     str = seperator + 1;
@@ -268,7 +412,7 @@ static ampart_status parg_definer_from_str(ampart_parg const parg, char const *s
         definer->size = 0;
     }
     if (len_str < len_current + 1) {
-        log_error("definer ends prematurely before masks");
+        log_error("definer ends prematurely containing at least masks");
         return AMPART_BAD;
     }
     str = seperator + 1;
@@ -278,7 +422,7 @@ static ampart_status parg_definer_from_str(ampart_parg const parg, char const *s
         case '0'...'9':
             break;
         default:
-            log_error("definer masks does not have valid number content");
+            log_error("definer masks does not have valid number content, or you have specified too many seperators");
             return AMPART_BAD;
         }
         if (table_masks_from_literal(&definer->masks, str)) {
@@ -361,7 +505,7 @@ static ampart_status parg_show_placer(struct parg_placer const *const restrict p
 }
 
 static ampart_status parg_show_adjustor(struct parg_adjustor const *const restrict adjustor) {
-    log_info("adjustor: name: %s (set: %hhu), offset: 0x%"PRI_TABLE_SIZE_X" (set: %hhu, add: %hhu, substract: %hhu), size: 0x%"PRI_TABLE_SIZE_X" (set: %hhu, add: %hhu, substract: %hhu), masks: 0x%"PRI_TABLE_MASKS_X" (set: %hhu)",
+    log_info("modifier/adjustor: name: %s (set: %hhu), offset: 0x%"PRI_TABLE_SIZE_X" (set: %hhu, add: %hhu, substract: %hhu), size: 0x%"PRI_TABLE_SIZE_X" (set: %hhu, add: %hhu, substract: %hhu), masks: 0x%"PRI_TABLE_MASKS_X" (set: %hhu)",
         adjustor->name, (adjustor->adjusted & PARG_ADJUST_NAME) > 0,
         adjustor->offset, (adjustor->adjusted & PARG_ADJUST_OFFSET_SET) > 0, (adjustor->adjusted & PARG_ADJUST_OFFSET_ADD) > 0, (adjustor->adjusted & PARG_ADJUST_OFFSET_SUBSTRACT) > 0,
         adjustor->size, (adjustor->adjusted & PARG_ADJUST_SIZE_SET) > 0, (adjustor->adjusted & PARG_ADJUST_SIZE_ADD) > 0, (adjustor->adjusted & PARG_ADJUST_SIZE_SUBSTRACT) > 0,

@@ -54,8 +54,9 @@ struct parg_cloner {
     parg_len_t len_name;
 };
 
-#define PARG_PLACE_RELATIVE  0b00000001
-#define PARG_PLACE_ABSOLUTE  0b00000010
+#define PARG_PLACE_NONE     0
+#define PARG_PLACE_RELATIVE 1
+#define PARG_PLACE_ABSOLUTE 2
 
 struct parg_placer {
     parg_position_t position;

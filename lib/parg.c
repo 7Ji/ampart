@@ -107,12 +107,72 @@ set_len_selector:
         log_illegal_selector_type(modifier->selector.type);
         return AMPART_BAD;
     }
+    if (len_str < len_selector + 1) { // Should not happen
+        log_error("modifier does not have any valid part after selector");
+        return AMPART_BAD;
+    }
+    str += len_selector + 1;
+    len_str -= len_selector + 1;
     switch (modifier->type) {
     case PARG_MODIFY_DELETE:
         break;
     case PARG_MODIFY_CLONE:
+        if (len_str > TABLE_NAME_MAXLEN) {
+            log_error("cloner name too long");
+            return AMPART_BAD;
+        } else if (!len_str) {
+            log_error("cloner name empty");
+            return AMPART_BAD;
+        }
+        memcpy(modifier->cloner.name, str, len_str);
+        modifier->cloner.name[len_str] = '\0';
+        modifier->cloner.len_name = len_str;
         break;
     case PARG_MODIFY_PLACE:
+        modifier->placer.method = PARG_PLACE_NONE;
+        switch (str[0]) {
+        case '=':
+            switch (str[1]) {
+            case '-':
+                switch (str[2]) {
+                case '0'...'9':
+                    modifier->placer.method = PARG_PLACE_ABSOLUTE;
+                    ++str;
+                    --len_str;
+                    break;
+                }
+                break;
+            case '0'...'9':
+                modifier->placer.method = PARG_PLACE_ABSOLUTE;
+                ++str;
+                --len_str;
+                break;
+            }
+            break;
+        case '+':
+        case '-':
+            switch (str[1]) {
+            case '0'...'9':
+                modifier->placer.method = PARG_PLACE_RELATIVE;
+                break;
+            }
+            break;
+        case '0'...'9':
+            modifier->placer.method = PARG_PLACE_ABSOLUTE;
+            break;
+        }
+        switch (modifier->placer.method) {
+        case PARG_PLACE_ABSOLUTE:
+        case PARG_PLACE_RELATIVE:
+            break;
+        default:
+            log_error("failed to figure out whether placer '%s' is an absolute placer or a relative placer", str);
+            return AMPART_BAD;
+        }
+        if (parg_position_from_literal(&modifier->placer.position, str)) {
+            log_error("failed to parse placer position");
+            return AMPART_BAD;
+        }
         break;
     case PARG_MODIFY_ADJUST:
         break;

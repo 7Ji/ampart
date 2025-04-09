@@ -149,6 +149,10 @@ static ampart_status adjustor_from_str(struct parg_adjustor *const adjustor, cha
     str = seperator + 1;
     len_str -= len_current + 1;
     if (len_str) {
+        if (memchr(str, ':', len_str)) {
+            log_error("adjustor has redundant part after masks");
+            return AMPART_BAD;
+        }
         switch (str[0]) {
         case '0'...'9':
             break;
@@ -254,20 +258,34 @@ set_len_selector:
     len_str -= len_selector + 1;
     switch (modifier->type) {
     case PARG_MODIFY_DELETE:
-        break;
-    case PARG_MODIFY_CLONE:
-        if (len_str > TABLE_NAME_MAXLEN) {
-            log_error("cloner name too long");
-            return AMPART_BAD;
-        } else if (!len_str) {
-            log_error("cloner name empty");
+        if (len_str) {
+            log_error("deleter has redundant part");
             return AMPART_BAD;
         }
+        break;
+    case PARG_MODIFY_CLONE:
+        if (!len_str) {
+            log_error("cloner name empty");
+            return AMPART_BAD;
+        } else if (memchr(str, ':', len_str)) {
+            log_error("cloner has redundant part after name");
+            return AMPART_BAD;
+        } else if (len_str > TABLE_NAME_MAXLEN) {
+            log_error("cloner name too long");
+            return AMPART_BAD;
+        } 
         memcpy(modifier->cloner.name, str, len_str);
         modifier->cloner.name[len_str] = '\0';
         modifier->cloner.len_name = len_str;
         break;
     case PARG_MODIFY_PLACE:
+        if (!len_str) {
+            log_error("placer empty");
+            return AMPART_BAD;
+        } else if (memchr(str, ':', len_str)) {
+            log_error("placer has redundant part");
+            return AMPART_BAD;
+        } 
         modifier->placer.method = PARG_PLACE_NONE;
         switch (str[0]) {
         case '=':
@@ -300,6 +318,13 @@ set_len_selector:
             modifier->placer.method = PARG_PLACE_ABSOLUTE;
             break;
         }
+        if (!len_str) {
+            log_error("placer empty");
+            return AMPART_BAD;
+        } else if (memchr(str, ':', len_str)) {
+            log_error("placer has redundant part");
+            return AMPART_BAD;
+        } 
         switch (modifier->placer.method) {
         case PARG_PLACE_ABSOLUTE:
         case PARG_PLACE_RELATIVE:
@@ -314,6 +339,10 @@ set_len_selector:
         }
         break;
     case PARG_MODIFY_ADJUST:
+        if (!len_str) {
+            log_error("adjustor empty");
+            return AMPART_BAD;
+        } 
         if (adjustor_from_str(&modifier->adjustor, str, len_str)) {
             log_error("failed to parse adjustor");
             return AMPART_BAD;
@@ -418,6 +447,10 @@ static ampart_status parg_definer_from_str(ampart_parg const parg, char const *s
     str = seperator + 1;
     len_str -= len_current + 1;
     if (len_str) {
+        if (memchr(str, ':', len_str)) {
+            log_error("definer has redundant part after masks");
+            return AMPART_BAD;
+        }
         switch (str[0]) {
         case '0'...'9':
             break;

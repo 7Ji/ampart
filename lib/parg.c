@@ -273,7 +273,7 @@ set_len_selector:
         } else if (len_str > TABLE_NAME_MAXLEN) {
             log_error("cloner name too long");
             return AMPART_BAD;
-        } 
+        }
         memcpy(modifier->cloner.name, str, len_str);
         modifier->cloner.name[len_str] = '\0';
         modifier->cloner.len_name = len_str;
@@ -285,7 +285,7 @@ set_len_selector:
         } else if (memchr(str, ':', len_str)) {
             log_error("placer has redundant part");
             return AMPART_BAD;
-        } 
+        }
         modifier->placer.method = PARG_PLACE_NONE;
         switch (str[0]) {
         case '=':
@@ -342,7 +342,7 @@ set_len_selector:
         if (!len_str) {
             log_error("adjustor empty");
             return AMPART_BAD;
-        } 
+        }
         if (adjustor_from_str(&modifier->adjustor, str, len_str)) {
             log_error("failed to parse adjustor");
             return AMPART_BAD;

@@ -1,0 +1,14 @@
+[
+{
+  "directory": "/home/nomad7ji/Building/optane/build-ampart",
+  "command": "/usr/bin/cc -DLIBAMPART_VERSION=\\\"1.4.1-94e7c27-20250324-dirty\\\" -I/home/nomad7ji/Development/embedded/sysutil/ampart/lib/../include -I/home/nomad7ji/Development/embedded/sysutil/ampart/lib/../include/priv -Wall -Wextra -o CMakeFiles/ampart.dir/ampart.c.o -c /home/nomad7ji/Development/embedded/sysutil/ampart/ampart.c",
+  "file": "/home/nomad7ji/Development/embedded/sysutil/ampart/ampart.c",
+  "output": "CMakeFiles/ampart.dir/ampart.c.o"
+},
+{
+  "directory": "/home/nomad7ji/Building/optane/build-ampart",
+  "command": "/usr/bin/cc -DLIBAMPART_VERSION=\\\"1.4.1-94e7c27-20250324-dirty\\\" -I/home/nomad7ji/Development/embedded/sysutil/ampart/lib/../include -I/home/nomad7ji/Development/embedded/sysutil/ampart/lib/../include/priv -Wall -Wextra -o lib/CMakeFiles/libampart.dir/handle.c.o -c /home/nomad7ji/Development/embedded/sysutil/ampart/lib/handle.c",
+  "file": "/home/nomad7ji/Development/embedded/sysutil/ampart/lib/handle.c",
+  "output": "lib/CMakeFiles/libampart.dir/handle.c.o"
+}
+]
